@@ -19,7 +19,13 @@
       "api_config": {
         "protocol": "json",
         "action": "ListWorkGroups",
-        "response_root": "/WorkGroups"
+        "response_root": "/WorkGroups",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 50
+        }
       },
       "field_mappings": {
         "Name": { "source": "/Name", "default": "-" },

@@ -20,7 +20,13 @@
       "api_config": {
         "protocol": "json",
         "action": "ListCertificates",
-        "response_root": "/CertificateSummaryList"
+        "response_root": "/CertificateSummaryList",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxItems",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "DomainName": { "source": "/DomainName", "default": "-" },

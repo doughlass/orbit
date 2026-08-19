@@ -21,7 +21,13 @@
       "api_config": {
         "protocol": "query",
         "action": "DescribeCacheClusters",
-        "response_root": "/DescribeCacheClustersResponse/DescribeCacheClustersResult/CacheClusters/CacheCluster"
+        "response_root": "/DescribeCacheClustersResponse/DescribeCacheClustersResult/CacheClusters/CacheCluster",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeCacheClustersResponse/DescribeCacheClustersResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "CacheClusterId": { "source": "/CacheClusterId", "default": "-" },

@@ -28,7 +28,13 @@
       "api_config": {
         "protocol": "query",
         "action": "DescribeDBInstances",
-        "response_root": "/DescribeDBInstancesResponse/DescribeDBInstancesResult/DBInstances/DBInstance"
+        "response_root": "/DescribeDBInstancesResponse/DescribeDBInstancesResult/DBInstances/DBInstance",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeDBInstancesResponse/DescribeDBInstancesResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "DBInstanceIdentifier": { "source": "/DBInstanceIdentifier", "default": "-" },
@@ -99,6 +105,12 @@
         "protocol": "query",
         "action": "DescribeDBSnapshots",
         "response_root": "/DescribeDBSnapshotsResponse/DescribeDBSnapshotsResult/DBSnapshots/DBSnapshot",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeDBSnapshotsResponse/DescribeDBSnapshotsResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        },
         "param_mapping": {
           "db_instance_identifier": "DBInstanceIdentifier"
         }

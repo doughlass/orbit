@@ -27,7 +27,13 @@
       "api_config": {
         "protocol": "query",
         "action": "DescribeLoadBalancers",
-        "response_root": "/DescribeLoadBalancersResponse/DescribeLoadBalancersResult/LoadBalancers/member"
+        "response_root": "/DescribeLoadBalancersResponse/DescribeLoadBalancersResult/LoadBalancers/member",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeLoadBalancersResponse/DescribeLoadBalancersResult/NextMarker",
+          "max_results_param": "PageSize",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "LoadBalancerArn": { "source": "/LoadBalancerArn", "default": "-" },
@@ -81,6 +87,12 @@
         "protocol": "query",
         "action": "DescribeListeners",
         "response_root": "/DescribeListenersResponse/DescribeListenersResult/Listeners/member",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeListenersResponse/DescribeListenersResult/NextMarker",
+          "max_results_param": "PageSize",
+          "max_results": 100
+        },
         "param_mapping": {
           "load_balancer_arn": "LoadBalancerArn"
         }
@@ -127,6 +139,12 @@
         "protocol": "query",
         "action": "DescribeRules",
         "response_root": "/DescribeRulesResponse/DescribeRulesResult/Rules/member",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeRulesResponse/DescribeRulesResult/NextMarker",
+          "max_results_param": "PageSize",
+          "max_results": 100
+        },
         "param_mapping": {
           "listener_arn": "ListenerArn"
         }
@@ -175,6 +193,12 @@
         "protocol": "query",
         "action": "DescribeTargetGroups",
         "response_root": "/DescribeTargetGroupsResponse/DescribeTargetGroupsResult/TargetGroups/member",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeTargetGroupsResponse/DescribeTargetGroupsResult/NextMarker",
+          "max_results_param": "PageSize",
+          "max_results": 100
+        },
         "param_mapping": {
           "load_balancer_arn": "LoadBalancerArn"
         }

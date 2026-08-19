@@ -21,7 +21,13 @@
         "protocol": "rest-json",
         "method": "GET",
         "path": "/restapis",
-        "response_root": "/item"
+        "response_root": "/item",
+        "pagination": {
+          "input_token": "position",
+          "output_token": "/position",
+          "max_results_param": "limit",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "id": { "source": "/id", "default": "-" },

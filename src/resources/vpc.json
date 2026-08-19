@@ -25,7 +25,13 @@
       "api_config": {
         "protocol": "query",
         "action": "DescribeVpcs",
-        "response_root": "/DescribeVpcsResponse/vpcSet/item"
+        "response_root": "/DescribeVpcsResponse/vpcSet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeVpcsResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "VpcId": { "source": "/vpcId", "default": "-" },
@@ -62,7 +68,13 @@
       "api_config": {
         "protocol": "query",
         "action": "DescribeSubnets",
-        "response_root": "/DescribeSubnetsResponse/subnetSet/item"
+        "response_root": "/DescribeSubnetsResponse/subnetSet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeSubnetsResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "SubnetId": { "source": "/subnetId", "default": "-" },
@@ -97,7 +109,13 @@
       "api_config": {
         "protocol": "query",
         "action": "DescribeSecurityGroups",
-        "response_root": "/DescribeSecurityGroupsResponse/securityGroupInfo/item"
+        "response_root": "/DescribeSecurityGroupsResponse/securityGroupInfo/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeSecurityGroupsResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "GroupId": { "source": "/groupId", "default": "-" },

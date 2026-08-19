@@ -20,7 +20,13 @@
       "api_config": {
         "protocol": "json",
         "action": "ListPipelines",
-        "response_root": "/pipelines"
+        "response_root": "/pipelines",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "name": { "source": "/name", "default": "-" },

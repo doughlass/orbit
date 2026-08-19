@@ -21,7 +21,13 @@
         "protocol": "json",
         "service_name": "events",
         "action": "ListRules",
-        "response_root": "/Rules"
+        "response_root": "/Rules",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "Name": { "source": "/Name", "default": "-" },
@@ -50,7 +56,13 @@
         "protocol": "json",
         "service_name": "events",
         "action": "ListEventBuses",
-        "response_root": "/EventBuses"
+        "response_root": "/EventBuses",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "Name": { "source": "/Name", "default": "-" },

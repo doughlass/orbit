@@ -19,7 +19,11 @@
       "api_config": {
         "protocol": "query",
         "action": "ListTopics",
-        "response_root": "/ListTopicsResponse/ListTopicsResult/Topics/member"
+        "response_root": "/ListTopicsResponse/ListTopicsResult/Topics/member",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/ListTopicsResponse/ListTopicsResult/NextToken"
+        }
       },
       "field_mappings": {
         "TopicArn": { "source": "/TopicArn", "default": "-" }

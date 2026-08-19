@@ -22,6 +22,10 @@
         "service_name": "cognito-idp",
         "action": "ListUserPools",
         "response_root": "/UserPools",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken"
+        },
         "static_params": {
           "MaxResults": 60
         }
