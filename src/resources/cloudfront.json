@@ -10,10 +10,12 @@
       "name_field": "DomainName",
       "is_global": true,
       "columns": [
-        { "header": "DISTRIBUTION ID", "json_path": "Id", "width": 18 },
-        { "header": "DOMAIN NAME", "json_path": "DomainName", "width": 40 },
-        { "header": "STATUS", "json_path": "Status", "width": 12, "color_map": "state" },
-        { "header": "ENABLED", "json_path": "Enabled", "width": 10 }
+        { "header": "DISTRIBUTION ID", "json_path": "Id", "width": 12 },
+        { "header": "ALTERNATE DOMAINS", "json_path": "Aliases", "width": 28 },
+        { "header": "ORIGINS", "json_path": "Origins", "width": 28 },
+        { "header": "DOMAIN NAME", "json_path": "DomainName", "width": 18 },
+        { "header": "STATUS", "json_path": "Status", "width": 9, "color_map": "state" },
+        { "header": "ENABLED", "json_path": "Enabled", "width": 5 }
       ],
       "sub_resources": [],
       "actions": [],
@@ -26,6 +28,12 @@
       "field_mappings": {
         "Id": { "source": "/Id", "default": "-" },
         "DomainName": { "source": "/DomainName", "default": "-" },
+        "Aliases": { "source": "/Aliases/Items/CNAME", "transform": "array_to_csv", "default": "-" },
+        "Origins": {
+          "source": "/Origins/Items/Origin/DomainName",
+          "transform": "array_to_csv",
+          "default": "-"
+        },
         "Status": { "source": "/Status", "default": "-" },
         "Enabled": { "source": "/Enabled", "transform": "bool_to_yes_no" }
       }

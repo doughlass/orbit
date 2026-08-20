@@ -134,6 +134,116 @@ mod tests {
         assert_eq!(items[0]["Name"], "bucket1");
     }
 
+    /// CloudFront ListDistributions carries Aliases and Origins in the summary,
+    /// so the list view can show them without an extra GetDistribution call.
+    /// Driven by the real registry config so a broken json_path fails here.
+    #[test]
+    fn test_cloudfront_distribution_aliases_and_origins() {
+        use crate::resource::field_mapper::apply_field_mappings;
+        use crate::resource::registry::get_resource;
+
+        let xml = r#"<?xml version="1.0"?>
+<DistributionList>
+  <Items>
+    <DistributionSummary>
+      <Id>E1MULTI</Id>
+      <Status>Deployed</Status>
+      <DomainName>d1multi.cloudfront.net</DomainName>
+      <Aliases>
+        <Quantity>2</Quantity>
+        <Items>
+          <CNAME>cdn.example.com</CNAME>
+          <CNAME>www.example.com</CNAME>
+        </Items>
+      </Aliases>
+      <Origins>
+        <Quantity>2</Quantity>
+        <Items>
+          <Origin>
+            <Id>s3-origin</Id>
+            <DomainName>assets.s3.eu-west-1.amazonaws.com</DomainName>
+          </Origin>
+          <Origin>
+            <Id>alb-origin</Id>
+            <DomainName>alb-123.eu-west-1.elb.amazonaws.com</DomainName>
+          </Origin>
+        </Items>
+      </Origins>
+      <Enabled>true</Enabled>
+    </DistributionSummary>
+    <DistributionSummary>
+      <Id>E1SINGLE</Id>
+      <Status>InProgress</Status>
+      <DomainName>d1single.cloudfront.net</DomainName>
+      <Aliases>
+        <Quantity>1</Quantity>
+        <Items>
+          <CNAME>single.example.com</CNAME>
+        </Items>
+      </Aliases>
+      <Origins>
+        <Quantity>1</Quantity>
+        <Items>
+          <Origin>
+            <Id>only-origin</Id>
+            <DomainName>only.example.com</DomainName>
+          </Origin>
+        </Items>
+      </Origins>
+      <Enabled>false</Enabled>
+    </DistributionSummary>
+    <DistributionSummary>
+      <Id>E1NONE</Id>
+      <Status>Deployed</Status>
+      <DomainName>d1none.cloudfront.net</DomainName>
+      <Aliases>
+        <Quantity>0</Quantity>
+      </Aliases>
+      <Origins>
+        <Quantity>1</Quantity>
+        <Items>
+          <Origin>
+            <Id>only-origin</Id>
+            <DomainName>only.example.com</DomainName>
+          </Origin>
+        </Items>
+      </Origins>
+      <Enabled>true</Enabled>
+    </DistributionSummary>
+  </Items>
+</DistributionList>"#;
+
+        let resource = get_resource("cloudfront-distributions").unwrap();
+        let config = resource.api_config.as_ref().unwrap();
+
+        let handler = RestXmlProtocolHandler;
+        let (items, _) = handler.parse_items(xml, config).unwrap();
+        assert_eq!(items.len(), 3);
+
+        let mapped: Vec<Value> = items
+            .iter()
+            .map(|item| apply_field_mappings(item, &resource.field_mappings))
+            .collect();
+
+        // Multiple aliases/origins collapse to a comma-separated string
+        assert_eq!(mapped[0]["Id"], "E1MULTI");
+        assert_eq!(mapped[0]["Aliases"], "cdn.example.com, www.example.com");
+        assert_eq!(
+            mapped[0]["Origins"],
+            "assets.s3.eu-west-1.amazonaws.com, alb-123.eu-west-1.elb.amazonaws.com"
+        );
+        assert_eq!(mapped[0]["Enabled"], "Yes");
+
+        // XML-to-JSON gives a bare string when there is only one child
+        assert_eq!(mapped[1]["Aliases"], "single.example.com");
+        assert_eq!(mapped[1]["Origins"], "only.example.com");
+        assert_eq!(mapped[1]["Enabled"], "No");
+
+        // Quantity 0 means no Items element at all
+        assert_eq!(mapped[2]["Aliases"], "-");
+        assert_eq!(mapped[2]["Origins"], "only.example.com");
+    }
+
     #[test]
     fn test_parse_route53_hosted_zones() {
         let json_str = r#"{
