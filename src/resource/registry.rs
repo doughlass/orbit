@@ -35,6 +35,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/iam.json"),
     include_str!("../resources/kms.json"),
     include_str!("../resources/lambda.json"),
+    include_str!("../resources/msk.json"),
     include_str!("../resources/rds.json"),
     include_str!("../resources/redshift.json"),
     include_str!("../resources/route53.json"),
@@ -325,6 +326,85 @@ mod tests {
             !resource.columns.is_empty(),
             "EC2 instances should have columns"
         );
+    }
+
+    /// MSK answers in lowerCamelCase on the wire even though the AWS CLI prints
+    /// PascalCase. Mapping the CLI's names silently yields an empty cluster list.
+    #[test]
+    fn test_msk_clusters_map_wire_casing() {
+        let resource = get_resource("msk-clusters").expect("MSK clusters resource should exist");
+        assert_eq!(resource.service, "kafka");
+
+        let api = resource
+            .api_config
+            .as_ref()
+            .expect("MSK needs an api_config");
+        assert_eq!(api.response_root.as_deref(), Some("/clusterInfoList"));
+
+        let sources: Vec<&str> = [
+            "ClusterName",
+            "ClusterArn",
+            "State",
+            "KafkaVersion",
+            "Brokers",
+        ]
+        .iter()
+        .map(|field| {
+            resource
+                .field_mappings
+                .get(*field)
+                .unwrap_or_else(|| panic!("MSK should map {}", field))
+                .source
+                .as_str()
+        })
+        .collect();
+        assert_eq!(
+            sources,
+            vec![
+                "/clusterName",
+                "/clusterArn",
+                "/state",
+                "/provisioned/currentBrokerSoftwareInfo/kafkaVersion",
+                "/provisioned/numberOfBrokerNodes",
+            ]
+        );
+    }
+
+    /// The STATE column's colour only shows on unselected rows, so an account with
+    /// a single cluster can never reveal a mis-named map or an unmapped state.
+    #[test]
+    fn test_msk_cluster_states_resolve_to_colours() {
+        let resource = get_resource("msk-clusters").unwrap();
+        let state_column = resource
+            .columns
+            .iter()
+            .find(|c| c.json_path == "State")
+            .expect("MSK should have a STATE column");
+        let map_name = state_column
+            .color_map
+            .as_deref()
+            .expect("STATE column should be colour-mapped");
+
+        const GREEN: [u8; 3] = [0, 255, 0];
+        const YELLOW: [u8; 3] = [255, 255, 0];
+        const RED: [u8; 3] = [255, 0, 0];
+        for (state, expected) in [
+            ("ACTIVE", GREEN),
+            ("CREATING", YELLOW),
+            ("UPDATING", YELLOW),
+            ("HEALING", YELLOW),
+            ("MAINTENANCE", YELLOW),
+            ("REBOOTING_BROKER", YELLOW),
+            ("DELETING", RED),
+            ("FAILED", RED),
+        ] {
+            assert_eq!(
+                get_color_for_value(map_name, state),
+                Some(expected),
+                "MSK state {} should be colour-mapped",
+                state
+            );
+        }
     }
 
     #[test]
