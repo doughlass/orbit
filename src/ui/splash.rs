@@ -6,6 +6,30 @@ use ratatui::{
     Frame,
 };
 
+/// ORBIT in the same box-drawing font the splash has always used. Rows are
+/// padded to equal width because the paragraph is centre-aligned: ragged rows
+/// each centre differently and the wordmark visibly wobbles. See the tests.
+const SPLASH_WORDMARK: [&str; 40] = [
+    r" ██████╗ ██████╗ ██████╗ ██╗████████╗",
+    r"██╔═══██╗██╔══██╗██╔══██╗██║╚══██╔══╝",
+    r"██║   ██║██████╔╝██████╔╝██║   ██║   ",
+    r"██║   ██║██╔══██╗██╔══██╗██║   ██║   ",
+    r"╚██████╔╝██║  ██║██████╔╝██║   ██║   ",
+    r" ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝   ╚═╝   ",
+];
+// const SPLASH_WORDMARK: [&str; 6] = [
+//     r" ██████╗ ██████╗ ██████╗ ██╗████████╗",
+//     r"██╔═══██╗██╔══██╗██╔══██╗██║╚══██╔══╝",
+//     r"██║   ██║██████╔╝██████╔╝██║   ██║   ",
+//     r"██║   ██║██╔══██╗██╔══██╗██║   ██║   ",
+//     r"╚██████╔╝██║  ██║██████╔╝██║   ██║   ",
+//     r" ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝   ╚═╝   ",
+// ];
+
+/// Rows reserved for the logo block: the wordmark, a blank line, the tagline
+/// and the version.
+const LOGO_BLOCK_HEIGHT: u16 = 9;
+
 pub struct SplashState {
     pub current_step: usize,
     pub total_steps: usize,
@@ -52,11 +76,11 @@ pub fn render(f: &mut Frame, splash: &SplashState) {
     let content = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(9), // Big logo
-            Constraint::Length(2), // Spacer
-            Constraint::Length(1), // Loading bar
-            Constraint::Length(1), // Spacer
-            Constraint::Length(1), // Status message
+            Constraint::Length(LOGO_BLOCK_HEIGHT), // Big logo
+            Constraint::Length(2),                 // Spacer
+            Constraint::Length(1),                 // Loading bar
+            Constraint::Length(1),                 // Spacer
+            Constraint::Length(1),                 // Status message
         ])
         .split(center_area);
 
@@ -71,53 +95,24 @@ pub fn render(f: &mut Frame, splash: &SplashState) {
 }
 
 fn render_big_logo(f: &mut Frame, area: Rect) {
-    let logo_lines = vec![
-        Line::from(Span::styled(
-            r"  ████████╗ █████╗ ██╗    ██╗███████╗",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(
-            r"  ╚══██╔══╝██╔══██╗██║    ██║██╔════╝",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(
-            r"     ██║   ███████║██║ █╗ ██║███████╗",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(
-            r"     ██║   ██╔══██║██║███╗██║╚════██║",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(
-            r"     ██║   ██║  ██║╚███╔███╔╝███████║",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(
-            r"     ╚═╝   ╚═╝  ╚═╝ ╚══╝╚══╝ ╚══════╝",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Terminal UI for AWS",
-            Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(Span::styled(
-            crate::VERSION,
-            Style::default().fg(Color::DarkGray),
-        )),
-    ];
+    let brand = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
+
+    let mut logo_lines: Vec<Line> = SPLASH_WORDMARK
+        .iter()
+        .map(|row| Line::from(Span::styled(*row, brand)))
+        .collect();
+
+    logo_lines.push(Line::from(""));
+    logo_lines.push(Line::from(Span::styled(
+        "Terminal UI for AWS",
+        Style::default().fg(Color::DarkGray),
+    )));
+    logo_lines.push(Line::from(Span::styled(
+        crate::VERSION,
+        Style::default().fg(Color::DarkGray),
+    )));
 
     let paragraph = Paragraph::new(logo_lines).alignment(Alignment::Center);
     f.render_widget(paragraph, area);
@@ -155,4 +150,42 @@ fn render_status(f: &mut Frame, splash: &SplashState, area: Rect) {
 
     let paragraph = Paragraph::new(status).alignment(Alignment::Center);
     f.render_widget(paragraph, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Box-drawing glyphs are one cell wide, so char count is display width.
+    fn width(row: &str) -> usize {
+        row.chars().count()
+    }
+
+    /// Centre-aligned art with ragged rows shears sideways, and the trailing
+    /// padding that prevents it is invisible in a diff.
+    #[test]
+    fn splash_wordmark_rows_are_the_same_width() {
+        let widths: Vec<usize> = SPLASH_WORDMARK.iter().map(|row| width(row)).collect();
+        assert!(
+            widths.windows(2).all(|pair| pair[0] == pair[1]),
+            "splash wordmark rows must line up, got widths {:?}",
+            widths
+        );
+    }
+
+    /// The logo block is a fixed-height layout slot, so an extra art row
+    /// silently pushes the version line out of view instead of failing.
+    #[test]
+    fn splash_wordmark_leaves_room_for_tagline_and_version() {
+        // Blank spacer, tagline, version.
+        let trailing = 3;
+        assert!(
+            SPLASH_WORDMARK.len() + trailing <= LOGO_BLOCK_HEIGHT as usize,
+            "wordmark is {} rows and needs {} more for the tagline and version, \
+             but the logo block is only {}",
+            SPLASH_WORDMARK.len(),
+            trailing,
+            LOGO_BLOCK_HEIGHT
+        );
+    }
 }
