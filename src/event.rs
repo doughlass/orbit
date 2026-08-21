@@ -157,9 +157,9 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
         }
 
-        // Describe mode (d or Enter)
+        // Describe mode (d), while Enter drills into browsable resources first
         KeyCode::Char('d') => app.enter_describe_mode().await,
-        KeyCode::Enter => app.enter_describe_mode().await,
+        KeyCode::Enter => app.enter_primary_action().await?,
 
         // Filter toggle - clears any existing tag filter and starts fresh
         KeyCode::Char('/') => {
@@ -250,6 +250,10 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
                                         // Special handling for SSM connect
                                         } else if action.sdk_method == "ssm_connect" {
                                             app.request_ssm_connect();
+                                            handled = true;
+                                        // Download writes locally, so it never goes through dispatch
+                                        } else if action.sdk_method == "download_object" {
+                                            app.download_selected_object().await;
                                             handled = true;
                                         } else if action.show_result {
                                             // Action that displays result (e.g., get_secret_value)

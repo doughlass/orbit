@@ -223,11 +223,15 @@ pub async fn invoke_sdk(
                     }
                     let display_name = key.rsplit('/').next().unwrap_or(key);
                     let size = obj.pointer("/Size").and_then(|v| v.as_str()).unwrap_or("0");
-                    let size_formatted = format_bytes(size.parse::<u64>().unwrap_or(0));
+                    let size_bytes = size.parse::<u64>().unwrap_or(0);
+                    let size_formatted = format_bytes(size_bytes);
                     objects.push(json!({
                         "Key": key,
                         "DisplayName": display_name,
                         "Size": size_formatted,
+                        // Raw byte count kept alongside the display string so the
+                        // download size guard doesn't have to parse "1.2 KB" back
+                        "SizeBytes": size_bytes,
                         "LastModified": obj.pointer("/LastModified").and_then(|v| v.as_str()).unwrap_or("-"),
                         "StorageClass": obj.pointer("/StorageClass").and_then(|v| v.as_str()).unwrap_or("STANDARD"),
                         "IsFolder": false

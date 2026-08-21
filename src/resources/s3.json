@@ -16,6 +16,7 @@
       "sub_resources": [
         { "resource_key": "s3-objects", "display_name": "Objects", "shortcut": "o", "parent_id_field": "Name", "filter_param": "bucket_names" }
       ],
+      "enter_sub_resource": "s3-objects",
       "actions": [
         { "key": "ctrl+d", "display_name": "Delete Bucket", "shortcut": "ctrl+d", "sdk_method": "delete_bucket", "confirm": { "message": "Delete S3 bucket", "default_yes": false, "destructive": true } }
       ],
@@ -57,7 +58,10 @@
       "sub_resources": [
         { "resource_key": "s3-objects", "display_name": "Open Folder", "shortcut": "o", "parent_id_field": "Key", "filter_param": "prefix" }
       ],
-      "actions": []
+      "enter_sub_resource": "s3-objects",
+      "actions": [
+        { "key": "w", "display_name": "Download Object", "shortcut": "w", "sdk_method": "download_object" }
+      ]
     }
   }
 }

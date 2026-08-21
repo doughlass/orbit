@@ -10,6 +10,7 @@ use crossterm::event::KeyCode;
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use serde_json::Value;
 use std::cmp::Ordering;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Mode {
@@ -1521,18 +1522,9 @@ impl App {
             return Ok(());
         }
 
-        // Special handling for S3 folder navigation
-        // Only allow navigating into folders, not files
-        if self.current_resource_key == "s3-objects" && sub_resource_key == "s3-objects" {
-            let is_folder = selected_item
-                .get("IsFolder")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-
-            if !is_folder {
-                // Don't navigate into files - could show a message or do nothing
-                return Ok(());
-            }
+        // Rows with no children (S3 files) have nothing to drill into
+        if !is_navigable_row(&self.current_resource_key, sub_resource_key, &selected_item) {
+            return Ok(());
         }
 
         // Get display name for parent
@@ -2050,6 +2042,209 @@ impl App {
     pub fn take_ssm_connect_request(&mut self) -> Option<SsmConnectRequest> {
         self.ssm_connect_request.take()
     }
+
+    // =========================================================================
+    // S3 object browsing
+    // =========================================================================
+
+    /// Handle Enter: drill into the selected row where the resource opts into it
+    /// (S3 buckets and folders), otherwise open the details panel as before.
+    pub async fn enter_primary_action(&mut self) -> Result<()> {
+        let action = match (self.current_resource(), self.selected_item()) {
+            (Some(resource), Some(item)) => enter_action(
+                resource.enter_sub_resource.as_deref(),
+                &self.current_resource_key,
+                item,
+            ),
+            _ => EnterAction::Describe,
+        };
+
+        match action {
+            EnterAction::Navigate(sub_resource_key) => {
+                self.navigate_to_sub_resource(&sub_resource_key).await
+            }
+            EnterAction::Describe => {
+                self.enter_describe_mode().await;
+                Ok(())
+            }
+        }
+    }
+
+    /// Download the selected S3 object to the user's Downloads directory.
+    ///
+    /// Runs on the event-loop thread, so the UI is unresponsive until it finishes.
+    /// `MAX_DOWNLOAD_BYTES` keeps that pause bounded.
+    pub async fn download_selected_object(&mut self) {
+        let Some(item) = self.selected_item().cloned() else {
+            return;
+        };
+
+        if item
+            .get("IsFolder")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            self.error_message = Some("Folders cannot be downloaded".to_string());
+            return;
+        }
+
+        let key = extract_json_value(&item, "Key");
+        let size_bytes = item.get("SizeBytes").and_then(|v| v.as_u64()).unwrap_or(0);
+        if let Some(error) = download_size_error(size_bytes) {
+            self.error_message = Some(error);
+            return;
+        }
+
+        let Some(bucket) =
+            s3_bucket_from_context(&self.navigation_stack, self.parent_context.as_ref())
+        else {
+            self.error_message =
+                Some("Cannot tell which bucket this object belongs to".to_string());
+            return;
+        };
+
+        let path = match resolve_download_path(&download_dir(), &key) {
+            Ok(path) => path,
+            Err(e) => {
+                self.error_message = Some(e.to_string());
+                return;
+            }
+        };
+
+        self.status_message = Some(format!("Downloading {}...", key));
+
+        match Self::fetch_object_to_file(&self.clients, &bucket, &key, &path).await {
+            Ok(bytes) => {
+                self.status_message = Some(format!("Saved {} bytes to {}", bytes, path.display()));
+            }
+            Err(e) => {
+                self.status_message = None;
+                self.error_message = Some(format!("Download failed: {}", e));
+            }
+        }
+    }
+
+    /// Fetch an object and write it to disk, refusing to replace an existing file.
+    async fn fetch_object_to_file(
+        clients: &AwsClients,
+        bucket: &str,
+        key: &str,
+        path: &Path,
+    ) -> Result<usize> {
+        let region = clients.http.get_bucket_region(bucket).await?;
+        let bytes = clients.http.get_s3_object(bucket, key, &region).await?;
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // create_new so a file that appeared since the earlier check still isn't clobbered
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
+        std::io::Write::write_all(&mut file, &bytes)?;
+
+        Ok(bytes.len())
+    }
+}
+
+/// Where downloads land. Falls back to ~/Downloads, then the working directory.
+fn download_dir() -> PathBuf {
+    dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|home| home.join("Downloads")))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Largest object we will pull down. Downloads block the event loop, so an
+/// unbounded fetch would freeze the TUI with no progress bar and no way to cancel.
+const MAX_DOWNLOAD_BYTES: u64 = 100 * 1024 * 1024;
+
+/// What Enter should do on the selected row.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EnterAction {
+    /// Drill into this sub-resource
+    Navigate(String),
+    /// Open the details panel (the historical behaviour of Enter)
+    Describe,
+}
+
+/// Whether the selected row has children to drill into.
+///
+/// S3 lists folders and files side by side under one resource, so a
+/// self-referential sub-resource can only descend on the folder rows.
+fn is_navigable_row(current_key: &str, sub_key: &str, item: &Value) -> bool {
+    if current_key == "s3-objects" && sub_key == "s3-objects" {
+        return item
+            .get("IsFolder")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+    }
+    true
+}
+
+/// Route Enter: drill in where the resource opted into it via `enter_sub_resource`,
+/// otherwise fall back to the details panel. A file in S3 lands on Describe, so
+/// Enter is never a dead key.
+fn enter_action(enter_sub_resource: Option<&str>, current_key: &str, item: &Value) -> EnterAction {
+    match enter_sub_resource {
+        Some(sub) if is_navigable_row(current_key, sub, item) => {
+            EnterAction::Navigate(sub.to_string())
+        }
+        _ => EnterAction::Describe,
+    }
+}
+
+/// Find the bucket that owns the current object listing.
+///
+/// Nested folders stack more `s3-objects` contexts on top of the bucket, so walk
+/// from the oldest context down to the current one and take the bucket entry.
+fn s3_bucket_from_context(
+    stack: &[ParentContext],
+    current: Option<&ParentContext>,
+) -> Option<String> {
+    stack
+        .iter()
+        .chain(current)
+        .find(|ctx| ctx.resource_key == "s3-buckets")
+        .and_then(|ctx| ctx.item.get("Name"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+/// Local filename for an S3 key, or None when the key names no file.
+///
+/// Only the last path segment is kept, so a key crafted with `..` segments cannot
+/// walk out of the download directory.
+fn download_filename(key: &str) -> Option<String> {
+    let name = key.rsplit('/').next().unwrap_or("");
+    if name.is_empty() || name == "." || name == ".." {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// Refuse objects too large to fetch on the UI thread.
+fn download_size_error(size_bytes: u64) -> Option<String> {
+    if size_bytes <= MAX_DOWNLOAD_BYTES {
+        return None;
+    }
+    Some(format!(
+        "Object is {} MB - too large to download (limit {} MB)",
+        size_bytes / (1024 * 1024),
+        MAX_DOWNLOAD_BYTES / (1024 * 1024)
+    ))
+}
+
+/// Where to write an object, erroring rather than overwriting an existing file.
+fn resolve_download_path(dir: &Path, key: &str) -> Result<PathBuf> {
+    let filename = download_filename(key)
+        .ok_or_else(|| anyhow::anyhow!("Cannot work out a filename for '{}'", key))?;
+    let path = dir.join(filename);
+    if path.exists() {
+        return Err(anyhow::anyhow!("{} already exists", path.display()));
+    }
+    Ok(path)
 }
 
 /// Extract the copyable value from describe data based on resource type.
@@ -2445,5 +2640,194 @@ mod tests {
         let mut items: Vec<Value> = Vec::new();
         let new_index = sort_items(&mut items, "RoleName", false, 0);
         assert_eq!(new_index, 0);
+    }
+
+    // === Enter key routing ===
+
+    fn folder_row(key: &str) -> Value {
+        serde_json::json!({ "Key": key, "IsFolder": true })
+    }
+
+    fn file_row(key: &str) -> Value {
+        serde_json::json!({ "Key": key, "IsFolder": false })
+    }
+
+    #[test]
+    fn test_enter_action_navigates_when_resource_opts_in() {
+        let item = serde_json::json!({ "Name": "my-bucket" });
+        assert_eq!(
+            enter_action(Some("s3-objects"), "s3-buckets", &item),
+            EnterAction::Navigate("s3-objects".to_string())
+        );
+    }
+
+    #[test]
+    fn test_enter_action_describes_when_resource_has_no_enter_target() {
+        let item = serde_json::json!({ "RoleName": "admin" });
+        assert_eq!(
+            enter_action(None, "iam-roles", &item),
+            EnterAction::Describe
+        );
+    }
+
+    #[test]
+    fn test_enter_action_descends_into_s3_folder() {
+        assert_eq!(
+            enter_action(Some("s3-objects"), "s3-objects", &folder_row("logs/")),
+            EnterAction::Navigate("s3-objects".to_string())
+        );
+    }
+
+    #[test]
+    fn test_enter_action_on_s3_file_falls_back_to_describe() {
+        assert_eq!(
+            enter_action(Some("s3-objects"), "s3-objects", &file_row("logs/app.log")),
+            EnterAction::Describe
+        );
+    }
+
+    #[test]
+    fn test_is_navigable_row_allows_non_self_referential_targets() {
+        let item = serde_json::json!({ "VpcId": "vpc-123" });
+        assert!(is_navigable_row("vpc", "vpc-subnets", &item));
+    }
+
+    #[test]
+    fn test_is_navigable_row_rejects_s3_file() {
+        assert!(!is_navigable_row(
+            "s3-objects",
+            "s3-objects",
+            &file_row("a.txt")
+        ));
+    }
+
+    #[test]
+    fn test_is_navigable_row_rejects_s3_row_missing_folder_flag() {
+        let item = serde_json::json!({ "Key": "a.txt" });
+        assert!(!is_navigable_row("s3-objects", "s3-objects", &item));
+    }
+
+    // === S3 download ===
+
+    fn parent_ctx(resource_key: &str, item: Value) -> ParentContext {
+        ParentContext {
+            resource_key: resource_key.to_string(),
+            item,
+            display_name: "ctx".to_string(),
+            saved_selected: 0,
+        }
+    }
+
+    #[test]
+    fn test_bucket_from_context_reads_immediate_parent() {
+        let current = parent_ctx("s3-buckets", serde_json::json!({ "Name": "my-bucket" }));
+        assert_eq!(
+            s3_bucket_from_context(&[], Some(&current)),
+            Some("my-bucket".to_string())
+        );
+    }
+
+    #[test]
+    fn test_bucket_from_context_reads_through_nested_folders() {
+        let stack = vec![
+            parent_ctx("s3-buckets", serde_json::json!({ "Name": "my-bucket" })),
+            parent_ctx("s3-objects", folder_row("logs/")),
+        ];
+        let current = parent_ctx("s3-objects", folder_row("logs/2026/"));
+        assert_eq!(
+            s3_bucket_from_context(&stack, Some(&current)),
+            Some("my-bucket".to_string())
+        );
+    }
+
+    #[test]
+    fn test_bucket_from_context_none_without_s3_ancestor() {
+        let current = parent_ctx("vpc", serde_json::json!({ "VpcId": "vpc-123" }));
+        assert_eq!(s3_bucket_from_context(&[], Some(&current)), None);
+    }
+
+    #[test]
+    fn test_bucket_from_context_none_at_top_level() {
+        assert_eq!(s3_bucket_from_context(&[], None), None);
+    }
+
+    #[test]
+    fn test_download_filename_strips_key_prefix() {
+        assert_eq!(
+            download_filename("logs/2026/app.log"),
+            Some("app.log".to_string())
+        );
+    }
+
+    #[test]
+    fn test_download_filename_key_without_prefix() {
+        assert_eq!(download_filename("app.log"), Some("app.log".to_string()));
+    }
+
+    #[test]
+    fn test_download_filename_rejects_folder_key() {
+        assert_eq!(download_filename("logs/"), None);
+    }
+
+    #[test]
+    fn test_download_filename_rejects_empty_key() {
+        assert_eq!(download_filename(""), None);
+    }
+
+    #[test]
+    fn test_download_filename_rejects_relative_path_segments() {
+        // S3 keys are arbitrary strings, so ".." must never become a directory hop
+        assert_eq!(download_filename("logs/.."), None);
+        assert_eq!(download_filename(".."), None);
+        assert_eq!(download_filename("."), None);
+    }
+
+    #[test]
+    fn test_download_filename_keeps_traversal_attempt_inside_target_dir() {
+        assert_eq!(
+            download_filename("../../etc/passwd"),
+            Some("passwd".to_string())
+        );
+    }
+
+    #[test]
+    fn test_download_size_error_allows_size_at_limit() {
+        assert_eq!(download_size_error(MAX_DOWNLOAD_BYTES), None);
+    }
+
+    #[test]
+    fn test_download_size_error_rejects_oversized_object() {
+        let error = download_size_error(MAX_DOWNLOAD_BYTES + 1);
+        assert!(error.is_some(), "objects above the cap must be refused");
+        assert!(
+            error.unwrap().contains("100"),
+            "message should name the limit so the user knows why"
+        );
+    }
+
+    #[test]
+    fn test_resolve_download_path_joins_dir_and_filename() {
+        let dir = std::env::temp_dir().join(format!("orbit-dl-{}", std::process::id()));
+        let path = resolve_download_path(&dir, "logs/app.log").unwrap();
+        assert_eq!(path, dir.join("app.log"));
+    }
+
+    #[test]
+    fn test_resolve_download_path_refuses_to_overwrite() {
+        let dir = std::env::temp_dir().join(format!("orbit-overwrite-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let existing = dir.join("app.log");
+        std::fs::write(&existing, b"keep me").unwrap();
+
+        let result = resolve_download_path(&dir, "logs/app.log");
+
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(result.is_err(), "must not clobber an existing file");
+    }
+
+    #[test]
+    fn test_resolve_download_path_rejects_unusable_key() {
+        let dir = std::env::temp_dir();
+        assert!(resolve_download_path(&dir, "logs/").is_err());
     }
 }
