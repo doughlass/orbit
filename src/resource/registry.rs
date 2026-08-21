@@ -370,6 +370,43 @@ mod tests {
         );
     }
 
+    /// The STATE column's colour only shows on unselected rows, so an account with
+    /// a single cluster can never reveal a mis-named map or an unmapped state.
+    #[test]
+    fn test_msk_cluster_states_resolve_to_colours() {
+        let resource = get_resource("msk-clusters").unwrap();
+        let state_column = resource
+            .columns
+            .iter()
+            .find(|c| c.json_path == "State")
+            .expect("MSK should have a STATE column");
+        let map_name = state_column
+            .color_map
+            .as_deref()
+            .expect("STATE column should be colour-mapped");
+
+        const GREEN: [u8; 3] = [0, 255, 0];
+        const YELLOW: [u8; 3] = [255, 255, 0];
+        const RED: [u8; 3] = [255, 0, 0];
+        for (state, expected) in [
+            ("ACTIVE", GREEN),
+            ("CREATING", YELLOW),
+            ("UPDATING", YELLOW),
+            ("HEALING", YELLOW),
+            ("MAINTENANCE", YELLOW),
+            ("REBOOTING_BROKER", YELLOW),
+            ("DELETING", RED),
+            ("FAILED", RED),
+        ] {
+            assert_eq!(
+                get_color_for_value(map_name, state),
+                Some(expected),
+                "MSK state {} should be colour-mapped",
+                state
+            );
+        }
+    }
+
     #[test]
     fn test_iam_users_resource_exists() {
         let resource = get_resource("iam-users");
