@@ -1,15 +1,38 @@
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
     Frame,
 };
 
+/// The orbit mark, compressed 2:1 vertically with half-blocks so it fits a
+/// terminal that is only 30 rows tall. Rows are padded to equal width; the
+/// splash is centre-aligned and ragged rows shear sideways.
+const SPLASH_ART: [&str; 17] = [
+    r"                      ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄                ██████",
+    r"               ▄▄▄█████████████████████████████▄▄▄          ▀▀▀▀ ",
+    r"          ▄▄███████████████████████████████████████▀▀            ",
+    r"       ▄▄██████████████████▀▀▀▀▀▀▀▀▀▀▀█████████▀▀     ▄██▄       ",
+    r"     ▄██████████████▀▀▀                           ▄▄███████▄     ",
+    r"   ▄█████████████▀                               ████████████    ",
+    r"  ▄████████████▀                                 ▀████████████   ",
+    r"  ████████████                                     ████████████  ",
+    r" ████████████                                      ████████████  ",
+    r" ▀████████████                                     ████████████  ",
+    r"  ████████████▄                                   ████████████▀  ",
+    r"   ████████████▄                                ▄████████████▀   ",
+    r"    ▀█████████▀                             ▄▄██████████████     ",
+    r"      ▀████▀▀    ▄▄▄▄▄▄▄▄▄▄▄         ▄▄▄▄▄███████████████▀       ",
+    r"        ▀    ▄▄███████████████████████████████████████▀▀         ",
+    r"            ▀▀▀███████████████████████████████████▀▀             ",
+    r"                  ▀▀▀▀▀███████████████████▀▀▀▀                   ",
+];
+
 /// ORBIT in the same box-drawing font the splash has always used. Rows are
 /// padded to equal width because the paragraph is centre-aligned: ragged rows
 /// each centre differently and the wordmark visibly wobbles. See the tests.
-const SPLASH_WORDMARK: [&str; 40] = [
+const SPLASH_WORDMARK: [&str; 6] = [
     r" ██████╗ ██████╗ ██████╗ ██╗████████╗",
     r"██╔═══██╗██╔══██╗██╔══██╗██║╚══██╔══╝",
     r"██║   ██║██████╔╝██████╔╝██║   ██║   ",
@@ -17,18 +40,27 @@ const SPLASH_WORDMARK: [&str; 40] = [
     r"╚██████╔╝██║  ██║██████╔╝██║   ██║   ",
     r" ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝   ╚═╝   ",
 ];
-// const SPLASH_WORDMARK: [&str; 6] = [
-//     r" ██████╗ ██████╗ ██████╗ ██╗████████╗",
-//     r"██╔═══██╗██╔══██╗██╔══██╗██║╚══██╔══╝",
-//     r"██║   ██║██████╔╝██████╔╝██║   ██║   ",
-//     r"██║   ██║██╔══██╗██╔══██╗██║   ██║   ",
-//     r"╚██████╔╝██║  ██║██████╔╝██║   ██║   ",
-//     r" ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝   ╚═╝   ",
-// ];
 
-/// Rows reserved for the logo block: the wordmark, a blank line, the tagline
+/// Rows the logo block adds beyond the art itself: a blank line, the tagline
 /// and the version.
-const LOGO_BLOCK_HEIGHT: u16 = 9;
+const LOGO_TRAILER_ROWS: u16 = 3;
+
+/// Rows below the logo block: two spacers, the loading bar and the status line.
+const BELOW_LOGO_ROWS: u16 = 5;
+
+/// The big art only goes up when the terminal can show all of it plus the
+/// loading bar; otherwise it would clip and hide progress. Falls back to the
+/// block-letter wordmark.
+fn choose_logo(area: Rect) -> &'static [&'static str] {
+    let art_width = SPLASH_ART[0].chars().count() as u16;
+    let art_height = SPLASH_ART.len() as u16 + LOGO_TRAILER_ROWS + BELOW_LOGO_ROWS;
+
+    if area.width >= art_width && area.height >= art_height {
+        &SPLASH_ART
+    } else {
+        &SPLASH_WORDMARK
+    }
+}
 
 pub struct SplashState {
     pub current_step: usize,
@@ -59,47 +91,41 @@ impl SplashState {
 
 pub fn render(f: &mut Frame, splash: &SplashState) {
     let area = f.area();
+    let logo = choose_logo(area);
+    let logo_height = logo.len() as u16 + LOGO_TRAILER_ROWS;
 
-    // Center everything vertically
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage(25),
-            Constraint::Min(15),
-            Constraint::Percentage(30),
-        ])
-        .split(area);
+    // Centre the whole block vertically rather than padding by percentage, so
+    // the tall art and the short wordmark both sit in the middle.
+    let block_height = logo_height + BELOW_LOGO_ROWS;
+    let top_pad = area.height.saturating_sub(block_height) / 2;
 
-    let center_area = vertical[1];
+    let vertical = Layout::vertical([
+        Constraint::Length(top_pad),
+        Constraint::Length(block_height),
+        Constraint::Min(0),
+    ])
+    .split(area);
 
-    // Split center into logo and loading area
-    let content = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(LOGO_BLOCK_HEIGHT), // Big logo
-            Constraint::Length(2),                 // Spacer
-            Constraint::Length(1),                 // Loading bar
-            Constraint::Length(1),                 // Spacer
-            Constraint::Length(1),                 // Status message
-        ])
-        .split(center_area);
+    let content = Layout::vertical([
+        Constraint::Length(logo_height), // Logo
+        Constraint::Length(2),           // Spacer
+        Constraint::Length(1),           // Loading bar
+        Constraint::Length(1),           // Spacer
+        Constraint::Length(1),           // Status message
+    ])
+    .split(vertical[1]);
 
-    // Render big ASCII logo
-    render_big_logo(f, content[0]);
-
-    // Render loading bar
+    render_big_logo(f, logo, content[0]);
     render_loading_bar(f, splash, content[2]);
-
-    // Render status message
     render_status(f, splash, content[4]);
 }
 
-fn render_big_logo(f: &mut Frame, area: Rect) {
+fn render_big_logo(f: &mut Frame, logo: &[&str], area: Rect) {
     let brand = Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD);
 
-    let mut logo_lines: Vec<Line> = SPLASH_WORDMARK
+    let mut logo_lines: Vec<Line> = logo
         .iter()
         .map(|row| Line::from(Span::styled(*row, brand)))
         .collect();
@@ -173,19 +199,46 @@ mod tests {
         );
     }
 
-    /// The logo block is a fixed-height layout slot, so an extra art row
-    /// silently pushes the version line out of view instead of failing.
+    /// The whole splash must fit on screen or the loading bar drops off the
+    /// bottom, so each logo carries its own minimum terminal height.
     #[test]
-    fn splash_wordmark_leaves_room_for_tagline_and_version() {
-        // Blank spacer, tagline, version.
-        let trailing = 3;
+    fn each_logo_fits_the_terminal_it_is_chosen_for() {
+        let art_rows = SPLASH_ART.len() as u16 + LOGO_TRAILER_ROWS + BELOW_LOGO_ROWS;
+        let art_cols = SPLASH_ART[0].chars().count() as u16;
+
+        assert_eq!(
+            choose_logo(Rect::new(0, 0, art_cols, art_rows)).len(),
+            SPLASH_ART.len()
+        );
+
+        // One row or one column short and the art must give way.
+        for too_small in [
+            Rect::new(0, 0, art_cols, art_rows - 1),
+            Rect::new(0, 0, art_cols - 1, art_rows),
+        ] {
+            let logo = choose_logo(too_small);
+            assert_eq!(
+                logo.len(),
+                SPLASH_WORDMARK.len(),
+                "{:?} should fall back",
+                too_small
+            );
+            assert!(
+                logo.len() as u16 + LOGO_TRAILER_ROWS + BELOW_LOGO_ROWS <= too_small.height,
+                "the fallback wordmark must fit where the art does not"
+            );
+        }
+    }
+
+    /// Centre-aligned art with ragged rows shears sideways, and the trailing
+    /// padding that prevents it is invisible in a diff.
+    #[test]
+    fn splash_art_rows_are_the_same_width() {
+        let widths: Vec<usize> = SPLASH_ART.iter().map(|row| width(row)).collect();
         assert!(
-            SPLASH_WORDMARK.len() + trailing <= LOGO_BLOCK_HEIGHT as usize,
-            "wordmark is {} rows and needs {} more for the tagline and version, \
-             but the logo block is only {}",
-            SPLASH_WORDMARK.len(),
-            trailing,
-            LOGO_BLOCK_HEIGHT
+            widths.windows(2).all(|pair| pair[0] == pair[1]),
+            "splash art rows must line up, got widths {:?}",
+            widths
         );
     }
 }
