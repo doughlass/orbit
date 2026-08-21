@@ -151,6 +151,15 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        // MSK signs and routes as "kafka", not "msk"
+        "kafka" => Some(ServiceDefinition {
+            signing_name: "kafka",
+            endpoint_prefix: "kafka",
+            api_version: "2018-11-14",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
         "cloudformation" => Some(ServiceDefinition {
             signing_name: "cloudformation",
             endpoint_prefix: "cloudformation",

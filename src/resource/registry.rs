@@ -35,6 +35,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/iam.json"),
     include_str!("../resources/kms.json"),
     include_str!("../resources/lambda.json"),
+    include_str!("../resources/msk.json"),
     include_str!("../resources/rds.json"),
     include_str!("../resources/redshift.json"),
     include_str!("../resources/route53.json"),
@@ -324,6 +325,48 @@ mod tests {
         assert!(
             !resource.columns.is_empty(),
             "EC2 instances should have columns"
+        );
+    }
+
+    /// MSK answers in lowerCamelCase on the wire even though the AWS CLI prints
+    /// PascalCase. Mapping the CLI's names silently yields an empty cluster list.
+    #[test]
+    fn test_msk_clusters_map_wire_casing() {
+        let resource = get_resource("msk-clusters").expect("MSK clusters resource should exist");
+        assert_eq!(resource.service, "kafka");
+
+        let api = resource
+            .api_config
+            .as_ref()
+            .expect("MSK needs an api_config");
+        assert_eq!(api.response_root.as_deref(), Some("/clusterInfoList"));
+
+        let sources: Vec<&str> = [
+            "ClusterName",
+            "ClusterArn",
+            "State",
+            "KafkaVersion",
+            "Brokers",
+        ]
+        .iter()
+        .map(|field| {
+            resource
+                .field_mappings
+                .get(*field)
+                .unwrap_or_else(|| panic!("MSK should map {}", field))
+                .source
+                .as_str()
+        })
+        .collect();
+        assert_eq!(
+            sources,
+            vec![
+                "/clusterName",
+                "/clusterArn",
+                "/state",
+                "/provisioned/currentBrokerSoftwareInfo/kafkaVersion",
+                "/provisioned/numberOfBrokerNodes",
+            ]
         );
     }
 

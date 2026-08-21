@@ -1,0 +1,60 @@
+{
+  "color_maps": {
+    "msk_cluster_state": [
+      { "value": "ACTIVE", "color": [0, 255, 0] },
+      { "value": "CREATING", "color": [255, 255, 0] },
+      { "value": "UPDATING", "color": [255, 255, 0] },
+      { "value": "HEALING", "color": [255, 255, 0] },
+      { "value": "MAINTENANCE", "color": [255, 255, 0] },
+      { "value": "REBOOTING_BROKER", "color": [255, 255, 0] },
+      { "value": "DELETING", "color": [255, 0, 0] },
+      { "value": "FAILED", "color": [255, 0, 0] }
+    ]
+  },
+  "resources": {
+    "msk-clusters": {
+      "display_name": "MSK Clusters",
+      "service": "kafka",
+      "sdk_method": "list_clusters_v2",
+      "sdk_method_params": {},
+      "response_path": "clusters",
+      "id_field": "ClusterArn",
+      "name_field": "ClusterName",
+      "is_global": false,
+      "columns": [
+        { "header": "CLUSTER NAME", "json_path": "ClusterName", "width": 45 },
+        { "header": "TYPE", "json_path": "ClusterType", "width": 12 },
+        { "header": "STATE", "json_path": "State", "width": 14, "color_map": "msk_cluster_state" },
+        { "header": "KAFKA", "json_path": "KafkaVersion", "width": 10 },
+        { "header": "BROKERS", "json_path": "Brokers", "width": 9 },
+        { "header": "CREATED", "json_path": "CreationTime", "width": 25 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/api/v2/clusters",
+        "response_root": "/clusterInfoList",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "ClusterName": { "source": "/clusterName", "default": "-" },
+        "ClusterArn": { "source": "/clusterArn", "default": "-" },
+        "ClusterType": { "source": "/clusterType", "default": "-" },
+        "State": { "source": "/state", "default": "-" },
+        "CreationTime": { "source": "/creationTime", "default": "-" },
+        "KafkaVersion": {
+          "source": "/provisioned/currentBrokerSoftwareInfo/kafkaVersion",
+          "default": "-"
+        },
+        "Brokers": { "source": "/provisioned/numberOfBrokerNodes", "default": "-" }
+      }
+    }
+  }
+}
