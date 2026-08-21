@@ -473,6 +473,7 @@ taws supports **30 AWS services** with **51 resource types** covering 95%+ of ty
 | **DevOps** | CodePipeline | Pipelines |
 | | CodeBuild | Projects |
 | **Analytics** | Athena | Workgroups |
+| | MSK | Clusters |
 
 > **Missing a service?** [Start a discussion](https://github.com/huseyinbabal/taws/discussions/new?category=ideas) to propose adding it!
 
