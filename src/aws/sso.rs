@@ -120,7 +120,7 @@ pub fn start_device_authorization(config: &SsoConfig) -> Result<DeviceAuthInfo> 
         .post(&register_url)
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
-            "clientName": "taws",
+            "clientName": "orbit",
             "clientType": "public",
         }))
         .send()?;

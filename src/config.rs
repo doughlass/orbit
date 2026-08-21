@@ -1,7 +1,7 @@
-//! Configuration management for taws
+//! Configuration management for orbit
 //!
-//! Stores user preferences in ~/.config/taws/config.yaml (XDG compliant)
-//! Falls back to ~/.taws/config.yaml if XDG dirs not available
+//! Stores user preferences in ~/.config/orbit/config.yaml (XDG compliant)
+//! Falls back to ~/.orbit/config.yaml if XDG dirs not available
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -76,20 +76,20 @@ impl Config {
     }
 
     /// Get the config file path
-    /// Uses XDG config directory if available, otherwise ~/.taws/
+    /// Uses XDG config directory if available, otherwise ~/.orbit/
     fn config_path() -> PathBuf {
-        // Try XDG config dir first (e.g., ~/.config/taws/config.yaml)
+        // Try XDG config dir first (e.g., ~/.config/orbit/config.yaml)
         if let Some(config_dir) = dirs::config_dir() {
-            return config_dir.join("taws").join("config.yaml");
+            return config_dir.join("orbit").join("config.yaml");
         }
 
         // Fallback to home directory
         if let Some(home) = dirs::home_dir() {
-            return home.join(".taws").join("config.yaml");
+            return home.join(".orbit").join("config.yaml");
         }
 
         // Last resort: current directory
-        PathBuf::from(".taws").join("config.yaml")
+        PathBuf::from(".orbit").join("config.yaml")
     }
 
     /// Update profile and save
@@ -152,6 +152,25 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The on-disk directory carries the brand name. A leftover "taws" here
+    /// silently splits config between two locations after the rename.
+    #[test]
+    fn test_config_path_uses_orbit_directory() {
+        let path = Config::config_path();
+        let path_str = path.to_string_lossy();
+
+        assert!(
+            path.ends_with("orbit/config.yaml") || path.ends_with(".orbit/config.yaml"),
+            "config path should live under an orbit directory, got {}",
+            path_str
+        );
+        assert!(
+            !path_str.contains("taws"),
+            "config path should not reference the old name, got {}",
+            path_str
+        );
+    }
 
     #[test]
     fn test_default_config() {

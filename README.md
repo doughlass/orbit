@@ -1,19 +1,24 @@
-<p align="center">
-  <img src="assets/taws-logo.png" alt="taws" width="400"/>
-</p>
+```
+█▀█ █▀█ █▄▄ █ ▀█▀
+█▄█ █▀▄ █▄█ █  █
+```
 
-# taws - Terminal UI for AWS
+# orbit - Terminal UI for AWS
 
-**taws** provides a terminal UI to interact with your AWS resources. The aim of this project is to make it easier to navigate, observe, and manage your AWS infrastructure in the wild.
+**orbit** provides a terminal UI to interact with your AWS resources. The aim of this project is to make it easier to navigate, observe, and manage your AWS infrastructure in the wild.
 
 ---
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 
+> orbit began as a fork of [taws](https://github.com/huseyinbabal/taws) by Hüseyin Babal and is now maintained independently. See [Acknowledgments](#acknowledgments).
+
 ---
 
 ## Screenshots
+
+> Note: the screenshots below predate the rename, so the header logo still reads `taws`.
 
 <p align="center">
   <img src="assets/screenshot-ec2.png" alt="EC2 Instances View" width="800"/>
@@ -29,7 +34,7 @@
 
 - **Multi-Profile Support** - Easily switch between AWS profiles
 - **Multi-Region Support** - Navigate across different AWS regions
-- **94+ Resource Types** - Browse and manage resources across 60+ AWS services
+- **61 Resource Types** - Browse and manage resources across 32 AWS services
 - **Manual Refresh** - Refresh resources with a single keystroke
 - **Pagination** - Navigate through large resource lists with `]` / `[` keys
 - **Keyboard-Driven** - Vim-like navigation and commands
@@ -42,96 +47,17 @@
 
 ## Installation
 
-### Homebrew (macOS/Linux)
-
-```bash
-brew install huseyinbabal/tap/taws
-```
-
-### Scoop (Windows)
-
-```powershell
-scoop bucket add huseyinbabal https://github.com/huseyinbabal/scoop-bucket
-scoop install taws
-```
-
-### Download Pre-built Binaries
-
-Download the latest release from the [Releases page](https://github.com/huseyinbabal/taws/releases/latest).
-
-| Platform | Architecture | Download |
-|----------|--------------|----------|
-| **macOS** | Apple Silicon (M1/M2/M3) | `taws-aarch64-apple-darwin.tar.gz` |
-| **macOS** | Intel | `taws-x86_64-apple-darwin.tar.gz` |
-| **Linux** | x86_64 (musl) | `taws-x86_64-unknown-linux-musl.tar.gz` |
-| **Linux** | ARM64 (musl) | `taws-aarch64-unknown-linux-musl.tar.gz` |
-| **Windows** | x86_64 | `taws-x86_64-pc-windows-msvc.zip` |
-
-#### Quick Install (macOS/Linux)
-
-```bash
-# macOS Apple Silicon
-curl -sL https://github.com/huseyinbabal/taws/releases/latest/download/taws-aarch64-apple-darwin.tar.gz | tar xz
-sudo mv taws /usr/local/bin/
-
-# macOS Intel
-curl -sL https://github.com/huseyinbabal/taws/releases/latest/download/taws-x86_64-apple-darwin.tar.gz | tar xz
-sudo mv taws /usr/local/bin/
-
-# Linux x86_64 (musl - works on Alpine, Void, etc.)
-curl -sL https://github.com/huseyinbabal/taws/releases/latest/download/taws-x86_64-unknown-linux-musl.tar.gz | tar xz
-sudo mv taws /usr/local/bin/
-
-# Linux ARM64 (musl - works on Alpine, Void, etc.)
-curl -sL https://github.com/huseyinbabal/taws/releases/latest/download/taws-aarch64-unknown-linux-musl.tar.gz | tar xz
-sudo mv taws /usr/local/bin/
-```
-
-#### Windows
-
-1. Download `taws-x86_64-pc-windows-msvc.zip` from the [Releases page](https://github.com/huseyinbabal/taws/releases/latest)
-2. Extract the zip file
-3. Add the extracted folder to your PATH, or move `taws.exe` to a directory in your PATH
+The crate is named `orbit-tui` (the name `orbit` was already taken on crates.io) but the binary it installs is `orbit`.
 
 ### Using Cargo
 
 ```bash
-cargo install taws
+cargo install --git https://github.com/doughlass/orbit
 ```
-
-### Using Docker
-
-```bash
-# Run interactively
-docker run --rm -it ghcr.io/huseyinbabal/taws
-
-# Launch with a specific profile (mount AWS credentials)
-docker run --rm -it \
-  -v ~/.aws:/root/.aws:ro \
-  ghcr.io/huseyinbabal/taws --profile production
-
-# Launch in a specific region
-docker run --rm -it \
-  -v ~/.aws:/root/.aws:ro \
-  ghcr.io/huseyinbabal/taws --region us-west-2
-
-# Using environment variables
-docker run --rm -it \
-  -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
-  -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
-  -e AWS_REGION=us-east-1 \
-  ghcr.io/huseyinbabal/taws
-
-# Build locally
-docker build -t taws .
-docker run --rm -it -v ~/.aws:/root/.aws:ro taws
-```
-
-> **Note:** Use `-it` flags for interactive terminal support (required for TUI). Mount your `~/.aws` directory as read-only to use your existing AWS credentials.
 
 ### From Source
 
-taws is built with Rust. Make sure you have Rust 1.70+ installed, along with a C compiler and linker.
+orbit is built with Rust. Make sure you have Rust 1.70+ installed, along with a C compiler and linker.
 
 #### Build Dependencies
 
@@ -144,13 +70,38 @@ taws is built with Rust. Make sure you have Rust 1.70+ installed, along with a C
 
 ```bash
 # Clone the repository
-git clone https://github.com/huseyinbabal/taws.git
-cd taws
+git clone https://github.com/doughlass/orbit.git
+cd orbit
 
 # Build and run
 cargo build --release
-./target/release/taws
+./target/release/orbit
 ```
+
+### Using Docker
+
+```bash
+# Build locally
+docker build -t orbit .
+
+# Run interactively
+docker run --rm -it -v ~/.aws:/root/.aws:ro orbit
+
+# Launch with a specific profile
+docker run --rm -it -v ~/.aws:/root/.aws:ro orbit --profile production
+
+# Launch in a specific region
+docker run --rm -it -v ~/.aws:/root/.aws:ro orbit --region us-west-2
+
+# Using environment variables
+docker run --rm -it \
+  -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
+  -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
+  -e AWS_REGION=us-east-1 \
+  orbit
+```
+
+> **Note:** Use `-it` flags for interactive terminal support (required for TUI). Mount your `~/.aws` directory as read-only to use your existing AWS credentials.
 
 ---
 
@@ -163,7 +114,7 @@ cargo build --release
 
 ## Authentication
 
-taws uses a credential chain, trying each source in order:
+orbit uses a credential chain, trying each source in order:
 
 | Priority | Source | Description |
 |----------|--------|-------------|
@@ -177,17 +128,17 @@ taws uses a credential chain, trying each source in order:
 
 ### AWS SSO
 
-taws supports AWS SSO. If your profile uses SSO and the token is expired, taws will prompt you to authenticate via browser.
+orbit supports AWS SSO. If your profile uses SSO and the token is expired, orbit will prompt you to authenticate via browser.
 
 Both SSO config formats are supported:
 - Modern: `sso_session` reference to `[sso-session X]` section
 - Legacy: `sso_start_url` directly in profile
 
-If you already logged in via `aws sso login`, taws will use the cached token automatically.
+If you already logged in via `aws sso login`, orbit will use the cached token automatically.
 
 ### AWS Console Login
 
-taws supports AWS Console Login (`aws login`). If your profile uses `login_session` and credentials are expired, taws will prompt you to run `aws login` in another terminal.
+orbit supports AWS Console Login (`aws login`). If your profile uses `login_session` and credentials are expired, orbit will prompt you to run `aws login` in another terminal.
 
 ```ini
 [profile console-profile]
@@ -199,11 +150,11 @@ sso_region = us-east-1
 sso_registration_scopes = sso:account:access
 ```
 
-If you already logged in via `aws login`, taws will use the cached credentials automatically.
+If you already logged in via `aws login`, orbit will use the cached credentials automatically.
 
 ### IAM Role Assumption
 
-taws supports assuming IAM roles using `role_arn` with either `source_profile` or `credential_source`. This is commonly used for:
+orbit supports assuming IAM roles using `role_arn` with either `source_profile` or `credential_source`. This is commonly used for:
 - Cross-account access (e.g., dev account assuming role in prod account)
 - Least-privilege access patterns
 - Chained role assumption
@@ -266,7 +217,7 @@ credential_source = Environment
 | `source_profile` | One of | Profile to use for source credentials |
 | `credential_source` | these | Where to load source credentials from |
 | `external_id` | No | External ID for cross-account trust policies |
-| `role_session_name` | No | Custom session name (default: `taws-session`) |
+| `role_session_name` | No | Custom session name (default: `orbit-session`) |
 | `duration_seconds` | No | Session duration in seconds (default: 3600) |
 | `region` | No | Region for STS endpoint |
 
@@ -281,52 +232,52 @@ credential_source = Environment
 ## Quick Start
 
 ```bash
-# Launch taws with default profile
-taws
+# Launch orbit with default profile
+orbit
 
 # Launch with a specific profile
-taws --profile production
+orbit --profile production
 
 # Launch in a specific region
-taws --region us-west-2
+orbit --region us-west-2
 
 # Enable debug logging
-taws --log-level debug
+orbit --log-level debug
 
 # Run in read-only mode (blocks all write operations)
-taws --readonly
+orbit --readonly
 
 # Use with LocalStack or custom endpoint
-taws --endpoint-url http://localhost:4566
+orbit --endpoint-url http://localhost:4566
 
 # Or via environment variable
-AWS_ENDPOINT_URL=http://localhost:4566 taws
+AWS_ENDPOINT_URL=http://localhost:4566 orbit
 ```
 
 ### Log File Locations
 
 | Platform | Path |
 |----------|------|
-| **Linux** | `~/.config/taws/taws.log` |
-| **macOS** | `~/Library/Application Support/taws/taws.log` |
-| **Windows** | `%APPDATA%\taws\taws.log` |
+| **Linux** | `~/.config/orbit/orbit.log` |
+| **macOS** | `~/Library/Application Support/orbit/orbit.log` |
+| **Windows** | `%APPDATA%\orbit\orbit.log` |
 
 ### Shell Completion
 
-taws supports shell completion for bash, zsh, fish, and PowerShell.
+orbit supports shell completion for bash, zsh, fish, and PowerShell.
 
 ```bash
 # Bash (add to ~/.bashrc)
-eval "$(taws completion bash)"
+eval "$(orbit completion bash)"
 
 # Zsh (add to ~/.zshrc)
-eval "$(taws completion zsh)"
+eval "$(orbit completion zsh)"
 
 # Fish (add to ~/.config/fish/config.fish)
-taws completion fish | source
+orbit completion fish | source
 
 # PowerShell (add to $PROFILE)
-taws completion powershell | Out-String | Invoke-Expression
+orbit completion powershell | Out-String | Invoke-Expression
 ```
 
 After adding the completion script, restart your shell or source the config file.
@@ -356,7 +307,7 @@ After adding the completion script, restart your shell or source the config file
 | Refresh | `R` | Refresh current view (resets pagination) |
 | Filter | `/` | Filter resources |
 | Region shortcuts | `0-5` | Quick switch to common regions |
-| Quit | `Ctrl-c` | Exit taws |
+| Quit | `Ctrl-c` | Exit orbit |
 | **EC2 Actions** | | |
 | Connect (SSM) | `c` | Open SSM shell session to instance |
 | Start instance | `s` | Start selected EC2 instance |
@@ -367,7 +318,7 @@ After adding the completion script, restart your shell or source the config file
 
 ## Filtering
 
-Press `/` to enter filter mode. taws supports two types of filtering:
+Press `/` to enter filter mode. orbit supports two types of filtering:
 
 ### Local Filtering (All Resources)
 
@@ -412,7 +363,7 @@ Filters: key=value, key2=value2
 | `state` / `status` | Resource state | `available`, `running`, `stopped` |
 | `tag:<key>` | Filter by tag | `tag:Environment=production` |
 
-> **Note:** When you enter filter mode on a supported resource, taws shows available filter keys for that resource in the status bar.
+> **Note:** When you enter filter mode on a supported resource, orbit shows available filter keys for that resource in the status bar.
 
 ---
 
@@ -430,6 +381,7 @@ Press `:` to open the resource picker. Type to filter resources:
 :rds          # RDS Instances
 :iam-users    # IAM Users
 :eks          # EKS Clusters
+:msk          # MSK Clusters
 ```
 
 Use `Tab` to autocomplete and `Enter` to select.
@@ -438,7 +390,7 @@ Use `Tab` to autocomplete and `Enter` to select.
 
 ## Supported AWS Services
 
-taws supports **30 AWS services** with **51 resource types** covering 95%+ of typical AWS usage:
+orbit supports **32 AWS services** with **61 resource types** covering 95%+ of typical AWS usage:
 
 | Category | Service | Resources |
 |----------|---------|-----------|
@@ -447,10 +399,11 @@ taws supports **30 AWS services** with **51 resource types** covering 95%+ of ty
 | | ECS | Clusters, Services, Tasks |
 | | EKS | Clusters |
 | | Auto Scaling | Auto Scaling Groups |
-| **Storage** | S3 | Buckets |
+| **Storage** | S3 | Buckets, Objects |
 | **Database** | RDS | Instances, Snapshots |
 | | DynamoDB | Tables |
 | | ElastiCache | Clusters |
+| | Redshift | Clusters |
 | **Networking** | VPC | VPCs, Subnets, Security Groups |
 | | ELBv2 | Load Balancers, Listeners, Rules, Target Groups, Targets |
 | | Route 53 | Hosted Zones |
@@ -475,7 +428,7 @@ taws supports **30 AWS services** with **51 resource types** covering 95%+ of ty
 | **Analytics** | Athena | Workgroups |
 | | MSK | Clusters |
 
-> **Missing a service?** [Start a discussion](https://github.com/huseyinbabal/taws/discussions/new?category=ideas) to propose adding it!
+> **Missing a service?** [Open an issue](https://github.com/doughlass/orbit/issues/new) to propose adding it!
 
 ---
 
@@ -501,23 +454,23 @@ See [Authentication](#authentication) for credential setup.
 
 ### Corporate Proxy / SSL Inspection
 
-If you're behind a corporate proxy with SSL inspection, taws may fail to connect to AWS services because the proxy's CA certificate is not trusted by default.
+If you're behind a corporate proxy with SSL inspection, orbit may fail to connect to AWS services because the proxy's CA certificate is not trusted by default.
 
 To fix this, set `AWS_CA_BUNDLE` or `SSL_CERT_FILE` to point to your corporate CA certificate bundle:
 
 ```bash
 # Windows
 set AWS_CA_BUNDLE=C:\path\to\corporate-ca-bundle.pem
-taws
+orbit
 
 # Linux/macOS
 export AWS_CA_BUNDLE=/path/to/corporate-ca-bundle.pem
-taws
+orbit
 ```
 
-The PEM file can contain multiple certificates (certificate chain). taws will load all certificates from the bundle and add them to the trusted root certificates.
+The PEM file can contain multiple certificates (certificate chain). orbit will load all certificates from the bundle and add them to the trusted root certificates.
 
-**Note:** This is the same environment variable used by AWS CLI, so if AWS CLI works with your CA bundle, taws should work too.
+**Note:** This is the same environment variable used by AWS CLI, so if AWS CLI works with your CA bundle, orbit should work too.
 
 ---
 
@@ -531,7 +484,7 @@ Press `c` on a running EC2 instance to open an interactive shell session via AWS
 - Instance must be running (not stopped/terminated)
 - Linux instances only (Windows not supported via shell)
 
-**Note:** When you exit the shell session (`exit`), you'll return to taws.
+**Note:** When you exit the shell session (`exit`), you'll return to orbit.
 
 ---
 
@@ -547,12 +500,13 @@ Press `c` on a running EC2 instance to open an interactive shell session via AWS
 
 Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-**Important:** Before adding a new AWS service, please [start a discussion](https://github.com/huseyinbabal/taws/discussions/new?category=ideas) first.
+**Important:** Before adding a new AWS service, please [open an issue](https://github.com/doughlass/orbit/issues/new) first.
 
 ---
 
 ## Acknowledgments
 
+- Forked from [taws](https://github.com/huseyinbabal/taws) by Hüseyin Babal, whose work is the foundation of this project
 - Inspired by [k9s](https://github.com/derailed/k9s) - the awesome Kubernetes CLI
 - Built with [Ratatui](https://github.com/ratatui-org/ratatui) - Rust TUI library
 - Uses [aws-sigv4](https://github.com/awslabs/aws-sdk-rust) for request signing
@@ -561,7 +515,9 @@ Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) 
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. Copyright is retained by the original author, Hüseyin Babal, as required by the MIT licence.
+
+orbit is an independent project. It is not affiliated with, endorsed by, or sponsored by Amazon Web Services, Inc. "AWS" is a trademark of Amazon.com, Inc. or its affiliates.
 
 ---
 

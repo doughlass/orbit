@@ -738,7 +738,7 @@ impl AwsHttpClient {
             &self.credentials.secret_access_key,
             self.credentials.session_token.clone(),
             None,
-            "taws",
+            "orbit",
         );
         let identity: Identity = creds.into();
 
@@ -877,7 +877,7 @@ impl AwsHttpClient {
             &self.credentials.secret_access_key,
             self.credentials.session_token.clone(),
             None,
-            "taws",
+            "orbit",
         );
         let identity: Identity = creds.into();
 

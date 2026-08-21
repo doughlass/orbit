@@ -1,7 +1,7 @@
 //! Console login support via AWS CLI subprocess
 //!
 //! This module provides functionality to spawn `aws login --profile <profile>` as a subprocess,
-//! allowing taws to delegate the OAuth 2.0 PKCE flow to the AWS CLI.
+//! allowing orbit to delegate the OAuth 2.0 PKCE flow to the AWS CLI.
 
 use anyhow::Result;
 use std::io::{BufRead, BufReader};

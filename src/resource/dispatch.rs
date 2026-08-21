@@ -900,11 +900,11 @@ mod tests {
     #[test]
     fn test_resolve_static_param_template_replaces_all_placeholders() {
         let out = resolve_static_param_template(
-            "taws-{resource_id}-{timestamp}",
+            "orbit-{resource_id}-{timestamp}",
             "test-cluster",
             "20260309T143000",
         );
-        assert_eq!(out, "taws-test-cluster-20260309T143000");
+        assert_eq!(out, "orbit-test-cluster-20260309T143000");
     }
 
     #[test]

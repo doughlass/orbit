@@ -1,24 +1,35 @@
 use crate::app::App;
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
     Frame,
 };
 
+/// ORBIT in half-block glyphs. Rows must stay equal width; see the tests below.
+const WORDMARK: [&str; 2] = ["█▀█ █▀█ █▄▄ █ ▀█▀", "█▄█ █▀▄ █▄█ █  █ "];
+
+// Budget is tight at 100 columns, where a percentage point is one cell. Widest
+// fixed content per column: shortcuts "<5> ap-southeast-1" (18), keybindings
+// col 1 "<c>      Connect (SSM)" (22), col 2 "<]>      Next Page" (18), and the
+// wordmark (17). Only col 2 has slack, so that is where the logo's growth came
+// from — do not shave the others without re-checking for truncation.
+const HEADER_CONSTRAINTS: [Constraint; 5] = [
+    Constraint::Percentage(22), // Left: Context info
+    Constraint::Percentage(18), // Region/Sub-resource shortcuts
+    Constraint::Percentage(22), // Keybindings col 1
+    Constraint::Percentage(20), // Keybindings col 2
+    Constraint::Percentage(18), // Logo
+];
+
+fn header_columns(area: Rect) -> [Rect; 5] {
+    Layout::horizontal(HEADER_CONSTRAINTS).areas(area)
+}
+
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
-    // Split header into 4 columns like k9s
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(22), // Left: Context info
-            Constraint::Percentage(18), // Region/Sub-resource shortcuts
-            Constraint::Percentage(22), // Keybindings col 1
-            Constraint::Percentage(22), // Keybindings col 2
-            Constraint::Percentage(16), // Logo
-        ])
-        .split(area);
+    // Split header into 5 columns like k9s
+    let columns = header_columns(area);
 
     render_context_column(f, app, columns[0]);
     render_shortcuts_column(f, app, columns[1]);
@@ -273,30 +284,63 @@ fn render_keybindings_col2(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_logo(f: &mut Frame, area: Rect) {
-    let logo = vec![
-        Line::from(Span::styled(
-            "▀█▀ ▄▀█ █ █ █ █▀",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(
-            " █  █▀█ ▀▄▀▄▀ ▄█",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "AWS TUI",
-            Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(Span::styled(
-            crate::VERSION,
-            Style::default().fg(Color::DarkGray),
-        )),
-    ];
+    let brand = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
+
+    let mut logo: Vec<Line> = WORDMARK
+        .iter()
+        .map(|row| Line::from(Span::styled(*row, brand)))
+        .collect();
+
+    logo.push(Line::from(""));
+    logo.push(Line::from(Span::styled(
+        "AWS TUI",
+        Style::default().fg(Color::DarkGray),
+    )));
+    logo.push(Line::from(Span::styled(
+        crate::VERSION,
+        Style::default().fg(Color::DarkGray),
+    )));
 
     let paragraph = Paragraph::new(logo);
     f.render_widget(paragraph, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every block glyph is one cell wide, so char count is display width.
+    fn width(row: &str) -> usize {
+        row.chars().count()
+    }
+
+    /// The wordmark is drawn with no wrapping, so a logo column narrower than
+    /// the art silently clips the last letter instead of failing loudly.
+    #[test]
+    fn logo_column_fits_the_wordmark() {
+        let logo = header_columns(Rect::new(0, 0, 100, 6))[4];
+
+        for row in WORDMARK {
+            assert!(
+                width(row) <= logo.width as usize,
+                "wordmark row {:?} is {} cells but the logo column is only {}",
+                row,
+                width(row),
+                logo.width
+            );
+        }
+    }
+
+    /// Misaligned rows are the usual symptom of a hand-edited glyph.
+    #[test]
+    fn wordmark_rows_are_the_same_width() {
+        let widths: Vec<usize> = WORDMARK.iter().map(|row| width(row)).collect();
+        assert!(
+            widths.windows(2).all(|pair| pair[0] == pair[1]),
+            "wordmark rows must line up, got widths {:?}",
+            widths
+        );
+    }
 }

@@ -1,5 +1,10 @@
 name: Release
 
+# Inherited from the upstream taws project. The reusable workflow, the Homebrew
+# tap and the Scoop bucket all live under huseyinbabal, and the secrets below
+# do not exist in this repo, so tagging will fail until this is replaced with
+# our own release pipeline (or the publish steps are dropped).
+
 on:
   push:
     tags:
@@ -13,10 +18,10 @@ jobs:
   release:
     uses: huseyinbabal/rust-actions/.github/workflows/release.yml@main
     with:
-      crate_name: taws
+      crate_name: orbit-tui
       description: "Terminal UI for AWS"
-      homepage: "https://github.com/huseyinbabal/taws"
-      docker_image: taws
+      homepage: "https://github.com/doughlass/orbit"
+      docker_image: orbit
     secrets:
       CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

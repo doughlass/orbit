@@ -6,9 +6,9 @@ mod event;
 mod resource;
 mod ui;
 
-/// Version injected at compile time via TAWS_VERSION env var (set by CI/CD),
+/// Version injected at compile time via ORBIT_VERSION env var (set by CI/CD),
 /// or "dev" for local builds.
-pub const VERSION: &str = match option_env!("TAWS_VERSION") {
+pub const VERSION: &str = match option_env!("ORBIT_VERSION") {
     Some(v) => v,
     None => "dev",
 };
@@ -34,7 +34,7 @@ use ui::splash::{render as render_splash, SplashState};
 
 /// Terminal UI for AWS
 #[derive(Parser, Debug)]
-#[command(name = "taws", version, about, long_about = None)]
+#[command(name = "orbit", version, about, long_about = None)]
 struct Args {
     /// AWS profile to use
     #[arg(short, long)]
@@ -44,7 +44,7 @@ struct Args {
     #[arg(short, long)]
     region: Option<String>,
 
-    /// Log level for debugging (logs to platform config dir: Linux ~/.config/taws/taws.log, macOS ~/Library/Application Support/taws/taws.log, Windows %APPDATA%/taws/taws.log)
+    /// Log level for debugging (logs to platform config dir: Linux ~/.config/orbit/orbit.log, macOS ~/Library/Application Support/orbit/orbit.log, Windows %APPDATA%/orbit/orbit.log)
     #[arg(long, value_enum, default_value = "off")]
     log_level: LogLevel,
 
@@ -129,7 +129,7 @@ fn setup_logging(level: LogLevel) -> Option<tracing_appender::non_blocking::Work
         .with_line_number(true)
         .init();
 
-    tracing::info!("taws started with log level: {:?}", level);
+    tracing::info!("orbit started with log level: {:?}", level);
     tracing::info!("Log file: {:?}", log_path);
 
     Some(guard)
@@ -137,12 +137,12 @@ fn setup_logging(level: LogLevel) -> Option<tracing_appender::non_blocking::Work
 
 fn get_log_path() -> PathBuf {
     if let Some(config_dir) = dirs::config_dir() {
-        return config_dir.join("taws").join("taws.log");
+        return config_dir.join("orbit").join("orbit.log");
     }
     if let Some(home) = dirs::home_dir() {
-        return home.join(".taws").join("taws.log");
+        return home.join(".orbit").join("orbit.log");
     }
-    PathBuf::from("taws.log")
+    PathBuf::from("orbit.log")
 }
 
 #[tokio::main]
@@ -161,7 +161,7 @@ async fn main() -> Result<()> {
                 _ => {
                     // Fall back to clap's default for other shells (e.g., Elvish)
                     let mut cmd = Args::command();
-                    generate(*shell, &mut cmd, "taws", &mut std::io::stdout());
+                    generate(*shell, &mut cmd, "orbit", &mut std::io::stdout());
                 }
             }
             return Ok(());
@@ -1503,7 +1503,7 @@ where
         }
     }
 
-    println!("\n\x1b[1;36m>>> Returning to taws... Press any key.\x1b[0m");
+    println!("\n\x1b[1;36m>>> Returning to orbit... Press any key.\x1b[0m");
     std::io::stdout().flush()?;
 
     // Wait for a key press before restoring TUI

@@ -22,7 +22,7 @@ body:
       label: Steps to Reproduce
       description: Steps to reproduce the behavior.
       placeholder: |
-        1. Run `taws --profile ...`
+        1. Run `orbit --profile ...`
         2. Navigate to '...'
         3. Press '...'
         4. See error
@@ -48,8 +48,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: taws Version
-      description: Output of `taws --version`
+      label: orbit Version
+      description: Output of `orbit --version`
       placeholder: "1.0.0"
     validations:
       required: true

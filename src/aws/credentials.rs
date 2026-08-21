@@ -924,7 +924,7 @@ pub struct AssumeRoleConfig {
     pub credential_source: Option<CredentialSource>,
     /// Optional external ID for cross-account access
     pub external_id: Option<String>,
-    /// Optional role session name (defaults to "taws-session")
+    /// Optional role session name (defaults to "orbit-session")
     pub role_session_name: Option<String>,
     /// Optional duration in seconds (defaults to 3600)
     pub duration_seconds: Option<u32>,
@@ -1120,11 +1120,11 @@ fn call_sts_assume_role(
     let role_session_name = config
         .role_session_name
         .clone()
-        .unwrap_or_else(|| "taws-session".to_string());
+        .unwrap_or_else(|| "orbit-session".to_string());
     let duration_seconds = config.duration_seconds.unwrap_or(3600);
 
-    // Build STS endpoint - respect AWS_ENDPOINT_URL or TAWS_STS_ENDPOINT for LocalStack/testing
-    let sts_endpoint = env::var("TAWS_STS_ENDPOINT")
+    // Build STS endpoint - respect AWS_ENDPOINT_URL or ORBIT_STS_ENDPOINT for LocalStack/testing
+    let sts_endpoint = env::var("ORBIT_STS_ENDPOINT")
         .or_else(|_| env::var("AWS_ENDPOINT_URL"))
         .unwrap_or_else(|_| format!("https://sts.{}.amazonaws.com", region));
 
@@ -1177,7 +1177,7 @@ fn call_sts_assume_role(
         &source_creds.secret_access_key,
         source_creds.session_token.clone(),
         None,
-        "taws",
+        "orbit",
     );
     let identity: Identity = creds.into();
 
@@ -1767,8 +1767,8 @@ aws_secret_access_key = secret_dev
                     <Expiration>2099-01-15T12:00:00Z</Expiration>
                 </Credentials>
                 <AssumedRoleUser>
-                    <AssumedRoleId>AROATEST:taws-session</AssumedRoleId>
-                    <Arn>arn:aws:sts::123456789012:assumed-role/TestRole/taws-session</Arn>
+                    <AssumedRoleId>AROATEST:orbit-session</AssumedRoleId>
+                    <Arn>arn:aws:sts::123456789012:assumed-role/TestRole/orbit-session</Arn>
                 </AssumedRoleUser>
             </AssumeRoleResult>
         </AssumeRoleResponse>
@@ -2007,8 +2007,8 @@ credential_source = Environment
                 "Expiration": "2099-01-01T00:00:00Z"
             },
             "AssumedRoleUser": {
-                "AssumedRoleId": "AROATESTROLE:taws-session",
-                "Arn": "arn:aws:sts::123456789012:assumed-role/TestRole/taws-session"
+                "AssumedRoleId": "AROATESTROLE:orbit-session",
+                "Arn": "arn:aws:sts::123456789012:assumed-role/TestRole/orbit-session"
             }
         }"#;
 
@@ -2039,8 +2039,8 @@ credential_source = Environment
                 "Expiration": "2099-01-01T00:00:00Z"
             },
             "AssumedRoleUser": {
-                "AssumedRoleId": "AROATESTROLE:taws-session",
-                "Arn": "arn:aws:sts::123456789012:assumed-role/TestRole/taws-session"
+                "AssumedRoleId": "AROATESTROLE:orbit-session",
+                "Arn": "arn:aws:sts::123456789012:assumed-role/TestRole/orbit-session"
             }
         }"#;
 
@@ -2077,8 +2077,8 @@ credential_source = Environment
                 "Expiration": "2020-01-01T00:00:00Z"
             },
             "AssumedRoleUser": {
-                "AssumedRoleId": "AROATESTROLE:taws-session",
-                "Arn": "arn:aws:sts::123456789012:assumed-role/TestRole/taws-session"
+                "AssumedRoleId": "AROATESTROLE:orbit-session",
+                "Arn": "arn:aws:sts::123456789012:assumed-role/TestRole/orbit-session"
             }
         }"#;
 

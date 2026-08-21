@@ -34,9 +34,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/taws /usr/local/bin/taws
+COPY --from=builder /app/target/release/orbit /usr/local/bin/orbit
 
 # Set terminal for TUI
 ENV TERM=xterm-256color
 
-ENTRYPOINT ["taws"]
+ENTRYPOINT ["orbit"]

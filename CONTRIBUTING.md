@@ -1,10 +1,10 @@
-# Contributing to taws
+# Contributing to orbit
 
-Thank you for your interest in contributing to taws! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to orbit! This document provides guidelines and information for contributors.
 
 ## Before You Start
 
-**Important:** Before adding a new AWS service or major feature, please start a discussion in our [GitHub Discussions](https://github.com/huseyinbabal/taws/discussions) board. This helps us:
+**Important:** Before adding a new AWS service or major feature, please start a discussion in our [GitHub Discussions](https://github.com/doughlass/orbit/discussions) board. This helps us:
 
 - Avoid duplicate work
 - Discuss the best approach
@@ -23,8 +23,8 @@ Thank you for your interest in contributing to taws! This document provides guid
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/taws.git
-cd taws
+git clone https://github.com/YOUR_USERNAME/orbit.git
+cd orbit
 
 # Build the project
 cargo build
@@ -44,7 +44,7 @@ cargo clippy
 
 ## Architecture
 
-taws follows a **fully data-driven architecture** where AWS resource definitions, API configurations, actions, and field mappings are all stored in JSON configuration files. This makes it easy to add new resource types without writing any Rust code.
+orbit follows a **fully data-driven architecture** where AWS resource definitions, API configurations, actions, and field mappings are all stored in JSON configuration files. This makes it easy to add new resource types without writing any Rust code.
 
 ```
 src/
@@ -78,7 +78,7 @@ src/
 
 ### Lightweight Design
 
-taws uses a custom lightweight HTTP client with AWS SigV4 signing instead of the full AWS SDK. This results in:
+orbit uses a custom lightweight HTTP client with AWS SigV4 signing instead of the full AWS SDK. This results in:
 
 - **Fast builds** - ~100 dependencies vs ~500+ with full SDK
 - **Small binary** - ~5MB release binary
@@ -90,7 +90,7 @@ Adding a new AWS service is now **completely data-driven** - you only need to ed
 
 ### 1. Start a Discussion
 
-Before writing any code, [open a discussion](https://github.com/huseyinbabal/taws/discussions/new?category=ideas) to propose the new service. Include:
+Before writing any code, [open a discussion](https://github.com/doughlass/orbit/discussions/new?category=ideas) to propose the new service. Include:
 
 - Which AWS service you want to add
 - Which resources/operations you plan to support
@@ -236,7 +236,7 @@ cargo clippy -- -D warnings
 
 If you have questions, feel free to:
 
-- Open a [Discussion](https://github.com/huseyinbabal/taws/discussions)
+- Open a [Discussion](https://github.com/doughlass/orbit/discussions)
 - Check existing issues and PRs
 
 Thank you for contributing!
