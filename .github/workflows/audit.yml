@@ -1,0 +1,59 @@
+name: Security Audit
+
+# cargo audit is not part of the upstream reusable pr-check workflow, so it runs
+# on its own here. The schedule is the trigger that matters: RUSTSEC-2026-0194
+# and -0195 were published against a lockfile nobody had touched in weeks, so a
+# PR-only trigger would never have surfaced them.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - ".github/workflows/audit.yml"
+  pull_request:
+    paths:
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - ".github/workflows/audit.yml"
+  schedule:
+    # Weekly. GitHub disables scheduled workflows after 60 days of repo
+    # inactivity, so treat a long silence as "this stopped running".
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Prebuilt cargo-audit binaries only come from third-party actions, and
+      # this job needs no extra supply-chain surface. Building from source is
+      # slow once per cargo-audit release, then cached.
+      - name: Cache cargo-audit
+        id: cache-cargo-audit
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-0.22-${{ runner.os }}
+
+      - name: Install cargo-audit
+        if: steps.cache-cargo-audit.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --locked
+
+      # --deny warnings also fails on unmaintained and yanked crates, not just
+      # vulnerabilities. Clean as of this commit. If it ever trips on something
+      # with no fix released, add a targeted `--ignore RUSTSEC-XXXX-NNNN` rather
+      # than dropping the flag and losing the whole class of signal.
+      - name: Audit dependencies
+        run: cargo audit --deny warnings
