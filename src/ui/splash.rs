@@ -132,7 +132,7 @@ fn render_big_logo(f: &mut Frame, logo: &[&str], area: Rect) {
 
     logo_lines.push(Line::from(""));
     logo_lines.push(Line::from(Span::styled(
-        "Terminal UI for AWS",
+        "Terminal UI explorer for AWS",
         Style::default().fg(Color::DarkGray),
     )));
     logo_lines.push(Line::from(Span::styled(

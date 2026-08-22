@@ -13,15 +13,32 @@ const WORDMARK: [&str; 2] = ["█▀█ █▀█ █▄▄ █ ▀█▀", "█
 // Budget is tight at 100 columns, where a percentage point is one cell. Widest
 // fixed content per column: shortcuts "<5> ap-southeast-1" (18), keybindings
 // col 1 "<c>      Connect (SSM)" (22), col 2 "<]>      Next Page" (18), and the
-// wordmark (17). Only col 2 has slack, so that is where the logo's growth came
-// from — do not shave the others without re-checking for truncation.
+// wordmark (18). Keybindings col 2 is down to its exact content width, so there
+// is no slack left anywhere — every column is pinned by
+// header_columns_fit_their_widest_fixed_content. Do not shave any of them.
 const HEADER_CONSTRAINTS: [Constraint; 5] = [
     Constraint::Percentage(22), // Left: Context info
     Constraint::Percentage(18), // Region/Sub-resource shortcuts
     Constraint::Percentage(22), // Keybindings col 1
-    Constraint::Percentage(20), // Keybindings col 2
-    Constraint::Percentage(18), // Logo
+    Constraint::Percentage(18), // Keybindings col 2
+    Constraint::Percentage(20), // Logo
 ];
+
+/// Logo taglines, longest first.
+///
+/// The logo column does not wrap, so a string wider than it is silently clipped
+/// mid-word. Pick the widest variant that fits rather than trusting the
+/// terminal to be roomy: the full tagline needs a 120-column terminal.
+const TAGLINES: [&str; 3] = ["AWS Terminal UI explorer", "AWS Terminal UI", "AWS TUI"];
+
+/// Widest tagline fitting `width` cells, or nothing at all if none do. A blank
+/// line reads better than half a word.
+fn tagline(width: u16) -> &'static str {
+    TAGLINES
+        .into_iter()
+        .find(|text| text.chars().count() <= width as usize)
+        .unwrap_or("")
+}
 
 fn header_columns(area: Rect) -> [Rect; 5] {
     Layout::horizontal(HEADER_CONSTRAINTS).areas(area)
@@ -295,7 +312,7 @@ fn render_logo(f: &mut Frame, area: Rect) {
 
     logo.push(Line::from(""));
     logo.push(Line::from(Span::styled(
-        "AWS TUI",
+        tagline(area.width),
         Style::default().fg(Color::DarkGray),
     )));
     logo.push(Line::from(Span::styled(
@@ -329,6 +346,60 @@ mod tests {
                 row,
                 width(row),
                 logo.width
+            );
+        }
+    }
+
+    /// Same clipping trap as the wordmark, but the tagline is long enough to hit
+    /// it on an ordinary terminal: the full string needs 120 columns.
+    #[test]
+    fn tagline_always_fits_the_logo_column() {
+        for terminal_width in 40..=240 {
+            let logo = header_columns(Rect::new(0, 0, terminal_width, 6))[4];
+            let chosen = tagline(logo.width);
+
+            assert!(
+                width(chosen) <= logo.width as usize,
+                "tagline {:?} is {} cells at terminal width {}, but the logo \
+                 column is only {}",
+                chosen,
+                width(chosen),
+                terminal_width,
+                logo.width
+            );
+        }
+    }
+
+    #[test]
+    fn tagline_prefers_the_longest_that_fits() {
+        assert_eq!(tagline(24), "AWS Terminal UI explorer");
+        assert_eq!(tagline(23), "AWS Terminal UI");
+        assert_eq!(tagline(15), "AWS Terminal UI");
+        assert_eq!(tagline(14), "AWS TUI");
+        assert_eq!(tagline(6), "", "nothing fits, so draw nothing");
+    }
+
+    /// The percentages are a fixed budget, so widening one column starves
+    /// another and the loser clips its text without complaint. Pins the widths
+    /// claimed in the comment above HEADER_CONSTRAINTS at the 100-column point
+    /// where the budget is tightest.
+    #[test]
+    fn header_columns_fit_their_widest_fixed_content() {
+        let columns = header_columns(Rect::new(0, 0, 100, 6));
+
+        for (index, needed, content) in [
+            (1, 18, "<5> ap-southeast-1"),
+            (2, 22, "<c>      Connect (SSM)"),
+            (3, 18, "<]>      Next Page"),
+            (4, 18, "wordmark"),
+        ] {
+            assert!(
+                columns[index].width as usize >= needed,
+                "column {} is {} cells, but {:?} needs {}",
+                index,
+                columns[index].width,
+                content,
+                needed
             );
         }
     }
