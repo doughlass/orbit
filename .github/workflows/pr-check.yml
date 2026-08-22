@@ -1,5 +1,9 @@
 name: PR Check
 
+# Inherited from the upstream taws project: the reusable workflow below lives
+# under huseyinbabal, so they control what runs here. Replacing it with our own
+# jobs is on the list.
+
 on:
   pull_request:
     types: [opened, edited, synchronize]
@@ -17,4 +21,9 @@ jobs:
       run_tests: true
       run_fmt: true
       run_clippy: true
-      run_security_scan: true
+      # Off for now, not because scanning is unwanted: CodeQL cannot upload
+      # results without GitHub Advanced Security, which a private repo on a free
+      # plan does not have, so the job fails with "Code scanning is not enabled
+      # for this repository". Turn back on if the repo goes public or GHAS is
+      # bought.
+      run_security_scan: false

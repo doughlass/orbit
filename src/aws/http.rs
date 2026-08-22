@@ -842,6 +842,42 @@ impl AwsHttpClient {
 
     /// Make a signed request with explicit region override
     /// Used for S3 bucket operations where the bucket may be in a different region
+    /// Sign a request and send it, returning the raw bytes.
+    ///
+    /// Used for S3 object downloads, where the payload is not necessarily UTF-8
+    /// and so cannot go through the text-returning path.
+    async fn signed_request_bytes(
+        &self,
+        service: &ServiceDefinition,
+        method: &str,
+        url: &str,
+        region: &str,
+    ) -> Result<Vec<u8>> {
+        let request = self
+            .build_signed_request(service, method, url, "", None, region)
+            .await?;
+
+        trace!("Sending {} request to {} (region: {})", method, url, region);
+        let response = request.send().await?;
+        let status = response.status();
+        let bytes = response.bytes().await?;
+
+        debug!("Response status: {} ({} bytes)", status, bytes.len());
+
+        if !status.is_success() {
+            // Error responses are XML, so decode lossily just for the message
+            let body = String::from_utf8_lossy(&bytes);
+            warn!(
+                "AWS request failed: status={}, body={}",
+                status,
+                &body[..body.len().min(500)]
+            );
+            return Err(anyhow!("AWS request failed ({}): {}", status, body));
+        }
+
+        Ok(bytes.to_vec())
+    }
+
     async fn signed_request_with_region(
         &self,
         service: &ServiceDefinition,
@@ -851,6 +887,45 @@ impl AwsHttpClient {
         extra_headers: Option<HashMap<String, String>>,
         region: &str,
     ) -> Result<String> {
+        let request = self
+            .build_signed_request(service, method, url, body, extra_headers, region)
+            .await?;
+
+        // Send request
+        trace!("Sending {} request to {} (region: {})", method, url, region);
+        let response = request.send().await?;
+        let status = response.status();
+        let text = response.text().await?;
+
+        debug!("Response status: {}", status);
+        trace!(
+            "Response body (first 2000 chars): {}",
+            &text[..text.len().min(2000)]
+        );
+
+        if !status.is_success() {
+            warn!(
+                "AWS request failed: status={}, body={}",
+                status,
+                &text[..text.len().min(500)]
+            );
+            return Err(anyhow!("AWS request failed ({}): {}", status, text));
+        }
+
+        Ok(text)
+    }
+
+    /// Build a SigV4-signed request, ready to send. Shared by the text and bytes
+    /// paths so both sign identically.
+    async fn build_signed_request(
+        &self,
+        service: &ServiceDefinition,
+        method: &str,
+        url: &str,
+        body: &str,
+        extra_headers: Option<HashMap<String, String>>,
+        region: &str,
+    ) -> Result<reqwest::RequestBuilder> {
         // Parse URL
         let parsed_url = url::Url::parse(url)?;
         let host = parsed_url
@@ -952,28 +1027,32 @@ impl AwsHttpClient {
             request = request.body(body.to_string());
         }
 
-        // Send request
-        trace!("Sending {} request to {} (region: {})", method, url, region);
-        let response = request.send().await?;
-        let status = response.status();
-        let text = response.text().await?;
+        Ok(request)
+    }
 
-        debug!("Response status: {}", status);
-        trace!(
-            "Response body (first 2000 chars): {}",
-            &text[..text.len().min(2000)]
+    /// Download an S3 object's bytes from the bucket's own region.
+    pub async fn get_s3_object(
+        &self,
+        bucket: &str,
+        key: &str,
+        bucket_region: &str,
+    ) -> Result<Vec<u8>> {
+        let service = get_service("s3").ok_or_else(|| anyhow!("Unknown service: s3"))?;
+
+        let domain = Self::endpoint_domain(bucket_region);
+        // Each key segment is encoded separately so the '/' hierarchy survives
+        let encoded_key = key
+            .split('/')
+            .map(|segment| urlencoding::encode(segment).into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
+        let url = format!(
+            "https://{}.s3.{}.{}/{}",
+            bucket, bucket_region, domain, encoded_key
         );
 
-        if !status.is_success() {
-            warn!(
-                "AWS request failed: status={}, body={}",
-                status,
-                &text[..text.len().min(500)]
-            );
-            return Err(anyhow!("AWS request failed ({}): {}", status, text));
-        }
-
-        Ok(text)
+        self.signed_request_bytes(&service, "GET", &url, bucket_region)
+            .await
     }
 }
 

@@ -50,6 +50,17 @@ pub fn render(f: &mut Frame, app: &App) {
         ]);
     }
 
+    // S3 browsing behaves differently from other resources: Enter walks the bucket
+    if app.current_resource_key == "s3-buckets" || app.current_resource_key == "s3-objects" {
+        help_text.extend(vec![
+            create_section("S3 Browsing"),
+            create_key_line("Enter", "Open bucket / folder (file shows details)"),
+            create_key_line("w", "Download file to ~/Downloads"),
+            create_key_line("", "Skips files over 100 MB, never overwrites"),
+            Line::from(""),
+        ]);
+    }
+
     // Add navigation and general sections
     help_text.extend(vec![
         create_section("Navigation"),
@@ -70,7 +81,8 @@ pub fn render(f: &mut Frame, app: &App) {
         create_key_line("", "Sorts loaded rows only, not unfetched pages"),
         Line::from(""),
         create_section("Views"),
-        create_key_line("d / Enter", "Show details panel"),
+        create_key_line("d", "Show details panel"),
+        create_key_line("Enter", "Details, or open it if browsable (S3)"),
         create_key_line("J", "Show JSON view"),
         create_key_line("?", "Toggle help"),
         Line::from(""),

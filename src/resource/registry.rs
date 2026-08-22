@@ -216,6 +216,12 @@ pub struct ResourceDef {
     /// If true, preserve the order returned by the API instead of sorting alphabetically
     #[serde(default)]
     pub preserve_order: bool,
+
+    /// Sub-resource that Enter drills into, instead of opening the details panel.
+    /// Must also appear in `sub_resources`. Rows with no children (S3 files) still
+    /// fall back to details, so Enter is never a dead key.
+    #[serde(default)]
+    pub enter_sub_resource: Option<String>,
 }
 
 impl ResourceDef {
