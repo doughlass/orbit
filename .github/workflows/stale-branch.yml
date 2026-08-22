@@ -5,6 +5,12 @@ on:
     types: [closed]
   workflow_dispatch:
 
+# deleteRef needs write access. Without this the job logged "Resource not
+# accessible by integration", swallowed the error, and still reported success, so
+# it deleted nothing while looking healthy.
+permissions:
+  contents: write
+
 jobs:
   delete-branch:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
@@ -14,60 +20,83 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const protectedBranches = ['main', 'master'];
+
+            async function deleteBranch(name) {
+              await github.rest.git.deleteRef({ owner, repo, ref: `heads/${name}` });
+              console.log(`Deleted branch: ${name}`);
+            }
+
             if (context.eventName === 'pull_request') {
-              const branchName = context.payload.pull_request.head.ref;
-              
-              // Don't delete main/master branches
-              if (branchName === 'main' || branchName === 'master') {
-                console.log(`Skipping deletion of protected branch: ${branchName}`);
+              const pr = context.payload.pull_request;
+              const branchName = pr.head.ref;
+
+              if (protectedBranches.includes(branchName)) {
+                console.log(`Skipping protected branch: ${branchName}`);
                 return;
               }
-              
+
+              // A fork's branch lives in the fork, so deleting it here would
+              // always 404. Related: when Dependabot itself closes one of its
+              // PRs the token is read-only no matter what this workflow asks
+              // for, but it tidies up its own branches, so nothing is missed.
+              if (pr.head.repo.full_name !== `${owner}/${repo}`) {
+                console.log(`Skipping fork branch: ${pr.head.repo.full_name}:${branchName}`);
+                return;
+              }
+
+              // Deliberately uncaught. A failure here means this workflow is
+              // broken, and swallowing it is exactly how the missing permission
+              // went unnoticed.
+              await deleteBranch(branchName);
+              return;
+            }
+
+            // Manual sweep: delete every branch already contained in master.
+            const branches = await github.paginate(github.rest.repos.listBranches, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+
+            const failures = [];
+
+            for (const { name } of branches) {
+              if (protectedBranches.includes(name)) continue;
+
+              let comparison;
               try {
-                await github.rest.git.deleteRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: `heads/${branchName}`
-                });
-                console.log(`Deleted branch: ${branchName}`);
+                ({ data: comparison } = await github.rest.repos.compareCommits({
+                  owner,
+                  repo,
+                  base: 'master',
+                  head: name,
+                }));
               } catch (error) {
-                console.log(`Failed to delete branch ${branchName}: ${error.message}`);
+                // Unrelated histories and similar. Benign, so keep sweeping.
+                console.log(`Cannot compare ${name}, leaving it alone: ${error.message}`);
+                continue;
               }
-            } else {
-              // Manual trigger - list and delete all merged branches
-              const { data: branches } = await github.rest.repos.listBranches({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                per_page: 100
-              });
-              
-              for (const branch of branches) {
-                const branchName = branch.name;
-                
-                // Skip protected branches
-                if (branchName === 'main' || branchName === 'master') {
-                  continue;
-                }
-                
-                // Check if branch is merged
-                try {
-                  const { data: comparison } = await github.rest.repos.compareCommits({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    base: 'master',
-                    head: branchName
-                  });
-                  
-                  if (comparison.status === 'behind' || comparison.status === 'identical') {
-                    await github.rest.git.deleteRef({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      ref: `heads/${branchName}`
-                    });
-                    console.log(`Deleted merged branch: ${branchName}`);
-                  }
-                } catch (error) {
-                  console.log(`Skipping branch ${branchName}: ${error.message}`);
-                }
+
+              // 'behind' means every commit on the branch is already in master.
+              // Squash-merged branches read as 'diverged' and survive, which is
+              // the safe default: better to leave a branch than delete unmerged
+              // work.
+              if (comparison.status !== 'behind' && comparison.status !== 'identical') {
+                continue;
               }
+
+              try {
+                await deleteBranch(name);
+              } catch (error) {
+                failures.push(`${name}: ${error.message}`);
+              }
+            }
+
+            // One unlucky branch should not abort the sweep, but the job must
+            // still go red so a broken token is visible.
+            if (failures.length > 0) {
+              core.setFailed(`Failed to delete ${failures.length} branch(es):\n${failures.join('\n')}`);
             }
