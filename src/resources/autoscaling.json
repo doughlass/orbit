@@ -24,7 +24,13 @@
       "api_config": {
         "protocol": "query",
         "action": "DescribeAutoScalingGroups",
-        "response_root": "/DescribeAutoScalingGroupsResponse/DescribeAutoScalingGroupsResult/AutoScalingGroups/member"
+        "response_root": "/DescribeAutoScalingGroupsResponse/DescribeAutoScalingGroupsResult/AutoScalingGroups/member",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeAutoScalingGroupsResponse/DescribeAutoScalingGroupsResult/NextToken",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "AutoScalingGroupName": { "source": "/AutoScalingGroupName", "default": "-" },

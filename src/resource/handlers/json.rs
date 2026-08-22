@@ -59,6 +59,19 @@ impl JsonProtocolHandler {
             }
         }
 
+        // Add pagination params last so a page token always wins over static/dynamic params
+        if let Some(pagination) = &config.pagination {
+            if let Some(max_param) = &pagination.max_results_param {
+                let max_value = pagination.max_results.unwrap_or(100);
+                body.insert(max_param.clone(), Value::from(max_value));
+            }
+            if let Some(token) = params.get("_page_token").and_then(|v| v.as_str()) {
+                if let Some(input_token) = &pagination.input_token {
+                    body.insert(input_token.clone(), Value::String(token.to_string()));
+                }
+            }
+        }
+
         let body_str = serde_json::to_string(&Value::Object(body))?;
         clients.http.json_request(service, action, &body_str).await
     }

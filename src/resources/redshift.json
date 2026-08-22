@@ -29,7 +29,13 @@
       "api_config": {
         "protocol": "query",
         "action": "DescribeClusters",
-        "response_root": "/DescribeClustersResponse/DescribeClustersResult/Clusters/Cluster"
+        "response_root": "/DescribeClustersResponse/DescribeClustersResult/Clusters/Cluster",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeClustersResponse/DescribeClustersResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "ClusterIdentifier": { "source": "/ClusterIdentifier", "default": "-" },
@@ -101,6 +107,12 @@
         "protocol": "query",
         "action": "DescribeClusterSnapshots",
         "response_root": "/DescribeClusterSnapshotsResponse/DescribeClusterSnapshotsResult/Snapshots/Snapshot",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeClusterSnapshotsResponse/DescribeClusterSnapshotsResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        },
         "param_mapping": {
           "cluster_identifier": "ClusterIdentifier"
         }

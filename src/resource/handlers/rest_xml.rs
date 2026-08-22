@@ -57,6 +57,14 @@ impl RestXmlProtocolHandler {
             }
         }
 
+        // Add max results if configured
+        if let Some(pagination) = &config.pagination {
+            if let Some(max_param) = &pagination.max_results_param {
+                let max_value = pagination.max_results.unwrap_or(100);
+                query_parts.push(format!("{}={}", max_param, max_value));
+            }
+        }
+
         if !query_parts.is_empty() {
             if path.contains('?') {
                 path = format!("{}&{}", path, query_parts.join("&"));

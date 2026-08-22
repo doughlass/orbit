@@ -23,7 +23,13 @@
         "protocol": "rest-xml",
         "method": "GET",
         "path": "/2020-05-31/distribution",
-        "response_root": "/DistributionList/Items/DistributionSummary"
+        "response_root": "/DistributionList/Items/DistributionSummary",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DistributionList/NextMarker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "Id": { "source": "/Id", "default": "-" },

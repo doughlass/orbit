@@ -101,7 +101,13 @@
       "api_config": {
         "protocol": "query",
         "action": "DescribeVolumes",
-        "response_root": "/DescribeVolumesResponse/volumeSet/item"
+        "response_root": "/DescribeVolumesResponse/volumeSet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeVolumesResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "VolumeId": { "source": "/volumeId", "default": "-" },
@@ -160,6 +166,12 @@
         "protocol": "query",
         "action": "DescribeSnapshots",
         "response_root": "/DescribeSnapshotsResponse/snapshotSet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeSnapshotsResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        },
         "static_params": {
           "Owner.1": "self"
         }

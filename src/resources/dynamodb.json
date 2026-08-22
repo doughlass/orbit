@@ -20,7 +20,13 @@
       "api_config": {
         "protocol": "json",
         "action": "ListTables",
-        "response_root": "/TableNames"
+        "response_root": "/TableNames",
+        "pagination": {
+          "input_token": "ExclusiveStartTableName",
+          "output_token": "/LastEvaluatedTableName",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "TableName": { "source": "" }

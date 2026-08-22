@@ -24,7 +24,13 @@
       "api_config": {
         "protocol": "query",
         "action": "ListUsers",
-        "response_root": "/ListUsersResponse/ListUsersResult/Users/member"
+        "response_root": "/ListUsersResponse/ListUsersResult/Users/member",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/ListUsersResponse/ListUsersResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "UserId": { "source": "/UserId", "default": "-" },
@@ -62,6 +68,12 @@
         "response_root": "/ListAttachedUserPoliciesResponse/ListAttachedUserPoliciesResult/AttachedPolicies/member",
         "param_mapping": {
           "user_name": "UserName"
+        },
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/ListAttachedUserPoliciesResponse/ListAttachedUserPoliciesResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
         }
       },
       "field_mappings": {
@@ -92,6 +104,12 @@
         "response_root": "/ListGroupsForUserResponse/ListGroupsForUserResult/Groups/member",
         "param_mapping": {
           "user_name": "UserName"
+        },
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/ListGroupsForUserResponse/ListGroupsForUserResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
         }
       },
       "field_mappings": {
@@ -123,6 +141,12 @@
         "response_root": "/ListAccessKeysResponse/ListAccessKeysResult/AccessKeyMetadata/member",
         "param_mapping": {
           "user_name": "UserName"
+        },
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/ListAccessKeysResponse/ListAccessKeysResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
         }
       },
       "field_mappings": {
@@ -153,7 +177,13 @@
       "api_config": {
         "protocol": "query",
         "action": "ListRoles",
-        "response_root": "/ListRolesResponse/ListRolesResult/Roles/member"
+        "response_root": "/ListRolesResponse/ListRolesResult/Roles/member",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/ListRolesResponse/ListRolesResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "RoleId": { "source": "/RoleId", "default": "-" },
@@ -192,6 +222,12 @@
         "response_root": "/ListAttachedRolePoliciesResponse/ListAttachedRolePoliciesResult/AttachedPolicies/member",
         "param_mapping": {
           "role_name": "RoleName"
+        },
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/ListAttachedRolePoliciesResponse/ListAttachedRolePoliciesResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
         }
       },
       "field_mappings": {
@@ -225,6 +261,12 @@
         "response_root": "/ListPoliciesResponse/ListPoliciesResult/Policies/member",
         "static_params": {
           "Scope": "Local"
+        },
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/ListPoliciesResponse/ListPoliciesResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
         }
       },
       "field_mappings": {
@@ -259,7 +301,13 @@
       "api_config": {
         "protocol": "query",
         "action": "ListGroups",
-        "response_root": "/ListGroupsResponse/ListGroupsResult/Groups/member"
+        "response_root": "/ListGroupsResponse/ListGroupsResult/Groups/member",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/ListGroupsResponse/ListGroupsResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "GroupId": { "source": "/GroupId", "default": "-" },
@@ -292,6 +340,12 @@
         "response_root": "/GetGroupResponse/GetGroupResult/Users/member",
         "param_mapping": {
           "group_name": "GroupName"
+        },
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/GetGroupResponse/GetGroupResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
         }
       },
       "field_mappings": {

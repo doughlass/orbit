@@ -44,7 +44,11 @@
       "api_config": {
         "protocol": "query",
         "action": "DescribeStacks",
-        "response_root": "/DescribeStacksResponse/DescribeStacksResult/Stacks/member"
+        "response_root": "/DescribeStacksResponse/DescribeStacksResult/Stacks/member",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeStacksResponse/DescribeStacksResult/NextToken"
+        }
       },
       "field_mappings": {
         "StackName": { "source": "/StackName", "default": "-" },
@@ -87,6 +91,10 @@
         "protocol": "query",
         "action": "DescribeStackEvents",
         "response_root": "/DescribeStackEventsResponse/DescribeStackEventsResult/StackEvents/member",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeStackEventsResponse/DescribeStackEventsResult/NextToken"
+        },
         "param_mapping": {
           "stack_name": "StackName"
         }
@@ -156,6 +164,10 @@
         "protocol": "query",
         "action": "ListStackResources",
         "response_root": "/ListStackResourcesResponse/ListStackResourcesResult/StackResourceSummaries/member",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/ListStackResourcesResponse/ListStackResourcesResult/NextToken"
+        },
         "param_mapping": {
           "stack_name": "StackName"
         }

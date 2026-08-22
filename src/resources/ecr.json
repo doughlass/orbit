@@ -19,7 +19,13 @@
       "api_config": {
         "protocol": "json",
         "action": "DescribeRepositories",
-        "response_root": "/repositories"
+        "response_root": "/repositories",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "repositoryName": { "source": "/repositoryName", "default": "-" },

@@ -29,7 +29,13 @@
         "protocol": "json",
         "service_name": "logs",
         "action": "DescribeLogGroups",
-        "response_root": "/logGroups"
+        "response_root": "/logGroups",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "limit",
+          "max_results": 50
+        }
       },
       "field_mappings": {
         "logGroupName": { "source": "/logGroupName", "default": "-" },

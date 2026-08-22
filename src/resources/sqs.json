@@ -20,7 +20,13 @@
       "api_config": {
         "protocol": "query",
         "action": "ListQueues",
-        "response_root": "/ListQueuesResponse/ListQueuesResult/QueueUrl"
+        "response_root": "/ListQueuesResponse/ListQueuesResult/QueueUrl",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/ListQueuesResponse/ListQueuesResult/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "QueueUrl": { "source": "", "default": "-" }
