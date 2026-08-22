@@ -10,7 +10,7 @@
 ---
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.94%2B-orange.svg)](https://www.rust-lang.org/)
 
 > orbit began as a fork of [taws](https://github.com/huseyinbabal/taws) by Hüseyin Babal and is now maintained independently. See [Acknowledgments](#acknowledgments).
 
@@ -57,7 +57,7 @@ cargo install --git https://github.com/doughlass/orbit
 
 ### From Source
 
-orbit is built with Rust. Make sure you have Rust 1.70+ installed, along with a C compiler and linker.
+orbit is built with Rust. Make sure you have Rust 1.94+ installed, along with a C compiler and linker.
 
 #### Build Dependencies
 

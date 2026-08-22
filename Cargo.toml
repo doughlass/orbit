@@ -4,6 +4,8 @@
 name = "orbit-tui"
 version = "1.3.0-rc.8"
 edition = "2021"
+# Real floor, set by the aws-* crates. Not a policy choice; raise it when they do.
+rust-version = "1.94.1"
 description = "Terminal UI for AWS - navigate, observe, and manage AWS resources"
 license = "MIT"
 repository = "https://github.com/doughlass/orbit"
@@ -41,7 +43,7 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 
 # XML parsing (for EC2, IAM, RDS Query protocol APIs)
-quick-xml = { version = "0.39", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 
 # CLI argument parsing
 clap = { version = "4.5", features = ["derive"] }
@@ -57,9 +59,10 @@ anyhow = "1.0"
 thiserror = "2.0"
 dirs = "6.0"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
-sha1 = "0.10"
-sha2 = "0.10"
+sha1 = "0.11"
+sha2 = "0.11"
 open = "5.3"
+hex = "0.4"
 fuzzy-matcher = "0.3.7"
 async-trait = "0.1.89"
 arboard = "3.6"

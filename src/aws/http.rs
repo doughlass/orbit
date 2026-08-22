@@ -1086,7 +1086,9 @@ pub fn xml_to_json(xml: &str) -> Result<serde_json::Value> {
                     }
                 }
                 Ok(Event::Text(e)) => {
-                    let text = e.xml_content().unwrap_or_default().trim().to_string();
+                    // quick-xml 0.41 made the XML version explicit; AWS returns 1.0,
+                    // which is what the old version-less xml_content() defaulted to.
+                    let text = e.xml10_content().unwrap_or_default().trim().to_string();
                     if !text.is_empty() {
                         current_text = text;
                     }
