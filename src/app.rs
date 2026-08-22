@@ -9,6 +9,7 @@ use anyhow::Result;
 use crossterm::event::KeyCode;
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use serde_json::Value;
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Mode {
@@ -109,6 +110,127 @@ impl AwsFilters {
     }
 }
 
+/// Client-side column sort for the current table view.
+///
+/// The cursor and the sorted column are separate: arrows move the cursor freely
+/// and only Tab commits it to a sort, so browsing columns never reshuffles rows.
+///
+/// Only sorts the rows already fetched, so on a paginated resource this orders
+/// the loaded pages, not the full result set.
+#[derive(Debug, Clone, Default)]
+pub struct SortState {
+    /// Column the arrows are pointing at (index into the resource's `columns`)
+    pub cursor: usize,
+    /// Column actually sorted, or None for API order
+    pub column: Option<usize>,
+    pub descending: bool,
+}
+
+impl SortState {
+    /// Move the cursor one column right, wrapping at the end
+    pub fn cursor_right(&mut self, column_count: usize) {
+        if column_count == 0 {
+            return;
+        }
+        self.cursor = (self.cursor + 1) % column_count;
+    }
+
+    /// Move the cursor one column left, wrapping at the start
+    pub fn cursor_left(&mut self, column_count: usize) {
+        if column_count == 0 {
+            return;
+        }
+        self.cursor = (self.cursor + column_count - 1) % column_count;
+    }
+
+    /// Sort by the cursor's column: ascending on a newly picked column, otherwise
+    /// flip the direction of the column already sorted.
+    pub fn sort_by_cursor(&mut self) {
+        if self.column == Some(self.cursor) {
+            self.descending = !self.descending;
+        } else {
+            self.column = Some(self.cursor);
+            self.descending = false;
+        }
+    }
+
+    /// Drop back to the order the API returned, leaving the cursor where it is
+    pub fn clear(&mut self) {
+        self.column = None;
+        self.descending = false;
+    }
+
+    /// Full reset for a change of resource, where column indices no longer apply
+    pub fn reset(&mut self) {
+        self.clear();
+        self.cursor = 0;
+    }
+
+    pub fn indicator(&self) -> &'static str {
+        if self.descending {
+            "↓"
+        } else {
+            "↑"
+        }
+    }
+}
+
+/// A cell with no data. `extract_json_value` renders missing values as "-".
+fn is_blank_cell(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.is_empty() || trimmed == "-"
+}
+
+/// Order two cell values, guessing the type from the content.
+///
+/// Numeric columns compare numerically so "9" sorts before "10". ISO-8601
+/// timestamps need no special handling because they already sort lexically.
+/// Blanks sink to the bottom in both directions so they never crowd the top.
+fn compare_cells(a: &str, b: &str, descending: bool) -> Ordering {
+    match (is_blank_cell(a), is_blank_cell(b)) {
+        (true, true) => return Ordering::Equal,
+        (true, false) => return Ordering::Greater,
+        (false, true) => return Ordering::Less,
+        (false, false) => {}
+    }
+
+    let ordering = match (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
+        (Ok(x), Ok(y)) => x.total_cmp(&y),
+        _ => a.to_lowercase().cmp(&b.to_lowercase()),
+    };
+
+    if descending {
+        ordering.reverse()
+    } else {
+        ordering
+    }
+}
+
+/// Sort `items` in place by the value at `sort_path`, returning where the row at
+/// `selected` ended up so the cursor stays on the same resource.
+///
+/// Sorts a permutation of indices rather than the items themselves: keys are
+/// extracted once each (`extract_json_value` clones the item, so calling it per
+/// comparison would be costly), and ties keep their original API order.
+fn sort_items(items: &mut [Value], sort_path: &str, descending: bool, selected: usize) -> usize {
+    if items.is_empty() {
+        return 0;
+    }
+
+    let keys: Vec<String> = items
+        .iter()
+        .map(|item| extract_json_value(item, sort_path))
+        .collect();
+
+    let mut order: Vec<usize> = (0..items.len()).collect();
+    order.sort_by(|&a, &b| compare_cells(&keys[a], &keys[b], descending));
+
+    let sorted: Vec<Value> = order.iter().map(|&i| items[i].clone()).collect();
+    items.clone_from_slice(&sorted);
+
+    order.iter().position(|&i| i == selected).unwrap_or(0)
+}
+
 pub struct App {
     // AWS Clients
     pub clients: AwsClients,
@@ -206,6 +328,9 @@ pub struct App {
 
     // Fuzzy matcher for filtering (reused to avoid repeated allocations)
     pub fuzzy_matcher: SkimMatcherV2,
+
+    // Client-side column sort for the current table
+    pub sort: SortState,
 }
 
 /// SSM Connect request data
@@ -398,6 +523,7 @@ impl App {
             log_tail_state: None,
             ssm_connect_request: None,
             fuzzy_matcher: SkimMatcherV2::default().ignore_case(),
+            sort: SortState::default(),
         }
     }
 
@@ -709,10 +835,89 @@ impl App {
             self.filtered_items = scored_items.into_iter().map(|(_, item)| item).collect();
         }
 
+        // An explicit column sort overrides the fuzzy relevance ranking above
+        self.apply_sort();
+
         // Adjust selection
         if self.selected >= self.filtered_items.len() && !self.filtered_items.is_empty() {
             self.selected = self.filtered_items.len() - 1;
         }
+    }
+
+    // =========================================================================
+    // Sorting
+    // =========================================================================
+
+    /// Number of sortable columns in the current view
+    fn sortable_column_count(&self) -> usize {
+        self.current_resource()
+            .map(|r| r.columns.len())
+            .unwrap_or(0)
+    }
+
+    /// Reorder `filtered_items` by the active sort column, keeping the cursor on
+    /// the same item. No-op when no sort is active.
+    pub fn apply_sort(&mut self) {
+        let sort_path = match (self.sort.column, self.current_resource()) {
+            (Some(index), Some(resource)) => {
+                resource.columns.get(index).map(|col| col.json_path.clone())
+            }
+            _ => None,
+        };
+        let Some(sort_path) = sort_path else {
+            return;
+        };
+
+        self.selected = sort_items(
+            &mut self.filtered_items,
+            &sort_path,
+            self.sort.descending,
+            self.selected,
+        );
+    }
+
+    /// Move the column cursor right. Does not re-sort: Tab commits the choice.
+    pub fn sort_cursor_right(&mut self) {
+        self.sort.cursor_right(self.sortable_column_count());
+    }
+
+    /// Move the column cursor left. Does not re-sort: Tab commits the choice.
+    pub fn sort_cursor_left(&mut self) {
+        self.sort.cursor_left(self.sortable_column_count());
+    }
+
+    /// Sort by the cursor's column, or flip direction if it is already sorted
+    pub fn sort_by_cursor(&mut self) {
+        if self.sortable_column_count() == 0 {
+            return;
+        }
+        self.sort.sort_by_cursor();
+        self.apply_sort();
+    }
+
+    /// Drop the sort and restore the order the API returned
+    pub fn clear_sort(&mut self) {
+        if self.sort.column.is_none() {
+            return;
+        }
+        self.sort.clear();
+        // Rebuild from `items` — sorting is destructive, so API order can only be recovered by re-filtering
+        self.apply_filter();
+    }
+
+    /// Header of the column the cursor sits on, i.e. what Tab would sort
+    pub fn sort_cursor_header(&self) -> Option<&'static str> {
+        self.current_resource()?
+            .columns
+            .get(self.sort.cursor)
+            .map(|col| col.header.as_str())
+    }
+
+    /// Header label for the active sort, e.g. "CREATED ↓"
+    pub fn sort_display(&self) -> Option<String> {
+        let index = self.sort.column?;
+        let column = self.current_resource()?.columns.get(index)?;
+        Some(format!("{} {}", column.header, self.sort.indicator()))
     }
 
     /// Start a new filter, clearing any existing AWS filters
@@ -1281,6 +1486,9 @@ impl App {
         self.filter_text.clear();
         self.filter_active = false;
         self.mode = Mode::Normal;
+        // Column indices are per-resource, so a sort can't carry over.
+        // Deliberately not in reset_pagination(), which 'R' refresh also calls.
+        self.sort.reset();
 
         // Reset pagination for new resource
         self.reset_pagination();
@@ -1354,6 +1562,7 @@ impl App {
         self.selected = 0;
         self.filter_text.clear();
         self.filter_active = false;
+        self.sort.reset();
 
         // Reset pagination for new resource
         self.reset_pagination();
@@ -1373,6 +1582,7 @@ impl App {
             self.selected = parent.saved_selected;
             self.filter_text.clear();
             self.filter_active = false;
+            self.sort.reset();
 
             // Reset pagination for parent resource
             self.reset_pagination();
@@ -1992,5 +2202,248 @@ mod tests {
         });
         let result = extract_copyable_value("secretsmanager-secrets", &data);
         assert_eq!(result, None);
+    }
+
+    // =========================================================================
+    // Sorting
+    // =========================================================================
+
+    /// A sort active on `column` in the given direction, cursor parked on it
+    fn sorted_on(column: usize, descending: bool) -> SortState {
+        SortState {
+            cursor: column,
+            column: Some(column),
+            descending,
+        }
+    }
+
+    #[test]
+    fn test_sort_state_cursor_starts_on_first_column_unsorted() {
+        let sort = SortState::default();
+        assert_eq!(sort.cursor, 0);
+        assert_eq!(sort.column, None);
+    }
+
+    #[test]
+    fn test_sort_state_cursor_right_moves_without_sorting() {
+        let mut sort = SortState::default();
+        sort.cursor_right(4);
+        assert_eq!(sort.cursor, 1);
+        assert_eq!(
+            sort.column, None,
+            "moving the cursor must not start a sort on its own"
+        );
+    }
+
+    #[test]
+    fn test_sort_state_cursor_right_wraps_to_first() {
+        let mut sort = SortState {
+            cursor: 3,
+            ..SortState::default()
+        };
+        sort.cursor_right(4);
+        assert_eq!(sort.cursor, 0);
+    }
+
+    #[test]
+    fn test_sort_state_cursor_left_wraps_to_last() {
+        let mut sort = SortState::default();
+        sort.cursor_left(4);
+        assert_eq!(sort.cursor, 3);
+    }
+
+    #[test]
+    fn test_sort_state_cursor_moves_leave_active_sort_alone() {
+        let mut sort = sorted_on(0, true);
+        sort.cursor_right(4);
+        sort.cursor_right(4);
+        assert_eq!(sort.cursor, 2);
+        assert_eq!(sort.column, Some(0), "the sorted column must not change");
+        assert!(sort.descending);
+    }
+
+    #[test]
+    fn test_sort_state_cursor_moves_are_noop_when_no_columns() {
+        let mut sort = SortState::default();
+        sort.cursor_right(0);
+        sort.cursor_left(0);
+        assert_eq!(sort.cursor, 0);
+        assert_eq!(sort.column, None);
+    }
+
+    #[test]
+    fn test_sort_state_sort_by_cursor_starts_ascending() {
+        let mut sort = SortState {
+            cursor: 3,
+            ..SortState::default()
+        };
+        sort.sort_by_cursor();
+        assert_eq!(sort.column, Some(3));
+        assert!(!sort.descending);
+    }
+
+    #[test]
+    fn test_sort_state_sort_by_cursor_flips_when_already_sorted() {
+        let mut sort = sorted_on(2, false);
+        sort.sort_by_cursor();
+        assert!(sort.descending);
+        sort.sort_by_cursor();
+        assert!(!sort.descending);
+    }
+
+    #[test]
+    fn test_sort_state_sort_by_cursor_on_new_column_restarts_ascending() {
+        let mut sort = sorted_on(0, true);
+        sort.cursor = 2;
+        sort.sort_by_cursor();
+        assert_eq!(sort.column, Some(2));
+        assert!(
+            !sort.descending,
+            "a newly picked column should start ascending, not inherit descending"
+        );
+    }
+
+    #[test]
+    fn test_sort_state_clear_resets_sort_but_keeps_cursor() {
+        let mut sort = sorted_on(2, true);
+        sort.clear();
+        assert_eq!(sort.column, None);
+        assert!(!sort.descending);
+        assert_eq!(sort.cursor, 2, "Shift+Tab clears the sort, not your place");
+    }
+
+    #[test]
+    fn test_sort_state_reset_clears_cursor_too() {
+        let mut sort = sorted_on(2, true);
+        sort.reset();
+        assert_eq!(sort.column, None);
+        assert_eq!(sort.cursor, 0);
+    }
+
+    #[test]
+    fn test_sort_state_indicator_reflects_direction() {
+        assert_eq!(sorted_on(0, false).indicator(), "↑");
+        assert_eq!(sorted_on(0, true).indicator(), "↓");
+    }
+
+    #[test]
+    fn test_compare_cells_is_case_insensitive() {
+        assert_eq!(compare_cells("apple", "Banana", false), Ordering::Less);
+        assert_eq!(compare_cells("Banana", "apple", false), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_cells_numeric_not_lexicographic() {
+        // Lexicographic comparison would wrongly put "10" before "9"
+        assert_eq!(compare_cells("9", "10", false), Ordering::Less);
+        assert_eq!(compare_cells("10", "9", false), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_cells_descending_reverses_values() {
+        assert_eq!(compare_cells("apple", "banana", true), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_cells_blanks_sort_last_ascending() {
+        assert_eq!(compare_cells("-", "apple", false), Ordering::Greater);
+        assert_eq!(compare_cells("", "apple", false), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_cells_blanks_sort_last_descending() {
+        // Blanks stay at the bottom in both directions so they never crowd the top
+        assert_eq!(compare_cells("-", "apple", true), Ordering::Greater);
+        assert_eq!(compare_cells("apple", "-", true), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_cells_two_blanks_are_equal() {
+        assert_eq!(compare_cells("-", "", false), Ordering::Equal);
+    }
+
+    fn role(name: &str, created: &str) -> Value {
+        serde_json::json!({ "RoleName": name, "CreateDate": created })
+    }
+
+    fn names(items: &[Value]) -> Vec<String> {
+        items
+            .iter()
+            .map(|i| extract_json_value(i, "RoleName"))
+            .collect()
+    }
+
+    #[test]
+    fn test_sort_items_ascending_by_name() {
+        let mut items = vec![
+            role("charlie", "2024-01-01T00:00:00Z"),
+            role("alpha", "2025-01-01T00:00:00Z"),
+            role("bravo", "2023-01-01T00:00:00Z"),
+        ];
+        sort_items(&mut items, "RoleName", false, 0);
+        assert_eq!(names(&items), vec!["alpha", "bravo", "charlie"]);
+    }
+
+    #[test]
+    fn test_sort_items_descending_by_iso8601_date() {
+        let mut items = vec![
+            role("charlie", "2024-01-01T00:00:00Z"),
+            role("alpha", "2025-11-13T12:17:33Z"),
+            role("bravo", "2023-01-01T00:00:00Z"),
+        ];
+        sort_items(&mut items, "CreateDate", true, 0);
+        assert_eq!(names(&items), vec!["alpha", "charlie", "bravo"]);
+    }
+
+    #[test]
+    fn test_sort_items_keeps_api_order_for_ties() {
+        let mut items = vec![
+            role("zulu", "2024-01-01T00:00:00Z"),
+            role("yankee", "2024-01-01T00:00:00Z"),
+            role("xray", "2024-01-01T00:00:00Z"),
+        ];
+        sort_items(&mut items, "CreateDate", false, 0);
+        assert_eq!(
+            names(&items),
+            vec!["zulu", "yankee", "xray"],
+            "equal keys must preserve original API order"
+        );
+    }
+
+    #[test]
+    fn test_sort_items_missing_values_go_last() {
+        let mut items = vec![
+            serde_json::json!({ "RoleName": "no-date" }),
+            role("bravo", "2023-01-01T00:00:00Z"),
+            role("alpha", "2025-01-01T00:00:00Z"),
+        ];
+        sort_items(&mut items, "CreateDate", false, 0);
+        assert_eq!(names(&items), vec!["bravo", "alpha", "no-date"]);
+    }
+
+    #[test]
+    fn test_sort_items_returns_new_index_of_selected_item() {
+        let mut items = vec![
+            role("charlie", "2024-01-01T00:00:00Z"),
+            role("alpha", "2025-01-01T00:00:00Z"),
+            role("bravo", "2023-01-01T00:00:00Z"),
+        ];
+        // "bravo" is selected at index 2; after sorting by name it lands at index 1
+        let new_index = sort_items(&mut items, "RoleName", false, 2);
+        assert_eq!(new_index, 1);
+    }
+
+    #[test]
+    fn test_sort_items_selection_falls_back_to_top_when_out_of_range() {
+        let mut items = vec![role("alpha", "2025-01-01T00:00:00Z")];
+        let new_index = sort_items(&mut items, "RoleName", false, 7);
+        assert_eq!(new_index, 0);
+    }
+
+    #[test]
+    fn test_sort_items_on_empty_list_returns_zero() {
+        let mut items: Vec<Value> = Vec::new();
+        let new_index = sort_items(&mut items, "RoleName", false, 0);
+        assert_eq!(new_index, 0);
     }
 }

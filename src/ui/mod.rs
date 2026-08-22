@@ -230,13 +230,24 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
         .map(|col| (total_width * col.width as usize) / 100)
         .collect();
 
-    // Build header from column definitions with left padding
-    let header_cells = resource.columns.iter().map(|col| {
-        Cell::from(format!(" {}", col.header)).style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )
+    // Build header from column definitions with left padding.
+    // Sorted column gets a direction arrow in cyan; the cursor column (what Tab
+    // would sort) is underlined, so the two states stay tellable apart.
+    let header_cells = resource.columns.iter().enumerate().map(|(col_idx, col)| {
+        let is_sorted = app.sort.column == Some(col_idx);
+        let (label, color) = if is_sorted {
+            (
+                format!(" {} {}", col.header, app.sort.indicator()),
+                Color::Cyan,
+            )
+        } else {
+            (format!(" {}", col.header), Color::Yellow)
+        };
+        let mut style = Style::default().fg(color).add_modifier(Modifier::BOLD);
+        if app.sort.cursor == col_idx {
+            style = style.add_modifier(Modifier::UNDERLINED);
+        }
+        Cell::from(label).style(style)
     });
     let header = Row::new(header_cells).height(1);
 
@@ -764,6 +775,17 @@ fn render_crumb(f: &mut Frame, app: &App, area: Rect) {
         String::new()
     };
 
+    // Build sort hint. Lives here rather than the top header, which is a fixed
+    // 6 rows that the keybinding columns already fill.
+    // Names the cursor column so it's obvious what Tab will act on
+    let sort_hint = {
+        let target = app.sort_cursor_header().unwrap_or_default();
+        match app.sort_display() {
+            Some(label) => format!(" | sort:{} | ←→ tab:sort {}", label, target),
+            None => format!(" | ←→ tab:sort {}", target),
+        }
+    };
+
     let status_text = if let Some(err) = &app.error_message {
         format!("Error: {}", err)
     } else if let Some(msg) = &app.status_message {
@@ -798,7 +820,7 @@ fn render_crumb(f: &mut Frame, app: &App, area: Rect) {
             "Type to filter | Enter: apply | Esc: clear".to_string()
         }
     } else {
-        format!("{}{}", shortcuts_hint, pagination_hint)
+        format!("{}{}{}", shortcuts_hint, pagination_hint, sort_hint)
     };
 
     let style = if app.error_message.is_some() {

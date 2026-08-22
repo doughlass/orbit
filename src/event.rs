@@ -181,6 +181,12 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
         }
 
+        // Column sorting - arrows only move the cursor, tab commits it to a sort
+        KeyCode::Right => app.sort_cursor_right(),
+        KeyCode::Left => app.sort_cursor_left(),
+        KeyCode::Tab => app.sort_by_cursor(),
+        KeyCode::BackTab => app.clear_sort(),
+
         // Manual refresh
         KeyCode::Char('R') => {
             app.reset_pagination();
