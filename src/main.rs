@@ -10,7 +10,7 @@ mod ui;
 /// or "dev" for local builds.
 pub const VERSION: &str = match option_env!("ORBIT_VERSION") {
     Some(v) => v,
-    None => "dev",
+    None => "0.1",
 };
 
 use anyhow::Result;

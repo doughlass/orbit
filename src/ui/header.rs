@@ -295,7 +295,7 @@ fn render_logo(f: &mut Frame, area: Rect) {
 
     logo.push(Line::from(""));
     logo.push(Line::from(Span::styled(
-        "AWS TUI",
+        "AWS Terminal UI explorer",
         Style::default().fg(Color::DarkGray),
     )));
     logo.push(Line::from(Span::styled(
