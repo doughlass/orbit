@@ -282,6 +282,15 @@ pub fn poll_for_token(config: &SsoConfig) -> Result<Option<String>> {
     Err(anyhow!("Token request failed: {}", body))
 }
 
+/// The AWS CLI names its SSO cache files after the lowercase SHA-1 hex of a key
+/// (the start URL or the session name). Reproduce it exactly or we cannot read
+/// tokens the CLI already fetched. Pinned by tests.
+fn cache_file_name(key: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(key.as_bytes());
+    format!("{}.json", hex::encode(hasher.finalize()))
+}
+
 /// Cache the SSO access token (compatible with AWS CLI format)
 fn cache_sso_token(config: &SsoConfig, access_token: &str, expires_in: i64) -> Result<()> {
     let cache_dir = aws_config_dir()?.join("sso").join("cache");
@@ -299,11 +308,7 @@ fn cache_sso_token(config: &SsoConfig, access_token: &str, expires_in: i64) -> R
     };
 
     // Cache file name is SHA1 of start_url (compatible with AWS CLI for both legacy and new format)
-    let mut hasher = Sha1::new();
-    hasher.update(config.sso_start_url.as_bytes());
-    let hash = hasher.finalize();
-    let cache_file_name = format!("{:x}.json", hash);
-    let cache_path = cache_dir.join(&cache_file_name);
+    let cache_path = cache_dir.join(cache_file_name(&config.sso_start_url));
 
     fs::write(&cache_path, serde_json::to_string_pretty(&cached_token)?)?;
     debug!("Cached SSO token to {:?}", cache_path);
@@ -485,11 +490,7 @@ pub fn read_cached_token(config: &SsoConfig) -> Option<String> {
 
     // AWS CLI v2 with sso_session uses SHA1 of the session name for cache file
     // Try this format first as it's the most current
-    let mut hasher = Sha1::new();
-    hasher.update(config.sso_session.as_bytes());
-    let hash = hasher.finalize();
-    let cache_file_v2 = format!("{:x}.json", hash);
-    let cache_path_v2 = cache_dir.join(&cache_file_v2);
+    let cache_path_v2 = cache_dir.join(cache_file_name(&config.sso_session));
 
     if let Some(token) = try_read_token_file(&cache_path_v2) {
         debug!(
@@ -500,11 +501,7 @@ pub fn read_cached_token(config: &SsoConfig) -> Option<String> {
     }
 
     // AWS CLI v1 / legacy format uses SHA1 of start_url for cache file
-    let mut hasher = Sha1::new();
-    hasher.update(config.sso_start_url.as_bytes());
-    let hash = hasher.finalize();
-    let cache_file_legacy = format!("{:x}.json", hash);
-    let cache_path_legacy = cache_dir.join(&cache_file_legacy);
+    let cache_path_legacy = cache_dir.join(cache_file_name(&config.sso_start_url));
 
     if let Some(token) = try_read_token_file(&cache_path_legacy) {
         debug!("Found valid SSO token using legacy format (start_url-based)");
@@ -532,4 +529,28 @@ fn try_read_token_file(cache_path: &std::path::Path) -> Option<String> {
     }
 
     Some(cached.access_token)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// These names must match what the AWS CLI writes, or orbit stops finding
+    /// tokens the user already has. The expected values come from an independent
+    /// SHA-1 implementation (Python's hashlib), not from this crate.
+    #[test]
+    fn cache_file_name_matches_aws_cli_sha1_of_start_url() {
+        assert_eq!(
+            cache_file_name("https://my-portal.awsapps.com/start"),
+            "79461503020acf8488a5104359fd5c903aa41b8b.json"
+        );
+    }
+
+    #[test]
+    fn cache_file_name_matches_aws_cli_sha1_of_session_name() {
+        assert_eq!(
+            cache_file_name("my-sso-session"),
+            "b755b5ec73400c04400e978208d8559ad1f39053.json"
+        );
+    }
 }
