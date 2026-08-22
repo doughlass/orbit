@@ -1633,6 +1633,55 @@ fn fetch_ecs_container_credentials() -> Result<(Credentials, Instant)> {
 mod tests {
     use super::*;
 
+    const LOGIN_CACHE_DIR_ENV: &str = "AWS_LOGIN_CACHE_DIRECTORY";
+
+    /// Serialises the tests that override AWS_LOGIN_CACHE_DIRECTORY and restores
+    /// the old value on drop.
+    ///
+    /// The test harness runs tests as threads in one process, but the environment
+    /// is process-global, so two of these tests running at once each saw the
+    /// other's cache directory and failed to find their own fixture. Restoring in
+    /// Drop rather than inline also stops a failing assert from leaking the
+    /// override into whatever runs next.
+    struct LoginCacheDirVar {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        original: Option<String>,
+    }
+
+    impl LoginCacheDirVar {
+        fn set(value: impl AsRef<std::ffi::OsStr>) -> Self {
+            let held = Self::acquire();
+            env::set_var(LOGIN_CACHE_DIR_ENV, value);
+            held
+        }
+
+        fn unset() -> Self {
+            let held = Self::acquire();
+            env::remove_var(LOGIN_CACHE_DIR_ENV);
+            held
+        }
+
+        fn acquire() -> Self {
+            static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+            // A failing test poisons the lock. The guarded value is (), so there
+            // is nothing to corrupt and the remaining tests should still run.
+            let guard = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            Self {
+                _guard: guard,
+                original: env::var(LOGIN_CACHE_DIR_ENV).ok(),
+            }
+        }
+    }
+
+    impl Drop for LoginCacheDirVar {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(value) => env::set_var(LOGIN_CACHE_DIR_ENV, value),
+                None => env::remove_var(LOGIN_CACHE_DIR_ENV),
+            }
+        }
+    }
+
     #[test]
     fn test_sso_cache_is_profile_aware() {
         // This test verifies that SSO credentials are cached per-profile,
@@ -2207,18 +2256,12 @@ region = us-west-2
         let mut cache_file = std::fs::File::create(&cache_file_path).unwrap();
         cache_file.write_all(login_cache_json.as_bytes()).unwrap();
 
-        // Test loading credentials using the env var to override the cache directory
-        let original_env = env::var("AWS_LOGIN_CACHE_DIRECTORY").ok();
-        env::set_var("AWS_LOGIN_CACHE_DIRECTORY", cache_dir);
+        // Override the cache directory for the duration of the call. Held until
+        // the end of the test, which also keeps the other tests that touch this
+        // variable from running concurrently.
+        let _cache_dir = LoginCacheDirVar::set(cache_dir);
 
         let result = load_from_console_login("test-profile", login_session);
-
-        // Restore original env
-        if let Some(val) = original_env {
-            env::set_var("AWS_LOGIN_CACHE_DIRECTORY", val);
-        } else {
-            env::remove_var("AWS_LOGIN_CACHE_DIRECTORY");
-        }
 
         assert!(
             result.is_ok(),
@@ -2265,16 +2308,9 @@ region = us-west-2
         let mut cache_file = std::fs::File::create(&cache_file_path).unwrap();
         cache_file.write_all(login_cache_json.as_bytes()).unwrap();
 
-        let original_env = env::var("AWS_LOGIN_CACHE_DIRECTORY").ok();
-        env::set_var("AWS_LOGIN_CACHE_DIRECTORY", cache_dir);
+        let _cache_dir = LoginCacheDirVar::set(cache_dir);
 
         let result = load_from_console_login("test-expired-profile", login_session);
-
-        if let Some(val) = original_env {
-            env::set_var("AWS_LOGIN_CACHE_DIRECTORY", val);
-        } else {
-            env::remove_var("AWS_LOGIN_CACHE_DIRECTORY");
-        }
 
         assert!(result.is_err(), "Should fail for expired credentials");
         let err_msg = result.unwrap_err().to_string();
@@ -2288,15 +2324,9 @@ region = us-west-2
     #[test]
     fn test_get_login_cache_dir_default() {
         // Test without env var set
-        let original_env = env::var("AWS_LOGIN_CACHE_DIRECTORY").ok();
-        env::remove_var("AWS_LOGIN_CACHE_DIRECTORY");
+        let _cache_dir = LoginCacheDirVar::unset();
 
         let result = get_login_cache_dir();
-
-        // Restore
-        if let Some(val) = original_env {
-            env::set_var("AWS_LOGIN_CACHE_DIRECTORY", val);
-        }
 
         assert!(result.is_ok());
         let path = result.unwrap();
@@ -2306,16 +2336,9 @@ region = us-west-2
 
     #[test]
     fn test_get_login_cache_dir_env_override() {
-        let original_env = env::var("AWS_LOGIN_CACHE_DIRECTORY").ok();
-        env::set_var("AWS_LOGIN_CACHE_DIRECTORY", "/custom/login/cache");
+        let _cache_dir = LoginCacheDirVar::set("/custom/login/cache");
 
         let result = get_login_cache_dir();
-
-        if let Some(val) = original_env {
-            env::set_var("AWS_LOGIN_CACHE_DIRECTORY", val);
-        } else {
-            env::remove_var("AWS_LOGIN_CACHE_DIRECTORY");
-        }
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), PathBuf::from("/custom/login/cache"));
