@@ -46,6 +46,8 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/ssm.json"),
     include_str!("../resources/sts.json"),
     include_str!("../resources/vpc.json"),
+    include_str!("../resources/vpc-networking.json"),
+    include_str!("../resources/wafv2.json"),
 ];
 
 /// Color definition from JSON
@@ -562,6 +564,283 @@ mod tests {
             .iter()
             .find(|a| a.sdk_method == "invoke_function");
         assert!(invoke_action.is_some(), "Lambda should have invoke action");
+    }
+
+    /// Every WAFv2 resource, keyed as it appears in the registry.
+    fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
+        let found: Vec<_> = get_registry()
+            .resources
+            .iter()
+            .filter(|(key, _)| key.starts_with("wafv2-"))
+            .collect();
+        assert!(!found.is_empty(), "no wafv2 resources in the registry");
+        found
+    }
+
+    /// Scope as the list call sends it.
+    fn list_scope(resource: &ResourceDef) -> &str {
+        resource
+            .api_config
+            .as_ref()
+            .expect("wafv2 resources are data-driven")
+            .static_params
+            .get("Scope")
+            .and_then(|scope| scope.as_str())
+            .expect("wafv2 list calls must pin a Scope")
+    }
+
+    #[test]
+    fn wafv2_web_acls_exist_for_both_scopes() {
+        let regional = get_resource("wafv2-web-acls").expect("regional web ACLs");
+        assert_eq!(list_scope(regional), "REGIONAL");
+        assert!(!regional.is_global);
+
+        let cloudfront = get_resource("wafv2-web-acls-cloudfront").expect("CloudFront web ACLs");
+        assert_eq!(list_scope(cloudfront), "CLOUDFRONT");
+        assert!(
+            cloudfront.is_global,
+            "CloudFront-scope ACLs are one global set, so the title should not claim a region"
+        );
+    }
+
+    /// Scope is not optional on any WAFv2 call, and it must be the same one on the
+    /// list and the describe. Listing CLOUDFRONT then describing REGIONAL returns a
+    /// bare "not found" that looks like the resource vanished.
+    #[test]
+    fn every_wafv2_resource_uses_one_scope_throughout() {
+        for (key, resource) in wafv2_resources() {
+            let template = resource
+                .describe_config
+                .as_ref()
+                .and_then(|d| d.body_template.as_deref())
+                .unwrap_or_else(|| panic!("{} needs a describe body template", key));
+
+            let compact: String = template.chars().filter(|c| !c.is_whitespace()).collect();
+            let expected = format!("\"Scope\":\"{}\"", list_scope(resource));
+            assert!(
+                compact.contains(&expected),
+                "{} lists {} but describes with {}",
+                key,
+                expected,
+                template
+            );
+        }
+    }
+
+    /// CLOUDFRONT-scope objects are only served from us-east-1, and the endpoint comes
+    /// from the service entry, not from the resource's own is_global flag.
+    #[test]
+    fn every_wafv2_resource_calls_the_endpoint_for_its_scope() {
+        for (key, resource) in wafv2_resources() {
+            let cloudfront = list_scope(resource) == "CLOUDFRONT";
+
+            for service_name in [
+                resource
+                    .api_config
+                    .as_ref()
+                    .and_then(|c| c.service_name.as_deref())
+                    .unwrap_or(&resource.service),
+                resource
+                    .describe_config
+                    .as_ref()
+                    .and_then(|d| d.service_name.as_deref())
+                    .unwrap_or(&resource.service),
+            ] {
+                let service = crate::aws::http::get_service(service_name)
+                    .unwrap_or_else(|| panic!("{} uses unknown service {}", key, service_name));
+                assert_eq!(
+                    service.is_global,
+                    cloudfront,
+                    "{} is scoped {} but {} points at the {} endpoint",
+                    key,
+                    list_scope(resource),
+                    service_name,
+                    if service.is_global {
+                        "us-east-1"
+                    } else {
+                        "selected region"
+                    }
+                );
+            }
+        }
+    }
+
+    /// Describe needs the name and the id, and only the ARN carries both, so the ARN
+    /// has to be the id field and has to be mapped. Miss either and `d` describes an
+    /// empty string.
+    #[test]
+    fn every_wafv2_resource_describes_from_its_arn() {
+        for (key, resource) in wafv2_resources() {
+            assert_eq!(resource.id_field, "ARN", "{} id field", key);
+            assert!(
+                resource.field_mappings.contains_key("ARN"),
+                "{} does not map ARN, so its id would be blank",
+                key
+            );
+        }
+    }
+
+    /// `navigate_to_sub_resource` refuses a key that the current resource does not
+    /// declare in `sub_resources`, so an `enter_sub_resource` missing from that list
+    /// turns Enter into an error message rather than a drill-in.
+    #[test]
+    fn enter_sub_resource_is_always_a_declared_sub_resource() {
+        let registry = get_registry();
+        for (key, resource) in &registry.resources {
+            let Some(target) = resource.enter_sub_resource.as_deref() else {
+                continue;
+            };
+
+            assert!(
+                registry.resources.contains_key(target),
+                "{} enters {}, which is not a resource",
+                key,
+                target
+            );
+            assert!(
+                resource
+                    .sub_resources
+                    .iter()
+                    .any(|s| s.resource_key == target),
+                "{} enters {} but does not list it in sub_resources, so Enter would fail",
+                key,
+                target
+            );
+        }
+    }
+
+    /// The records are the reason to open a zone, so Enter drills into them. The zone's
+    /// own detail stays reachable on `d`.
+    #[test]
+    fn hosted_zones_enter_their_records() {
+        let zones = get_resource("route53-hosted-zones").expect("route53-hosted-zones");
+        assert_eq!(
+            zones.enter_sub_resource.as_deref(),
+            Some("route53-records"),
+            "Enter on a hosted zone should list its records"
+        );
+    }
+
+    /// The EC2 networking family, listed explicitly so that dropping one from the JSON
+    /// is a test failure rather than a silently smaller loop.
+    const VPC_NETWORKING_KEYS: &[&str] = &[
+        "route-tables",
+        "internet-gateways",
+        "nat-gateways",
+        "vpc-endpoints",
+        "network-acls",
+        "vpc-peering-connections",
+        "network-interfaces",
+        "elastic-ips",
+        "transit-gateways",
+    ];
+
+    fn vpc_networking_resources() -> Vec<(&'static str, &'static ResourceDef)> {
+        let registry = get_registry();
+        VPC_NETWORKING_KEYS
+            .iter()
+            .map(|key| {
+                let resource = registry
+                    .resources
+                    .get(*key)
+                    .unwrap_or_else(|| panic!("{} is not in the registry", key));
+                (*key, resource)
+            })
+            .collect()
+    }
+
+    /// EC2's Query protocol wraps every reply in `<Describe...Response>` and every item
+    /// in a `<xxxSet><item>`. Get the root wrong and the list comes back empty with no
+    /// error at all, which is the single easiest mistake to make in these files.
+    #[test]
+    fn every_vpc_networking_resource_reads_from_the_ec2_response_envelope() {
+        for (key, resource) in vpc_networking_resources() {
+            assert_eq!(resource.service, "ec2", "{} service", key);
+
+            let config = resource
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{} needs an api_config", key));
+            let action = config
+                .action
+                .as_deref()
+                .unwrap_or_else(|| panic!("{} needs an action", key));
+            let root = config
+                .response_root
+                .as_deref()
+                .unwrap_or_else(|| panic!("{} needs a response_root", key));
+
+            let prefix = format!("/{}Response/", action);
+            assert!(
+                root.starts_with(&prefix),
+                "{} calls {} but reads from {}",
+                key,
+                action,
+                root
+            );
+            assert!(
+                root.ends_with("Set/item"),
+                "{} reads from {}, which is not an EC2 item set",
+                key,
+                root
+            );
+        }
+    }
+
+    /// A column whose json_path has no field mapping renders as an empty cell forever.
+    /// `Tags.Name` and friends index into a mapped map, so only the first segment has
+    /// to exist.
+    #[test]
+    fn every_vpc_networking_column_has_a_field_mapping() {
+        for (key, resource) in vpc_networking_resources() {
+            for column in &resource.columns {
+                let root_field = column.json_path.split('.').next().unwrap();
+                assert!(
+                    resource.field_mappings.contains_key(root_field),
+                    "{} column {:?} reads {} but nothing maps {}",
+                    key,
+                    column.header,
+                    column.json_path,
+                    root_field
+                );
+            }
+        }
+    }
+
+    /// DescribeAddresses is the one operation here with no paginator: sending MaxResults
+    /// or NextToken earns an InvalidParameterCombination and no rows. Everything else
+    /// must page, or long-lived accounts silently show only the first screenful.
+    #[test]
+    fn vpc_networking_pagination_follows_the_ec2_api() {
+        for (key, resource) in vpc_networking_resources() {
+            let config = resource.api_config.as_ref().unwrap();
+            let action = config.action.as_deref().unwrap();
+            let pagination = config.pagination.as_ref();
+
+            if action == "DescribeAddresses" {
+                assert!(
+                    pagination.is_none(),
+                    "{} paginates, but DescribeAddresses rejects MaxResults and NextToken",
+                    key
+                );
+                continue;
+            }
+
+            let pagination =
+                pagination.unwrap_or_else(|| panic!("{} needs pagination for {}", key, action));
+            assert_eq!(
+                pagination.input_token.as_deref(),
+                Some("NextToken"),
+                "{} input token",
+                key
+            );
+            assert_eq!(
+                pagination.output_token.as_deref(),
+                Some(format!("/{}Response/nextToken", action).as_str()),
+                "{} output token",
+                key
+            );
+        }
     }
 
     #[test]

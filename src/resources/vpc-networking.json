@@ -1,0 +1,404 @@
+{
+  "resources": {
+    "route-tables": {
+      "display_name": "Route Tables",
+      "service": "ec2",
+      "sdk_method": "describe_route_tables",
+      "sdk_method_params": {},
+      "response_path": "route_tables",
+      "id_field": "RouteTableId",
+      "name_field": "Tags.Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Tags.Name", "width": 20 },
+        { "header": "ROUTE TABLE ID", "json_path": "RouteTableId", "width": 24 },
+        { "header": "VPC ID", "json_path": "VpcId", "width": 22 },
+        { "header": "DESTINATIONS", "json_path": "Destinations", "width": 34 },
+        { "header": "SUBNETS", "json_path": "Subnets", "width": 24 },
+        { "header": "MAIN", "json_path": "Main", "width": 6, "color_map": "bool" }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeRouteTables",
+        "response_root": "/DescribeRouteTablesResponse/routeTableSet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeRouteTablesResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "RouteTableId": { "source": "/routeTableId", "default": "-" },
+        "VpcId": { "source": "/vpcId", "default": "-" },
+        "OwnerId": { "source": "/ownerId", "default": "-" },
+        "Destinations": {
+          "source": "/routeSet/item/destinationCidrBlock",
+          "transform": "array_to_csv",
+          "default": "-"
+        },
+        "Subnets": {
+          "source": "/associationSet/item/subnetId",
+          "transform": "array_to_csv",
+          "default": "-"
+        },
+        "Main": {
+          "source": "/associationSet/item/main",
+          "transform": "first_item",
+          "default": "-"
+        },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+
+    "internet-gateways": {
+      "display_name": "Internet Gateways",
+      "service": "ec2",
+      "sdk_method": "describe_internet_gateways",
+      "sdk_method_params": {},
+      "response_path": "internet_gateways",
+      "id_field": "InternetGatewayId",
+      "name_field": "Tags.Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Tags.Name", "width": 24 },
+        { "header": "GATEWAY ID", "json_path": "InternetGatewayId", "width": 24 },
+        { "header": "ATTACHED VPC", "json_path": "VpcId", "width": 24 },
+        { "header": "STATE", "json_path": "State", "width": 14, "color_map": "state" },
+        { "header": "OWNER", "json_path": "OwnerId", "width": 14 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeInternetGateways",
+        "response_root": "/DescribeInternetGatewaysResponse/internetGatewaySet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeInternetGatewaysResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "InternetGatewayId": { "source": "/internetGatewayId", "default": "-" },
+        "OwnerId": { "source": "/ownerId", "default": "-" },
+        "VpcId": {
+          "source": "/attachmentSet/item/vpcId",
+          "transform": "array_to_csv",
+          "default": "detached"
+        },
+        "State": {
+          "source": "/attachmentSet/item/state",
+          "transform": "first_item",
+          "default": "detached"
+        },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+
+    "nat-gateways": {
+      "display_name": "NAT Gateways",
+      "service": "ec2",
+      "sdk_method": "describe_nat_gateways",
+      "sdk_method_params": {},
+      "response_path": "nat_gateways",
+      "id_field": "NatGatewayId",
+      "name_field": "Tags.Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Tags.Name", "width": 18 },
+        { "header": "NAT GATEWAY ID", "json_path": "NatGatewayId", "width": 24 },
+        { "header": "STATE", "json_path": "State", "width": 12, "color_map": "state" },
+        { "header": "PUBLIC IP", "json_path": "PublicIp", "width": 16 },
+        { "header": "PRIVATE IP", "json_path": "PrivateIp", "width": 16 },
+        { "header": "SUBNET", "json_path": "SubnetId", "width": 24 },
+        { "header": "VPC ID", "json_path": "VpcId", "width": 22 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeNatGateways",
+        "response_root": "/DescribeNatGatewaysResponse/natGatewaySet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeNatGatewaysResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "NatGatewayId": { "source": "/natGatewayId", "default": "-" },
+        "State": { "source": "/state", "default": "-" },
+        "SubnetId": { "source": "/subnetId", "default": "-" },
+        "VpcId": { "source": "/vpcId", "default": "-" },
+        "ConnectivityType": { "source": "/connectivityType", "default": "-" },
+        "PublicIp": {
+          "source": "/natGatewayAddressSet/item/publicIp",
+          "transform": "array_to_csv",
+          "default": "-"
+        },
+        "PrivateIp": {
+          "source": "/natGatewayAddressSet/item/privateIp",
+          "transform": "array_to_csv",
+          "default": "-"
+        },
+        "FailureMessage": { "source": "/failureMessage", "default": "-" },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+
+    "vpc-endpoints": {
+      "display_name": "VPC Endpoints",
+      "service": "ec2",
+      "sdk_method": "describe_vpc_endpoints",
+      "sdk_method_params": {},
+      "response_path": "vpc_endpoints",
+      "id_field": "VpcEndpointId",
+      "name_field": "ServiceName",
+      "is_global": false,
+      "columns": [
+        { "header": "ENDPOINT ID", "json_path": "VpcEndpointId", "width": 24 },
+        { "header": "SERVICE", "json_path": "ServiceName", "width": 40 },
+        { "header": "TYPE", "json_path": "VpcEndpointType", "width": 12 },
+        { "header": "STATE", "json_path": "State", "width": 12, "color_map": "state" },
+        { "header": "VPC ID", "json_path": "VpcId", "width": 22 },
+        { "header": "PRIVATE DNS", "json_path": "PrivateDnsEnabled", "width": 12, "color_map": "bool" }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeVpcEndpoints",
+        "response_root": "/DescribeVpcEndpointsResponse/vpcEndpointSet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeVpcEndpointsResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "VpcEndpointId": { "source": "/vpcEndpointId", "default": "-" },
+        "ServiceName": { "source": "/serviceName", "default": "-" },
+        "VpcEndpointType": { "source": "/vpcEndpointType", "default": "-" },
+        "State": { "source": "/state", "default": "-" },
+        "VpcId": { "source": "/vpcId", "default": "-" },
+        "PrivateDnsEnabled": { "source": "/privateDnsEnabled", "transform": "bool_to_yes_no" },
+        "Subnets": {
+          "source": "/subnetIdSet/item",
+          "transform": "array_to_csv",
+          "default": "-"
+        },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+
+    "network-acls": {
+      "display_name": "Network ACLs",
+      "service": "ec2",
+      "sdk_method": "describe_network_acls",
+      "sdk_method_params": {},
+      "response_path": "network_acls",
+      "id_field": "NetworkAclId",
+      "name_field": "Tags.Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Tags.Name", "width": 20 },
+        { "header": "NETWORK ACL ID", "json_path": "NetworkAclId", "width": 24 },
+        { "header": "VPC ID", "json_path": "VpcId", "width": 22 },
+        { "header": "DEFAULT", "json_path": "IsDefault", "width": 9, "color_map": "bool" },
+        { "header": "SUBNETS", "json_path": "Subnets", "width": 34 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeNetworkAcls",
+        "response_root": "/DescribeNetworkAclsResponse/networkAclSet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeNetworkAclsResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "NetworkAclId": { "source": "/networkAclId", "default": "-" },
+        "VpcId": { "source": "/vpcId", "default": "-" },
+        "IsDefault": { "source": "/default", "transform": "bool_to_yes_no" },
+        "Subnets": {
+          "source": "/associationSet/item/subnetId",
+          "transform": "array_to_csv",
+          "default": "-"
+        },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+
+    "vpc-peering-connections": {
+      "display_name": "VPC Peering",
+      "service": "ec2",
+      "sdk_method": "describe_vpc_peering_connections",
+      "sdk_method_params": {},
+      "response_path": "vpc_peering_connections",
+      "id_field": "VpcPeeringConnectionId",
+      "name_field": "Tags.Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Tags.Name", "width": 18 },
+        { "header": "PEERING ID", "json_path": "VpcPeeringConnectionId", "width": 24 },
+        { "header": "STATUS", "json_path": "Status", "width": 14, "color_map": "state" },
+        { "header": "REQUESTER VPC", "json_path": "RequesterVpcId", "width": 22 },
+        { "header": "ACCEPTER VPC", "json_path": "AccepterVpcId", "width": 22 },
+        { "header": "PEER REGION", "json_path": "AccepterRegion", "width": 14 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeVpcPeeringConnections",
+        "response_root": "/DescribeVpcPeeringConnectionsResponse/vpcPeeringConnectionSet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeVpcPeeringConnectionsResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "VpcPeeringConnectionId": { "source": "/vpcPeeringConnectionId", "default": "-" },
+        "Status": { "source": "/status/code", "default": "-" },
+        "StatusMessage": { "source": "/status/message", "default": "-" },
+        "RequesterVpcId": { "source": "/requesterVpcInfo/vpcId", "default": "-" },
+        "RequesterCidr": { "source": "/requesterVpcInfo/cidrBlock", "default": "-" },
+        "AccepterVpcId": { "source": "/accepterVpcInfo/vpcId", "default": "-" },
+        "AccepterCidr": { "source": "/accepterVpcInfo/cidrBlock", "default": "-" },
+        "AccepterRegion": { "source": "/accepterVpcInfo/region", "default": "-" },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+
+    "network-interfaces": {
+      "display_name": "Network Interfaces",
+      "service": "ec2",
+      "sdk_method": "describe_network_interfaces",
+      "sdk_method_params": {},
+      "response_path": "network_interfaces",
+      "id_field": "NetworkInterfaceId",
+      "name_field": "NetworkInterfaceId",
+      "is_global": false,
+      "columns": [
+        { "header": "ENI ID", "json_path": "NetworkInterfaceId", "width": 22 },
+        { "header": "STATUS", "json_path": "Status", "width": 10, "color_map": "state" },
+        { "header": "TYPE", "json_path": "InterfaceType", "width": 14 },
+        { "header": "PRIVATE IP", "json_path": "PrivateIpAddress", "width": 16 },
+        { "header": "ATTACHED TO", "json_path": "AttachedInstanceId", "width": 20 },
+        { "header": "SUBNET", "json_path": "SubnetId", "width": 22 },
+        { "header": "DESCRIPTION", "json_path": "Description", "width": 30 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeNetworkInterfaces",
+        "response_root": "/DescribeNetworkInterfacesResponse/networkInterfaceSet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeNetworkInterfacesResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "NetworkInterfaceId": { "source": "/networkInterfaceId", "default": "-" },
+        "Status": { "source": "/status", "default": "-" },
+        "InterfaceType": { "source": "/interfaceType", "default": "-" },
+        "PrivateIpAddress": { "source": "/privateIpAddress", "default": "-" },
+        "AttachedInstanceId": { "source": "/attachment/instanceId", "default": "-" },
+        "SubnetId": { "source": "/subnetId", "default": "-" },
+        "VpcId": { "source": "/vpcId", "default": "-" },
+        "AvailabilityZone": { "source": "/availabilityZone", "default": "-" },
+        "Description": { "source": "/description", "default": "-" },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+
+    "elastic-ips": {
+      "display_name": "Elastic IPs",
+      "service": "ec2",
+      "sdk_method": "describe_addresses",
+      "sdk_method_params": {},
+      "response_path": "addresses",
+      "id_field": "AllocationId",
+      "name_field": "PublicIp",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Tags.Name", "width": 18 },
+        { "header": "PUBLIC IP", "json_path": "PublicIp", "width": 16 },
+        { "header": "ALLOCATION ID", "json_path": "AllocationId", "width": 24 },
+        { "header": "ATTACHED TO", "json_path": "InstanceId", "width": 20 },
+        { "header": "ENI", "json_path": "NetworkInterfaceId", "width": 22 },
+        { "header": "PRIVATE IP", "json_path": "PrivateIpAddress", "width": 16 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeAddresses",
+        "response_root": "/DescribeAddressesResponse/addressesSet/item"
+      },
+      "field_mappings": {
+        "AllocationId": { "source": "/allocationId", "default": "-" },
+        "PublicIp": { "source": "/publicIp", "default": "-" },
+        "InstanceId": { "source": "/instanceId", "default": "unattached" },
+        "NetworkInterfaceId": { "source": "/networkInterfaceId", "default": "-" },
+        "PrivateIpAddress": { "source": "/privateIpAddress", "default": "-" },
+        "Domain": { "source": "/domain", "default": "-" },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+
+    "transit-gateways": {
+      "display_name": "Transit Gateways",
+      "service": "ec2",
+      "sdk_method": "describe_transit_gateways",
+      "sdk_method_params": {},
+      "response_path": "transit_gateways",
+      "id_field": "TransitGatewayId",
+      "name_field": "Tags.Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Tags.Name", "width": 22 },
+        { "header": "TRANSIT GATEWAY ID", "json_path": "TransitGatewayId", "width": 24 },
+        { "header": "STATE", "json_path": "State", "width": 12, "color_map": "state" },
+        { "header": "OWNER", "json_path": "OwnerId", "width": 14 },
+        { "header": "DESCRIPTION", "json_path": "Description", "width": 28 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeTransitGateways",
+        "response_root": "/DescribeTransitGatewaysResponse/transitGatewaySet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeTransitGatewaysResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "TransitGatewayId": { "source": "/transitGatewayId", "default": "-" },
+        "State": { "source": "/state", "default": "-" },
+        "OwnerId": { "source": "/ownerId", "default": "-" },
+        "Description": { "source": "/description", "default": "-" },
+        "TransitGatewayArn": { "source": "/transitGatewayArn", "default": "-" },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    }
+  }
+}
