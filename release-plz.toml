@@ -4,5 +4,4 @@
 # GitHub release and Docker images.
 git_release_enable = false
 
-# No crates.io publishing. The binary is the artifact.
-publish = false
+publish = true

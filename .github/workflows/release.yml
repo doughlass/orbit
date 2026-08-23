@@ -1,7 +1,7 @@
 # Triggered by the tag that release-plz pushes after a release PR merge.
-# release-plz handles the Cargo.toml bump, changelog and version tag;
-# this workflow adds multi-platform binary builds, GitHub release and
-# a Docker image.
+# release-plz handles the Cargo.toml bump, changelog, crates.io publish
+# and version tag; this workflow adds multi-platform binary builds,
+# GitHub release and a Docker image.
 
 name: Release
 
