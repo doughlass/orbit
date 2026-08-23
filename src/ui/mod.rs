@@ -19,6 +19,7 @@ use ratatui::{
     },
     Frame,
 };
+use std::cmp::Reverse;
 
 pub fn render(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
@@ -221,14 +222,10 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
     let inner_area = block.inner(area);
     f.render_widget(block, area);
 
-    // Calculate actual column widths in characters based on inner area and percentages
-    // Note: inner_area.width is already the usable width inside the border
-    let total_width = inner_area.width.saturating_sub(2) as usize; // subtract for table borders
-    let column_widths: Vec<usize> = resource
-        .columns
-        .iter()
-        .map(|col| (total_width * col.width as usize) / 100)
-        .collect();
+    // Apportion the JSON column weights across the real area; see column_layout
+    // for why the weights cannot go to ratatui as percentages.
+    let weights: Vec<u16> = resource.columns.iter().map(|col| col.width).collect();
+    let (widths, column_widths) = column_layout(inner_area.width, &weights);
 
     // Build header from column definitions with left padding.
     // Sorted column gets a direction arrow in cyan; the cursor column (what Tab
@@ -267,20 +264,8 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
                     style = style.fg(Color::White);
                 }
                 let display_value = format_cell_value(&value, col);
-                // Truncate from beginning to show the end (more meaningful for paths/names)
-                // The column width from percentage doesn't account for inter-column spacing,
-                // so we use 80% of calculated width to be safe
                 let col_width = column_widths_clone.get(col_idx).copied().unwrap_or(40);
-                let usable_width = (col_width * 80) / 100;
-                let display_value = if display_value.chars().count() > usable_width {
-                    let chars: Vec<char> = display_value.chars().collect();
-                    let keep_chars = usable_width.saturating_sub(3); // 3 for "..."
-                    let start = chars.len().saturating_sub(keep_chars);
-                    let truncated: String = chars[start..].iter().collect();
-                    format!("...{}", truncated)
-                } else {
-                    display_value
-                };
+                let display_value = truncate_cell(&display_value, col_width);
 
                 if highlight_filter_matches
                     && (col.json_path == resource.name_field || col.json_path == resource.id_field)
@@ -302,23 +287,104 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
             Row::new(cells)
         });
 
-    // Build column widths
-    let widths: Vec<Constraint> = resource
-        .columns
-        .iter()
-        .map(|col| Constraint::Percentage(col.width))
-        .collect();
-
-    let table = Table::new(rows, widths).header(header).row_highlight_style(
-        Style::default()
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD),
-    );
+    let table = Table::new(rows, widths)
+        .column_spacing(TABLE_COLUMN_SPACING)
+        .header(header)
+        .row_highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        );
 
     let mut state = TableState::default();
     state.select(Some(app.selected));
 
     f.render_stateful_widget(table, inner_area, &mut state);
+}
+
+/// Gap ratatui inserts between table columns. Matches the `.column_spacing()`
+/// set on the table in `render_dynamic_table`; both must move together or
+/// `cell_text_widths` starts lying.
+const TABLE_COLUMN_SPACING: u16 = 1;
+
+/// Cells render as `format!(" {}", value)`, so one cell of every column goes to
+/// the leading pad rather than the text.
+const CELL_PAD: usize = 1;
+
+/// Table column constraints and the matching room for text in each, both derived
+/// from the `width` values in the resource JSON.
+///
+/// The JSON calls those values percentages, but only 9 of 61 resources have them
+/// summing to 100 — they run from 50 to 148 — so in practice they are weights.
+/// Handing them to ratatui as percentages went wrong both ways: a resource
+/// summing to 50 left half the table blank, and one summing over 100
+/// over-constrained the solver, which then flattened the ratios. EC2's
+/// 20-weight NAME and 12-weight STATE both came out 12 cells wide at 100
+/// columns, and its 16-weight PUBLIC IP came out wider than NAME.
+///
+/// So apportion the cells here and hand ratatui exact lengths. Fills the area
+/// exactly, largest remainder first, so no cell goes unused.
+///
+/// Returned together because they must agree: the text widths are what
+/// `truncate_cell` trims to, and a mismatch clips silently. Assumes no
+/// `highlight_symbol` on the table, which is what would reserve ratatui's
+/// selection column.
+fn column_layout(area_width: u16, weights: &[u16]) -> (Vec<Constraint>, Vec<usize>) {
+    if weights.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    let gaps = (weights.len() as u16 - 1) * TABLE_COLUMN_SPACING;
+    let available = area_width.saturating_sub(gaps) as usize;
+    let total: usize = weights.iter().map(|w| *w as usize).sum();
+
+    let mut cells: Vec<usize> = if total == 0 {
+        // Nothing to apportion by. Split evenly rather than collapsing to zero.
+        vec![available / weights.len(); weights.len()]
+    } else {
+        weights
+            .iter()
+            .map(|w| available * *w as usize / total)
+            .collect()
+    };
+
+    // Hand out the cells integer division dropped, biggest fractional part
+    // first. Without this a 7-column table can sit several cells short of the
+    // area for no visible reason.
+    let mut by_remainder: Vec<usize> = (0..weights.len()).collect();
+    if total > 0 {
+        by_remainder.sort_by_key(|&i| Reverse(available * weights[i] as usize % total));
+    }
+    let leftover = available.saturating_sub(cells.iter().sum::<usize>());
+    for &i in by_remainder.iter().take(leftover) {
+        cells[i] += 1;
+    }
+
+    let constraints = cells
+        .iter()
+        .map(|c| Constraint::Length(*c as u16))
+        .collect();
+    let text_widths = cells.iter().map(|c| c.saturating_sub(CELL_PAD)).collect();
+    (constraints, text_widths)
+}
+
+/// Cut `value` down to `width` cells, keeping the start and marking the cut with
+/// a trailing "...".
+///
+/// Names share their prefix far less often than their suffix, so a visible head
+/// tells resources apart better than a visible tail: `finance_suite_web...`
+/// beats `...ance_suite_webserv`.
+fn truncate_cell(value: &str, width: usize) -> String {
+    if value.chars().count() <= width {
+        return value.to_string();
+    }
+    // Below 4 cells there is no room for the marker plus a character of content,
+    // so hard-cut instead. Emitting "..." anyway would overrun the column.
+    if width < 4 {
+        return value.chars().take(width).collect();
+    }
+    let kept: String = value.chars().take(width - 3).collect();
+    format!("{}...", kept)
 }
 
 /// Get cell style based on value and column definition
@@ -848,7 +914,188 @@ fn render_crumb(f: &mut Frame, app: &App, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use super::describe_title;
+    use super::{column_layout, describe_title, truncate_cell, TABLE_COLUMN_SPACING};
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::Rect;
+    use ratatui::widgets::{Cell, Row, Table};
+    use ratatui::Terminal;
+
+    /// The real EC2 Instances weights: NAME, INSTANCE ID, STATE, TYPE, AZ,
+    /// PUBLIC IP, PRIVATE IP. They sum to 111, which is the whole problem.
+    const EC2: [u16; 7] = [20, 21, 12, 12, 14, 16, 16];
+
+    /// Renders one row the way `render_dynamic_table` does, filling each cell
+    /// with a distinct marker character repeated `fill(col)` times, and returns
+    /// how many times each marker survived into the buffer.
+    fn rendered_marker_counts(
+        area: Rect,
+        weights: &[u16],
+        fill: impl Fn(usize) -> usize,
+    ) -> Vec<usize> {
+        let (constraints, _) = column_layout(area.width, weights);
+        let markers: Vec<char> = (0..weights.len())
+            .map(|i| (b'a' + i as u8) as char)
+            .collect();
+        let cells: Vec<Cell> = markers
+            .iter()
+            .enumerate()
+            .map(|(i, m)| Cell::from(format!(" {}", m.to_string().repeat(fill(i)))))
+            .collect();
+        let table = Table::new([Row::new(cells)], constraints).column_spacing(TABLE_COLUMN_SPACING);
+
+        let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+        terminal
+            .draw(|f| f.render_widget(table, area))
+            .expect("draw");
+
+        let buffer = terminal.backend().buffer().clone();
+        let row: String = (0..area.width)
+            .filter_map(|x| buffer.cell((x, 0)).map(|c| c.symbol().to_string()))
+            .collect();
+        markers
+            .iter()
+            .map(|m| row.chars().filter(|c| c == m).count())
+            .collect()
+    }
+
+    /// The widths we hand `truncate_cell` have to be the widths ratatui really
+    /// gives each column, or text clips despite passing the length check. Renders
+    /// values sized to the claimed width and checks every character survived.
+    #[test]
+    fn column_layout_text_widths_are_not_clipped_when_rendered() {
+        let area = Rect::new(0, 0, 120, 3);
+        let (_, text) = column_layout(area.width, &EC2);
+
+        assert_eq!(
+            rendered_marker_counts(area, &EC2, |i| text[i]),
+            text,
+            "a value sized to the claimed width lost characters when rendered"
+        );
+    }
+
+    /// Other half of the same contract: the claim is the ceiling, not a guess
+    /// under it. One character more must clip, otherwise we are wasting room.
+    #[test]
+    fn column_layout_text_widths_are_the_most_that_fits() {
+        let area = Rect::new(0, 0, 120, 3);
+        let (_, text) = column_layout(area.width, &EC2);
+
+        assert_eq!(
+            rendered_marker_counts(area, &EC2, |i| text[i] + 1),
+            text,
+            "an over-long value rendered more than the claimed width, so columns \
+             have room we are not using"
+        );
+    }
+
+    /// The bug this replaced: handing ratatui percentages that sum to 111 made it
+    /// give EC2's 20-weight NAME and 12-weight STATE the same 12 cells, and made
+    /// the 16-weight PUBLIC IP wider than NAME. A heavier column must always get
+    /// at least as many cells as a lighter one.
+    #[test]
+    fn column_layout_never_lets_a_lighter_column_outgrow_a_heavier_one() {
+        for width in 40..=240 {
+            let (_, text) = column_layout(width, &EC2);
+
+            for (i, wi) in EC2.iter().enumerate() {
+                for (j, wj) in EC2.iter().enumerate() {
+                    if wi > wj {
+                        assert!(
+                            text[i] >= text[j],
+                            "at width {} column {} (weight {}) got {} cells but \
+                             lighter column {} (weight {}) got {}",
+                            width,
+                            i,
+                            wi,
+                            text[i],
+                            j,
+                            wj,
+                            text[j]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// 52 of the 61 resource definitions have weights that do not sum to 100,
+    /// from 50 up to 148. Every one of them must still use the full table: the
+    /// old percentage handling left a 50-sum resource with half the table blank.
+    #[test]
+    fn column_layout_fills_the_width_whatever_the_weights_sum_to() {
+        let weight_sets: [&[u16]; 4] = [&EC2, &[25, 15, 10], &[50, 50], &[40, 40, 40, 28]];
+
+        for weights in weight_sets {
+            for width in 40..=240u16 {
+                let (_, text) = column_layout(width, weights);
+                let gaps = (weights.len() as u16 - 1) * TABLE_COLUMN_SPACING;
+                let pads = weights.len() as u16;
+                let used: u16 = text.iter().map(|t| *t as u16).sum::<u16>() + pads + gaps;
+
+                assert_eq!(
+                    used, width,
+                    "weights {:?} at width {} used {} cells",
+                    weights, width, used
+                );
+            }
+        }
+    }
+
+    /// Narrow terminals must not panic or hand out phantom cells. Below roughly
+    /// two cells per column there is nothing useful to show, but it still has to
+    /// stay inside the area.
+    #[test]
+    fn column_layout_survives_areas_too_small_for_its_columns() {
+        for width in 0..=20u16 {
+            let (constraints, text) = column_layout(width, &EC2);
+            assert_eq!(constraints.len(), EC2.len());
+            assert!(text.iter().map(|t| *t as u16).sum::<u16>() <= width);
+        }
+    }
+
+    #[test]
+    fn column_layout_handles_a_resource_with_no_columns() {
+        let (constraints, text) = column_layout(80, &[]);
+        assert!(constraints.is_empty());
+        assert!(text.is_empty());
+    }
+
+    #[test]
+    fn truncate_cell_keeps_the_start_and_marks_the_cut_at_the_end() {
+        assert_eq!(
+            truncate_cell("finance_suite_webserver", 20),
+            "finance_suite_web..."
+        );
+    }
+
+    #[test]
+    fn truncate_cell_leaves_values_that_fit_alone() {
+        assert_eq!(truncate_cell("Reporting", 20), "Reporting");
+        assert_eq!(truncate_cell("exactly-ten", 11), "exactly-ten");
+    }
+
+    /// The ellipsis itself is 3 cells, so a very narrow column has no room for
+    /// both it and any content. Overflowing here would bleed into the next
+    /// column, so drop the marker rather than the width limit.
+    #[test]
+    fn truncate_cell_never_exceeds_the_width_it_is_given() {
+        for width in 0..=24 {
+            let out = truncate_cell("finance_suite_webserver", width);
+            assert!(
+                out.chars().count() <= width,
+                "width {} produced {:?} ({} cells)",
+                width,
+                out,
+                out.chars().count()
+            );
+        }
+    }
+
+    /// Widths are cell counts, not byte counts; slicing bytes would panic here.
+    #[test]
+    fn truncate_cell_counts_characters_not_bytes() {
+        assert_eq!(truncate_cell("ααααααααα", 6), "ααα...");
+    }
 
     #[test]
     fn describe_title_uses_action_display_name_when_present() {
