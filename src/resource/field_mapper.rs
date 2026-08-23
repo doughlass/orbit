@@ -71,6 +71,7 @@ fn apply_transform(value: &Value, transform: &str) -> Value {
         "private_zone_to_type" => transform_private_zone_to_type(value),
         "route53_record_value" => transform_route53_record_value(value),
         "route53_record_id" => transform_route53_record_id(value),
+        "ecr_visibility" => transform_ecr_visibility(value),
         _ => value.clone(),
     }
 }
@@ -255,6 +256,19 @@ pub fn transform_bool_to_yes_no(value: &Value) -> Value {
         }
         _ => Value::String("-".to_string()),
     }
+}
+
+/// Detect ECR repository visibility from its URI.
+/// Private repos use .dkr.ecr.<region>.amazonaws.com;
+/// public repos use public.ecr.aws.
+pub fn transform_ecr_visibility(value: &Value) -> Value {
+    let uri = value.as_str().unwrap_or("");
+    let visibility = if uri.contains("public.ecr.aws") {
+        "Public"
+    } else {
+        "Private"
+    };
+    Value::String(visibility.to_string())
 }
 
 /// Transform array to comma-separated values

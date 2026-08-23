@@ -10,9 +10,10 @@
       "name_field": "repositoryName",
       "is_global": false,
       "columns": [
-        { "header": "REPOSITORY NAME", "json_path": "repositoryName", "width": 40 },
-        { "header": "URI", "json_path": "repositoryUri", "width": 60 },
-        { "header": "CREATED", "json_path": "createdAt", "width": 25 }
+        { "header": "REPOSITORY NAME", "json_path": "repositoryName", "width": 35 },
+        { "header": "URI", "json_path": "repositoryUri", "width": 50 },
+        { "header": "VISIBILITY", "json_path": "Visibility", "width": 10 },
+        { "header": "CREATED", "json_path": "createdAt", "width": 22 }
       ],
       "sub_resources": [
         { "shortcut": "i", "display_name": "Images", "resource_key": "ecr-images",
@@ -35,7 +36,8 @@
         "repositoryName": { "source": "/repositoryName", "default": "-" },
         "repositoryArn": { "source": "/repositoryArn", "default": "-" },
         "repositoryUri": { "source": "/repositoryUri", "default": "-" },
-        "createdAt": { "source": "/createdAt", "transform": "format_epoch_seconds", "default": "-" }
+        "createdAt": { "source": "/createdAt", "transform": "format_epoch_seconds", "default": "-" },
+        "Visibility": { "source": "/repositoryUri", "transform": "ecr_visibility", "default": "-" }
       }
     },
     "ecr-images": {
