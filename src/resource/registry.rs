@@ -680,6 +680,47 @@ mod tests {
         }
     }
 
+    /// `navigate_to_sub_resource` refuses a key that the current resource does not
+    /// declare in `sub_resources`, so an `enter_sub_resource` missing from that list
+    /// turns Enter into an error message rather than a drill-in.
+    #[test]
+    fn enter_sub_resource_is_always_a_declared_sub_resource() {
+        let registry = get_registry();
+        for (key, resource) in &registry.resources {
+            let Some(target) = resource.enter_sub_resource.as_deref() else {
+                continue;
+            };
+
+            assert!(
+                registry.resources.contains_key(target),
+                "{} enters {}, which is not a resource",
+                key,
+                target
+            );
+            assert!(
+                resource
+                    .sub_resources
+                    .iter()
+                    .any(|s| s.resource_key == target),
+                "{} enters {} but does not list it in sub_resources, so Enter would fail",
+                key,
+                target
+            );
+        }
+    }
+
+    /// The records are the reason to open a zone, so Enter drills into them. The zone's
+    /// own detail stays reachable on `d`.
+    #[test]
+    fn hosted_zones_enter_their_records() {
+        let zones = get_resource("route53-hosted-zones").expect("route53-hosted-zones");
+        assert_eq!(
+            zones.enter_sub_resource.as_deref(),
+            Some("route53-records"),
+            "Enter on a hosted zone should list its records"
+        );
+    }
+
     /// The EC2 networking family, listed explicitly so that dropping one from the JSON
     /// is a test failure rather than a silently smaller loop.
     const VPC_NETWORKING_KEYS: &[&str] = &[
