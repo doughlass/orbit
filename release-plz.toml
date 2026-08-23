@@ -2,7 +2,7 @@
 # release-plz's own GitHub release is disabled — our release.yml
 # (triggered by the tag) handles multi-platform binary builds, the
 # GitHub release and Docker images.
-git_release = false
+git_release_enable = false
 
 # No crates.io publishing. The binary is the artifact.
 publish = false
