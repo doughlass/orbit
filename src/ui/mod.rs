@@ -173,36 +173,44 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
         let count = app.filtered_items.len();
         let total = app.items.len();
         let is_global = resource.is_global;
+        let has_more = app.pagination.has_more;
 
-        // Build pagination indicator
-        let page_info = if app.pagination.has_more || app.pagination.current_page > 1 {
-            format!(
-                " pg.{}{}",
-                app.pagination.current_page,
-                if app.pagination.has_more { "+" } else { "" }
-            )
+        let count_str = if has_more {
+            format!("{}+", count)
+        } else {
+            count.to_string()
+        };
+        let total_str = if has_more {
+            format!("{}+", total)
+        } else {
+            total.to_string()
+        };
+
+        // Pagination indicator (page number only when past page 1)
+        let page_info = if app.pagination.current_page > 1 {
+            format!(" pg.{}", app.pagination.current_page)
         } else {
             String::new()
         };
 
         if is_global {
             if query.is_empty() {
-                format!(" {}[{}]{} ", resource.display_name, count, page_info)
+                format!(" {}[{}]{} ", resource.display_name, count_str, page_info)
             } else {
                 format!(
                     " {}[{}/{}]{} ",
-                    resource.display_name, count, total, page_info
+                    resource.display_name, count_str, total_str, page_info
                 )
             }
         } else if query.is_empty() {
             format!(
                 " {}({})[{}]{} ",
-                resource.display_name, app.region, count, page_info
+                resource.display_name, app.region, count_str, page_info
             )
         } else {
             format!(
                 " {}({})[{}/{}]{} ",
-                resource.display_name, app.region, count, total, page_info
+                resource.display_name, app.region, count_str, total_str, page_info
             )
         }
     };
