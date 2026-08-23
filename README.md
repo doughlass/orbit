@@ -18,14 +18,12 @@
 
 ## Screenshots
 
-> Note: the screenshots below predate the rename, so the header logo still reads `taws`.
-
 <p align="center">
   <img src="assets/screenshot-ec2.png" alt="EC2 Instances View" width="800"/>
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-lambda.png" alt="Lambda Functions View" width="800"/>
+  <img src="assets/screenshot-r53.png" alt="Route53 Hosted Zones View" width="800"/>
 </p>
 
 ---
