@@ -2,7 +2,7 @@
 # The crate is orbit-tui because "orbit" is taken on crates.io; the binary is
 # still `orbit`. Same split as ripgrep/rg and git-delta/delta.
 name = "orbit-tui"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 # Real floor, set by the aws-* crates. Not a policy choice; raise it when they do.
 rust-version = "1.94.1"
