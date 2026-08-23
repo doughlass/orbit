@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3](https://github.com/doughlass/orbit/compare/v1.0.2...v1.0.3) - 2026-08-23
+
+### Other
+
+- kick release to include CARGO_PKG_VERSION fix
+
 ## [1.0.2](https://github.com/doughlass/orbit/compare/v1.0.1...v1.0.2) - 2026-08-23
 
 ### Fixed
