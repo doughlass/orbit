@@ -226,7 +226,7 @@ pub fn transform_format_epoch_millis(value: &Value) -> Value {
 /// Format epoch seconds to human-readable date string
 pub fn transform_format_epoch_seconds(value: &Value) -> Value {
     let secs = match value {
-        Value::Number(n) => n.as_i64().unwrap_or(0),
+        Value::Number(n) => n.as_f64().unwrap_or(0.0) as i64,
         Value::String(s) => s.parse::<i64>().unwrap_or(0),
         _ => return Value::String("-".to_string()),
     };
