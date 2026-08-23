@@ -406,10 +406,7 @@ mod tests {
             transform_format_epoch_seconds(&json!(1687351280)),
             json!("2023-06-21 12:41:20")
         );
-        assert_eq!(
-            transform_format_epoch_seconds(&json!(0)),
-            json!("-")
-        );
+        assert_eq!(transform_format_epoch_seconds(&json!(0)), json!("-"));
     }
 
     #[test]
