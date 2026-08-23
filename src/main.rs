@@ -57,9 +57,11 @@ struct Args {
     #[arg(long)]
     endpoint_url: Option<String>,
 
-    /// Run with synthetic demo data (no AWS connection required)
-    #[arg(long)]
-    demo: bool,
+    /// Run with synthetic demo data (no AWS connection required).
+    /// Bare `--demo` shows EC2 instances. `--demo all` shows everything.
+    /// Or choose specific resources: `--demo ec2-instances,route53-hosted-zones`.
+    #[arg(long, num_args = 0..=1, default_missing_value = "ec2-instances")]
+    demo: Option<String>,
 
     #[command(subcommand)]
     command: Option<Command>,
@@ -391,7 +393,7 @@ where
     }
 
     // Step 3: Initialize AWS clients (or use dummy in demo mode)
-    let (clients, actual_region) = if args.demo {
+    let (clients, actual_region) = if args.demo.is_some() {
         splash.set_message("Demo mode — no AWS connection");
         terminal.draw(|f| render_splash(f, &splash))?;
         (aws::client::AwsClients::dummy(), "eu-west-1".to_string())
@@ -459,21 +461,25 @@ where
     }
 
     // Step 4: Fetch EC2 instances (or load demo data)
-    let (instances, initial_error, demo) = if args.demo {
+    let (instances, initial_error, demo, first_resource) = if let Some(ref selection) = args.demo {
         splash.set_message("Loading demo data");
         terminal.draw(|f| render_splash(f, &splash))?;
-        let demo_data = demo::ec2_instances();
-        let instances = demo_data.get("ec2-instances").cloned().unwrap_or_default();
-        (instances, None, true)
+        let keys: Vec<&str> = selection.split(',').map(|s| s.trim()).collect();
+        let (demo_data, initial_key) = demo::load(&keys);
+        let instances = demo_data
+            .get(&*initial_key)
+            .cloned()
+            .unwrap_or_default();
+        (instances, None, true, initial_key)
     } else {
         splash.set_message(&format!("Fetching instances from {}", actual_region));
         terminal.draw(|f| render_splash(f, &splash))?;
 
         match resource::fetch_resources_paginated("ec2-instances", &clients, &[], None).await {
-            Ok(result) => (result.items, None, false),
+            Ok(result) => (result.items, None, false, "ec2-instances".to_string()),
             Err(e) => {
                 let error_msg = aws::client::format_aws_error(&e);
-                (Vec::new(), Some(error_msg), false)
+                (Vec::new(), Some(error_msg), false, "ec2-instances".to_string())
             }
         }
     };
@@ -497,6 +503,7 @@ where
         args.readonly,
         endpoint_url,
         demo,
+        &first_resource,
     );
 
     // Set initial error if any
@@ -717,6 +724,7 @@ where
                                     readonly,
                                     endpoint_url,
                                     false,
+                                    "ec2-instances",
                                 );
 
                                 if let Some(err) = initial_error {
@@ -1175,6 +1183,7 @@ where
                                     readonly,
                                     endpoint_url,
                                     false,
+                                    "ec2-instances",
                                 );
 
                                 if let Some(err) = initial_error {

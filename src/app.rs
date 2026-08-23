@@ -477,13 +477,14 @@ impl App {
         readonly: bool,
         endpoint_url: Option<String>,
         demo: bool,
+        initial_resource_key: &str,
     ) -> Self {
         let filtered_items = initial_items.clone();
 
         Self {
             clients,
             demo,
-            current_resource_key: "ec2-instances".to_string(),
+            current_resource_key: initial_resource_key.to_string(),
             items: initial_items,
             filtered_items,
             selected: 0,
