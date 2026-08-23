@@ -46,6 +46,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/ssm.json"),
     include_str!("../resources/sts.json"),
     include_str!("../resources/vpc.json"),
+    include_str!("../resources/vpc-networking.json"),
     include_str!("../resources/wafv2.json"),
 ];
 
@@ -674,6 +675,128 @@ mod tests {
             assert!(
                 resource.field_mappings.contains_key("ARN"),
                 "{} does not map ARN, so its id would be blank",
+                key
+            );
+        }
+    }
+
+    /// The EC2 networking family, listed explicitly so that dropping one from the JSON
+    /// is a test failure rather than a silently smaller loop.
+    const VPC_NETWORKING_KEYS: &[&str] = &[
+        "route-tables",
+        "internet-gateways",
+        "nat-gateways",
+        "vpc-endpoints",
+        "network-acls",
+        "vpc-peering-connections",
+        "network-interfaces",
+        "elastic-ips",
+        "transit-gateways",
+    ];
+
+    fn vpc_networking_resources() -> Vec<(&'static str, &'static ResourceDef)> {
+        let registry = get_registry();
+        VPC_NETWORKING_KEYS
+            .iter()
+            .map(|key| {
+                let resource = registry
+                    .resources
+                    .get(*key)
+                    .unwrap_or_else(|| panic!("{} is not in the registry", key));
+                (*key, resource)
+            })
+            .collect()
+    }
+
+    /// EC2's Query protocol wraps every reply in `<Describe...Response>` and every item
+    /// in a `<xxxSet><item>`. Get the root wrong and the list comes back empty with no
+    /// error at all, which is the single easiest mistake to make in these files.
+    #[test]
+    fn every_vpc_networking_resource_reads_from_the_ec2_response_envelope() {
+        for (key, resource) in vpc_networking_resources() {
+            assert_eq!(resource.service, "ec2", "{} service", key);
+
+            let config = resource
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{} needs an api_config", key));
+            let action = config
+                .action
+                .as_deref()
+                .unwrap_or_else(|| panic!("{} needs an action", key));
+            let root = config
+                .response_root
+                .as_deref()
+                .unwrap_or_else(|| panic!("{} needs a response_root", key));
+
+            let prefix = format!("/{}Response/", action);
+            assert!(
+                root.starts_with(&prefix),
+                "{} calls {} but reads from {}",
+                key,
+                action,
+                root
+            );
+            assert!(
+                root.ends_with("Set/item"),
+                "{} reads from {}, which is not an EC2 item set",
+                key,
+                root
+            );
+        }
+    }
+
+    /// A column whose json_path has no field mapping renders as an empty cell forever.
+    /// `Tags.Name` and friends index into a mapped map, so only the first segment has
+    /// to exist.
+    #[test]
+    fn every_vpc_networking_column_has_a_field_mapping() {
+        for (key, resource) in vpc_networking_resources() {
+            for column in &resource.columns {
+                let root_field = column.json_path.split('.').next().unwrap();
+                assert!(
+                    resource.field_mappings.contains_key(root_field),
+                    "{} column {:?} reads {} but nothing maps {}",
+                    key,
+                    column.header,
+                    column.json_path,
+                    root_field
+                );
+            }
+        }
+    }
+
+    /// DescribeAddresses is the one operation here with no paginator: sending MaxResults
+    /// or NextToken earns an InvalidParameterCombination and no rows. Everything else
+    /// must page, or long-lived accounts silently show only the first screenful.
+    #[test]
+    fn vpc_networking_pagination_follows_the_ec2_api() {
+        for (key, resource) in vpc_networking_resources() {
+            let config = resource.api_config.as_ref().unwrap();
+            let action = config.action.as_deref().unwrap();
+            let pagination = config.pagination.as_ref();
+
+            if action == "DescribeAddresses" {
+                assert!(
+                    pagination.is_none(),
+                    "{} paginates, but DescribeAddresses rejects MaxResults and NextToken",
+                    key
+                );
+                continue;
+            }
+
+            let pagination =
+                pagination.unwrap_or_else(|| panic!("{} needs pagination for {}", key, action));
+            assert_eq!(
+                pagination.input_token.as_deref(),
+                Some("NextToken"),
+                "{} input token",
+                key
+            );
+            assert_eq!(
+                pagination.output_token.as_deref(),
+                Some(format!("/{}Response/nextToken", action).as_str()),
+                "{} output token",
                 key
             );
         }
