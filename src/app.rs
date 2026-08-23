@@ -236,6 +236,9 @@ pub struct App {
     // AWS Clients
     pub clients: AwsClients,
 
+    // Demo mode — no AWS calls, uses pre-baked data
+    pub demo: bool,
+
     // Current resource being viewed
     pub current_resource_key: String,
 
@@ -473,11 +476,13 @@ impl App {
         config: Config,
         readonly: bool,
         endpoint_url: Option<String>,
+        demo: bool,
     ) -> Self {
         let filtered_items = initial_items.clone();
 
         Self {
             clients,
+            demo,
             current_resource_key: "ec2-instances".to_string(),
             items: initial_items,
             filtered_items,
@@ -577,6 +582,10 @@ impl App {
     async fn fetch_page(&mut self, page_token: Option<String>) -> Result<()> {
         if self.current_resource().is_none() {
             self.error_message = Some(format!("Unknown resource: {}", self.current_resource_key));
+            return Ok(());
+        }
+
+        if self.demo {
             return Ok(());
         }
 

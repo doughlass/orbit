@@ -37,6 +37,20 @@ pub struct AwsClients {
 }
 
 impl AwsClients {
+    /// Create a dummy client for demo mode. Never makes real AWS calls.
+    pub fn dummy() -> Self {
+        let creds = crate::aws::credentials::Credentials {
+            access_key_id: "demo".into(),
+            secret_access_key: "demo".into(),
+            session_token: None,
+        };
+        Self {
+            http: AwsHttpClient::new(creds, "eu-west-1", None),
+            region: "eu-west-1".into(),
+            profile: "demo".into(),
+        }
+    }
+
     /// Create AWS client for a given profile and region
     /// Note: This runs credential loading on a blocking thread to support SSO
     pub async fn new(

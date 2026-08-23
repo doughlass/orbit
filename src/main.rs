@@ -2,6 +2,7 @@ mod app;
 mod aws;
 mod completion;
 mod config;
+mod demo;
 mod event;
 mod resource;
 mod ui;
@@ -55,6 +56,10 @@ struct Args {
     /// Custom AWS endpoint URL (for LocalStack, etc.). Also reads from AWS_ENDPOINT_URL env var.
     #[arg(long)]
     endpoint_url: Option<String>,
+
+    /// Run with synthetic demo data (no AWS connection required)
+    #[arg(long)]
+    demo: bool,
 
     #[command(subcommand)]
     command: Option<Command>,
@@ -385,61 +390,65 @@ where
         return Ok(None);
     }
 
-    // Step 3: Initialize all AWS clients (check for SSO requirement)
-    splash.set_message(&format!("Connecting to AWS services [{}]", region));
-    terminal.draw(|f| render_splash(f, &splash))?;
+    // Step 3: Initialize AWS clients (or use dummy in demo mode)
+    let (clients, actual_region) = if args.demo {
+        splash.set_message("Demo mode — no AWS connection");
+        terminal.draw(|f| render_splash(f, &splash))?;
+        (aws::client::AwsClients::dummy(), "eu-west-1".to_string())
+    } else {
+        splash.set_message(&format!("Connecting to AWS services [{}]", region));
+        terminal.draw(|f| render_splash(f, &splash))?;
 
-    let client_result =
-        aws::client::AwsClients::new_with_sso_check(&profile, &region, endpoint_url.clone())
-            .await?;
+        let client_result =
+            aws::client::AwsClients::new_with_sso_check(&profile, &region, endpoint_url.clone())
+                .await?;
 
-    let (clients, actual_region) = match client_result {
-        ClientResult::Ok(clients, actual_region) => (clients, actual_region),
-        ClientResult::SsoLoginRequired {
-            profile,
-            sso_session,
-            region,
-            endpoint_url,
-        } => {
-            // SSO login required - return early to handle in separate flow
-            tracing::debug!(
-                "SSO login required for profile '{}', session '{}' - showing login dialog",
-                profile,
-                sso_session
-            );
-            return Ok(Some(InitResult::SsoRequired {
+        match client_result {
+            ClientResult::Ok(clients, actual_region) => (clients, actual_region),
+            ClientResult::SsoLoginRequired {
                 profile,
                 sso_session,
                 region,
                 endpoint_url,
-                config,
-                available_profiles,
-                available_regions,
-                readonly: args.readonly,
-            }));
-        }
-        ClientResult::ConsoleLoginRequired {
-            profile,
-            login_session,
-            region,
-            endpoint_url,
-        } => {
-            // Console login required - return early to handle in separate flow
-            tracing::debug!(
-                "Console login required for profile '{}', session '{}' - showing login dialog",
-                profile,
-                login_session
-            );
-            return Ok(Some(InitResult::ConsoleLoginRequired {
+            } => {
+                tracing::debug!(
+                    "SSO login required for profile '{}', session '{}' - showing login dialog",
+                    profile,
+                    sso_session
+                );
+                return Ok(Some(InitResult::SsoRequired {
+                    profile,
+                    sso_session,
+                    region,
+                    endpoint_url,
+                    config,
+                    available_profiles,
+                    available_regions,
+                    readonly: args.readonly,
+                }));
+            }
+            ClientResult::ConsoleLoginRequired {
                 profile,
                 login_session,
                 region,
                 endpoint_url,
-                config,
-                available_profiles,
-                available_regions,
-                readonly: args.readonly,
-            }));
+            } => {
+                tracing::debug!(
+                    "Console login required for profile '{}', session '{}' - showing login dialog",
+                    profile,
+                    login_session
+                );
+                return Ok(Some(InitResult::ConsoleLoginRequired {
+                    profile,
+                    login_session,
+                    region,
+                    endpoint_url,
+                    config,
+                    available_profiles,
+                    available_regions,
+                    readonly: args.readonly,
+                }));
+            }
         }
     };
 
@@ -449,17 +458,22 @@ where
         return Ok(None);
     }
 
-    // Step 4: Fetch EC2 instances using new dynamic system
-    splash.set_message(&format!("Fetching instances from {}", actual_region));
-    terminal.draw(|f| render_splash(f, &splash))?;
+    // Step 4: Fetch EC2 instances (or load demo data)
+    let (instances, initial_error, demo) = if args.demo {
+        splash.set_message("Loading demo data");
+        terminal.draw(|f| render_splash(f, &splash))?;
+        let demo_data = demo::ec2_instances();
+        let instances = demo_data.get("ec2-instances").cloned().unwrap_or_default();
+        (instances, None, true)
+    } else {
+        splash.set_message(&format!("Fetching instances from {}", actual_region));
+        terminal.draw(|f| render_splash(f, &splash))?;
 
-    let (instances, initial_error) = {
-        // Use the new JSON-driven resource system
         match resource::fetch_resources_paginated("ec2-instances", &clients, &[], None).await {
-            Ok(result) => (result.items, None),
+            Ok(result) => (result.items, None, false),
             Err(e) => {
                 let error_msg = aws::client::format_aws_error(&e);
-                (Vec::new(), Some(error_msg))
+                (Vec::new(), Some(error_msg), false)
             }
         }
     };
@@ -482,6 +496,7 @@ where
         config,
         args.readonly,
         endpoint_url,
+        demo,
     );
 
     // Set initial error if any
@@ -701,6 +716,7 @@ where
                                     config,
                                     readonly,
                                     endpoint_url,
+                                    false,
                                 );
 
                                 if let Some(err) = initial_error {
@@ -1158,6 +1174,7 @@ where
                                     config,
                                     readonly,
                                     endpoint_url,
+                                    false,
                                 );
 
                                 if let Some(err) = initial_error {
