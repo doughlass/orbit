@@ -1,3 +1,8 @@
+# Triggered by the tag that release-plz pushes after a release PR merge.
+# release-plz handles the Cargo.toml bump, changelog and version tag;
+# this workflow adds multi-platform binary builds, GitHub release and
+# a Docker image.
+
 name: Release
 
 on:
@@ -168,21 +173,6 @@ jobs:
             ${{ env.CRATE_NAME }}-*
             checksums.txt
           generate_release_notes: true
-
-  publish-crates:
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
   docker:
     needs: [release, version-check]
