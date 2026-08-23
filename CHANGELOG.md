@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0](https://github.com/doughlass/orbit/compare/v1.0.2...v1.1.0) - 2026-08-23
+
+### Added
+
+- *(ecr)* add Visibility column to filter public vs private repos
+- *(ecr)* add image listing sub-resource and fix createdAt date
+
+### Fixed
+
+- *(ecr)* rename PushedAt to CreatedAt in image listing
+- *(ui)* show + suffix on count when more pages exist
+
+### Other
+
+- kick release to include CARGO_PKG_VERSION fix
+
 ## [1.0.2](https://github.com/doughlass/orbit/compare/v1.0.1...v1.0.2) - 2026-08-23
 
 ### Fixed
