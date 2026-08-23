@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2](https://github.com/doughlass/orbit/compare/v1.0.1...v1.0.2) - 2026-08-23
+
+### Fixed
+
+- *(ci)* skip issue-link check on release-plz PRs
+- *(ci)* inject ORBIT_VERSION so header shows release version
+
+### Other
+
+- *(ci)* remove release_always after first publish
+
 ## [1.0.0](https://github.com/doughlass/orbit/releases/tag/v1.0.0) - 2026-08-23
 
 ### Added
