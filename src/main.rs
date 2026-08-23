@@ -7,12 +7,8 @@ mod event;
 mod resource;
 mod ui;
 
-/// Version injected at compile time via ORBIT_VERSION env var (set by CI/CD),
-/// or "dev" for local builds.
-pub const VERSION: &str = match option_env!("ORBIT_VERSION") {
-    Some(v) => v,
-    None => "0.1",
-};
+/// Version from Cargo.toml, embedded at compile time.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 use anyhow::Result;
 use app::{App, Mode, SsoLoginState};
