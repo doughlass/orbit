@@ -12,6 +12,7 @@ permissions:
 jobs:
   check-issue-link:
     name: Check Issue Link
+    if: ${{ !startsWith(github.head_ref, 'release-plz-') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check PR description for issue link
