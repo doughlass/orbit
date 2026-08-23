@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0](https://github.com/doughlass/orbit/compare/v1.0.0...v1.1.0) - 2026-08-23
+
+### Added
+
+- *(demo)* add route53 and cloudfront demo data, --demo selection
+- add --demo flag with synthetic EC2 instance data
+
 ## [1.0.0](https://github.com/doughlass/orbit/releases/tag/v1.0.0) - 2026-08-23
 
 ### Added
