@@ -53,7 +53,7 @@
       "columns": [
         { "header": "TAGS", "json_path": "ImageTags", "width": 30 },
         { "header": "DIGEST", "json_path": "ImageDigest", "width": 24 },
-        { "header": "PUSHED AT", "json_path": "PushedAt", "width": 20 },
+        { "header": "CREATED", "json_path": "CreatedAt", "width": 20 },
         { "header": "SIZE", "json_path": "Size", "width": 12 }
       ],
       "sub_resources": [],
@@ -72,7 +72,7 @@
       "field_mappings": {
         "ImageDigest": { "source": "/imageDigest", "default": "-" },
         "ImageTags": { "source": "/imageTags", "transform": "array_to_csv", "default": "-" },
-        "PushedAt": { "source": "/imagePushedAt", "transform": "format_epoch_seconds", "default": "-" },
+        "CreatedAt": { "source": "/imagePushedAt", "transform": "format_epoch_seconds", "default": "-" },
         "Size": { "source": "/imageSizeInBytes", "transform": "format_bytes", "default": "0" }
       }
     }
