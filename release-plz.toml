@@ -9,3 +9,7 @@ git_release_enable = false
 git_tag_name = "v{{ version }}"
 
 publish = true
+
+# Force release even when release-plz thinks nothing changed.
+# Remove after the first successful publish.
+release_always = true

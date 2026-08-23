@@ -466,10 +466,7 @@ where
         terminal.draw(|f| render_splash(f, &splash))?;
         let keys: Vec<&str> = selection.split(',').map(|s| s.trim()).collect();
         let (demo_data, initial_key) = demo::load(&keys);
-        let instances = demo_data
-            .get(&*initial_key)
-            .cloned()
-            .unwrap_or_default();
+        let instances = demo_data.get(&*initial_key).cloned().unwrap_or_default();
         (instances, None, true, initial_key)
     } else {
         splash.set_message(&format!("Fetching instances from {}", actual_region));
@@ -479,7 +476,12 @@ where
             Ok(result) => (result.items, None, false, "ec2-instances".to_string()),
             Err(e) => {
                 let error_msg = aws::client::format_aws_error(&e);
-                (Vec::new(), Some(error_msg), false, "ec2-instances".to_string())
+                (
+                    Vec::new(),
+                    Some(error_msg),
+                    false,
+                    "ec2-instances".to_string(),
+                )
             }
         }
     };
