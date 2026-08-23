@@ -64,6 +64,7 @@ fn apply_transform(value: &Value, transform: &str) -> Value {
         "tags_to_map" => transform_tags_to_map(value),
         "format_bytes" => transform_format_bytes(value),
         "format_epoch_millis" => transform_format_epoch_millis(value),
+        "format_epoch_seconds" => transform_format_epoch_seconds(value),
         "bool_to_yes_no" => transform_bool_to_yes_no(value),
         "array_to_csv" => transform_array_to_csv(value),
         "first_item" => transform_first_item(value),
@@ -221,6 +222,29 @@ pub fn transform_format_epoch_millis(value: &Value) -> Value {
     Value::String(formatted)
 }
 
+/// Format epoch seconds to human-readable date string
+pub fn transform_format_epoch_seconds(value: &Value) -> Value {
+    let secs = match value {
+        Value::Number(n) => n.as_i64().unwrap_or(0),
+        Value::String(s) => s.parse::<i64>().unwrap_or(0),
+        _ => return Value::String("-".to_string()),
+    };
+
+    if secs <= 0 {
+        return Value::String("-".to_string());
+    }
+
+    use chrono::{TimeZone, Utc};
+
+    let formatted = Utc
+        .timestamp_opt(secs, 0)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_else(|| "-".to_string());
+
+    Value::String(formatted)
+}
+
 /// Transform boolean to Yes/No string
 pub fn transform_bool_to_yes_no(value: &Value) -> Value {
     match value {
@@ -360,6 +384,18 @@ mod tests {
         assert_eq!(transform_bool_to_yes_no(&json!(false)), json!("No"));
         assert_eq!(transform_bool_to_yes_no(&json!("true")), json!("Yes"));
         assert_eq!(transform_bool_to_yes_no(&json!("false")), json!("No"));
+    }
+
+    #[test]
+    fn test_transform_format_epoch_seconds() {
+        assert_eq!(
+            transform_format_epoch_seconds(&json!(1687351280)),
+            json!("2023-06-21 12:41:20")
+        );
+        assert_eq!(
+            transform_format_epoch_seconds(&json!(0)),
+            json!("-")
+        );
     }
 
     #[test]

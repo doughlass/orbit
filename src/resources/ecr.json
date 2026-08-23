@@ -14,7 +14,11 @@
         { "header": "URI", "json_path": "repositoryUri", "width": 60 },
         { "header": "CREATED", "json_path": "createdAt", "width": 25 }
       ],
-      "sub_resources": [],
+      "sub_resources": [
+        { "shortcut": "i", "display_name": "Images", "resource_key": "ecr-images",
+          "parent_id_field": "repositoryName", "filter_param": "repositoryName" }
+      ],
+      "enter_sub_resource": "ecr-images",
       "actions": [],
       "api_config": {
         "protocol": "json",
@@ -31,7 +35,43 @@
         "repositoryName": { "source": "/repositoryName", "default": "-" },
         "repositoryArn": { "source": "/repositoryArn", "default": "-" },
         "repositoryUri": { "source": "/repositoryUri", "default": "-" },
-        "createdAt": { "source": "/createdAt", "default": "-" }
+        "createdAt": { "source": "/createdAt", "transform": "format_epoch_seconds", "default": "-" }
+      }
+    },
+    "ecr-images": {
+      "display_name": "ECR Images",
+      "service": "ecr",
+      "sdk_method": "describe_images",
+      "sdk_method_params": {},
+      "response_path": "images",
+      "id_field": "ImageDigest",
+      "name_field": "ImageTags",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "TAGS", "json_path": "ImageTags", "width": 30 },
+        { "header": "DIGEST", "json_path": "ImageDigest", "width": 24 },
+        { "header": "PUSHED AT", "json_path": "PushedAt", "width": 20 },
+        { "header": "SIZE", "json_path": "Size", "width": 12 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "DescribeImages",
+        "response_root": "/imageDetails",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "ImageDigest": { "source": "/imageDigest", "default": "-" },
+        "ImageTags": { "source": "/imageTags", "transform": "array_to_csv", "default": "-" },
+        "PushedAt": { "source": "/imagePushedAt", "transform": "format_epoch_seconds", "default": "-" },
+        "Size": { "source": "/imageSizeInBytes", "transform": "format_bytes", "default": "0" }
       }
     }
   }
