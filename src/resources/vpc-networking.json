@@ -50,9 +50,6 @@
           "default": "-"
         },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
-      },
-      "tag_filter": {
-        "enabled": true
       }
     },
 
@@ -99,9 +96,6 @@
           "default": "detached"
         },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
-      },
-      "tag_filter": {
-        "enabled": true
       }
     },
 
@@ -154,9 +148,6 @@
         },
         "FailureMessage": { "source": "/failureMessage", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
-      },
-      "tag_filter": {
-        "enabled": true
       }
     },
 
@@ -203,9 +194,6 @@
           "default": "-"
         },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
-      },
-      "tag_filter": {
-        "enabled": true
       }
     },
 
@@ -248,9 +236,6 @@
           "default": "-"
         },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
-      },
-      "tag_filter": {
-        "enabled": true
       }
     },
 
@@ -294,9 +279,6 @@
         "AccepterCidr": { "source": "/accepterVpcInfo/cidrBlock", "default": "-" },
         "AccepterRegion": { "source": "/accepterVpcInfo/region", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
-      },
-      "tag_filter": {
-        "enabled": true
       }
     },
 
@@ -342,9 +324,6 @@
         "AvailabilityZone": { "source": "/availabilityZone", "default": "-" },
         "Description": { "source": "/description", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
-      },
-      "tag_filter": {
-        "enabled": true
       }
     },
 
@@ -380,9 +359,6 @@
         "PrivateIpAddress": { "source": "/privateIpAddress", "default": "-" },
         "Domain": { "source": "/domain", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
-      },
-      "tag_filter": {
-        "enabled": true
       }
     },
 
@@ -422,9 +398,6 @@
         "Description": { "source": "/description", "default": "-" },
         "TransitGatewayArn": { "source": "/transitGatewayArn", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
-      },
-      "tag_filter": {
-        "enabled": true
       }
     }
   }
