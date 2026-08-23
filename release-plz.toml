@@ -10,7 +10,3 @@ git_tag_name = "v{{ version }}"
 
 publish = true
 publish_allow_dirty = true
-
-# Force release even when release-plz thinks nothing changed.
-# Remove after the first successful publish.
-release_always = true
