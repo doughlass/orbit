@@ -12,7 +12,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-orange.svg)](https://www.rust-lang.org/)
 
-> orbit began as a fork of [taws](https://github.com/huseyinbabal/taws) by Hüseyin Babal and is now maintained independently. See [Acknowledgments](#acknowledgments).
+> orbit is maintained independently. See [Acknowledgments](#acknowledgments).
 
 ---
 
@@ -506,7 +506,6 @@ Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) 
 
 ## Acknowledgments
 
-- Forked from [taws](https://github.com/huseyinbabal/taws) by Hüseyin Babal, whose work is the foundation of this project
 - Inspired by [k9s](https://github.com/derailed/k9s) - the awesome Kubernetes CLI
 - Built with [Ratatui](https://github.com/ratatui-org/ratatui) - Rust TUI library
 - Uses [aws-sigv4](https://github.com/awslabs/aws-sdk-rust) for request signing
