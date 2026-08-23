@@ -4,4 +4,8 @@
 # GitHub release and Docker images.
 git_release_enable = false
 
+# Default tag is "orbit-tui-v1.0.0"; "v*" trigger in release.yml
+# needs a bare "v<version>" prefix.
+git_tag_name = "v{{ version }}"
+
 publish = true
