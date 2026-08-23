@@ -503,6 +503,41 @@ async fn invoke_action(
 // Data-Driven Describe
 // =============================================================================
 
+/// Fill a describe `body_template`.
+///
+/// `{resource_id}` is the row's id field. `{arn_name}` and `{arn_id}` are the last
+/// two segments of an ARN, which is how to reach an API that wants a name and an id
+/// together: WAFv2's GetWebACL takes Name, Id and Scope, and the list call hands back
+/// only an ARN carrying both.
+fn render_describe_body(template: &str, resource_id: &str) -> Result<String> {
+    let mut body = template.replace("{resource_id}", resource_id);
+
+    if body.contains("{arn_name}") || body.contains("{arn_id}") {
+        let (name, id) = arn_name_and_id(resource_id)?;
+        body = body.replace("{arn_name}", name).replace("{arn_id}", id);
+    }
+
+    Ok(body)
+}
+
+/// Name and id out of an ARN shaped like
+/// `arn:aws:wafv2:eu-west-1:123456789012:regional/webacl/<name>/<id>`.
+///
+/// Checks the whole shape rather than just counting back two segments, so a bare id
+/// or a truncated ARN is refused instead of yielding two nonsense values.
+fn arn_name_and_id(arn: &str) -> Result<(&str, &str)> {
+    let segments: Vec<&str> = arn.split('/').collect();
+
+    if !arn.starts_with("arn:") || segments.len() < 4 || segments.iter().any(|s| s.is_empty()) {
+        return Err(anyhow!(
+            "cannot read a name and id out of {:?}: expected an ARN ending in /<name>/<id>",
+            arn
+        ));
+    }
+
+    Ok((segments[segments.len() - 2], segments[segments.len() - 1]))
+}
+
 /// Describe a single resource using JSON configuration
 async fn invoke_describe(
     resource_key: &str,
@@ -556,7 +591,7 @@ async fn invoke_describe(
                 .ok_or_else(|| anyhow!("JSON describe requires 'action' field"))?;
 
             let body = if let Some(ref template) = describe_config.body_template {
-                template.replace("{resource_id}", resource_id)
+                render_describe_body(template, resource_id)?
             } else {
                 let id_param = describe_config.id_param.as_deref().unwrap_or("id");
                 json!({ id_param: resource_id }).to_string()
@@ -915,6 +950,49 @@ mod tests {
     fn test_resolve_static_param_template_keeps_plain_text() {
         let out = resolve_static_param_template("fixed-value", "x", "y");
         assert_eq!(out, "fixed-value");
+    }
+
+    #[test]
+    fn describe_body_fills_the_resource_id() {
+        let body = render_describe_body("{\"TableName\": \"{resource_id}\"}", "orders").unwrap();
+        assert_eq!(body, "{\"TableName\": \"orders\"}");
+    }
+
+    /// WAFv2's GetWebACL wants Name, Id and Scope together, and the list call only
+    /// hands back an ARN holding both.
+    #[test]
+    fn describe_body_splits_a_wafv2_arn_into_name_and_id() {
+        let arn = "arn:aws:wafv2:eu-west-1:123456789012:regional/webacl/prod-edge/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
+        let body = render_describe_body(
+            "{\"Name\": \"{arn_name}\", \"Id\": \"{arn_id}\", \"Scope\": \"REGIONAL\"}",
+            arn,
+        )
+        .unwrap();
+        assert_eq!(
+            body,
+            "{\"Name\": \"prod-edge\", \"Id\": \"0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0\", \"Scope\": \"REGIONAL\"}"
+        );
+    }
+
+    /// Substituting nothing would send a literal "{arn_name}" to AWS and report its
+    /// confusing rejection as the resource's problem. Fail here instead, naming the
+    /// id we could not split.
+    #[test]
+    fn describe_body_rejects_an_id_that_is_not_an_arn_with_a_name_and_id() {
+        for id in [
+            "prod-edge",
+            "arn:aws:wafv2:eu-west-1:123456789012:regional/webacl",
+            "",
+        ] {
+            let err = render_describe_body("{\"Name\": \"{arn_name}\"}", id)
+                .expect_err("should refuse to guess a name");
+            assert!(
+                err.to_string().contains(id) || id.is_empty(),
+                "error {:?} should name the id {:?}",
+                err.to_string(),
+                id
+            );
+        }
     }
 
     #[test]

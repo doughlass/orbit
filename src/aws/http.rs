@@ -344,6 +344,26 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        // WAFv2 splits by Scope rather than by endpoint: REGIONAL objects live in the
+        // selected region, CLOUDFRONT objects only in us-east-1. Two entries so a
+        // resource can pick its scope's endpoint via api_config.service_name, both
+        // signing as "wafv2".
+        "wafv2" => Some(ServiceDefinition {
+            signing_name: "wafv2",
+            endpoint_prefix: "wafv2",
+            api_version: "2019-07-29",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSWAF_20190729"),
+            is_global: false,
+        }),
+        "wafv2-global" => Some(ServiceDefinition {
+            signing_name: "wafv2",
+            endpoint_prefix: "wafv2",
+            api_version: "2019-07-29",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSWAF_20190729"),
+            is_global: true,
+        }),
         _ => None,
     }
 }
@@ -446,6 +466,9 @@ impl AwsHttpClient {
                 )),
                 "cloudfront" => Ok(format!("https://cloudfront.{}", domain)),
                 "route53" => Ok(format!("https://route53.{}", domain)),
+                // Global only in the sense that CLOUDFRONT-scope objects are served
+                // from one place; the host still carries that region.
+                "wafv2" => Ok(format!("https://wafv2.{}.{}", region, domain)),
                 _ => Ok(format!("https://{}.{}", service.endpoint_prefix, domain)),
             };
         }
@@ -1140,7 +1163,7 @@ pub fn xml_to_json(xml: &str) -> Result<serde_json::Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{get_service, AwsHttpClient, Credentials};
+    use super::{get_service, AwsHttpClient, Credentials, Protocol};
 
     fn dummy_credentials() -> Credentials {
         Credentials {
@@ -1205,5 +1228,46 @@ mod tests {
         let service = get_service("cloudfront").expect("cloudfront service definition");
         let endpoint = client.get_endpoint(&service).expect("cloudfront endpoint");
         assert_eq!(endpoint, "https://cloudfront.amazonaws.com");
+    }
+
+    /// WAFv2 needs two entries because Scope decides the endpoint, not the caller.
+    /// Both must sign as "wafv2" and carry the same target prefix: get either wrong
+    /// and every request fails at runtime with SignatureDoesNotMatch or
+    /// UnknownOperation, which no other test would catch.
+    #[test]
+    fn both_wafv2_entries_sign_as_the_same_service() {
+        for key in ["wafv2", "wafv2-global"] {
+            let service = get_service(key).unwrap_or_else(|| panic!("{} service definition", key));
+            assert_eq!(service.signing_name, "wafv2", "{} signing name", key);
+            assert_eq!(service.endpoint_prefix, "wafv2", "{} endpoint prefix", key);
+            assert_eq!(
+                service.target_prefix,
+                Some("AWSWAF_20190729"),
+                "{} target prefix",
+                key
+            );
+            assert_eq!(service.protocol, Protocol::Json, "{} protocol", key);
+        }
+    }
+
+    #[test]
+    fn wafv2_regional_scope_uses_the_selected_region() {
+        let client = client_with_region("eu-west-1");
+        let service = get_service("wafv2").expect("wafv2 service definition");
+        let endpoint = client.get_endpoint(&service).expect("wafv2 endpoint");
+        assert_eq!(endpoint, "https://wafv2.eu-west-1.amazonaws.com");
+    }
+
+    /// CLOUDFRONT-scope WAF calls are only served from us-east-1. The global branch
+    /// of get_endpoint drops the region from the host by default, which would give
+    /// the non-existent wafv2.amazonaws.com, so this service needs its own arm.
+    #[test]
+    fn wafv2_cloudfront_scope_pins_us_east_1() {
+        let client = client_with_region("eu-west-1");
+        let service = get_service("wafv2-global").expect("wafv2-global service definition");
+        let endpoint = client
+            .get_endpoint(&service)
+            .expect("wafv2-global endpoint");
+        assert_eq!(endpoint, "https://wafv2.us-east-1.amazonaws.com");
     }
 }

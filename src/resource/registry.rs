@@ -46,6 +46,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/ssm.json"),
     include_str!("../resources/sts.json"),
     include_str!("../resources/vpc.json"),
+    include_str!("../resources/wafv2.json"),
 ];
 
 /// Color definition from JSON
@@ -562,6 +563,120 @@ mod tests {
             .iter()
             .find(|a| a.sdk_method == "invoke_function");
         assert!(invoke_action.is_some(), "Lambda should have invoke action");
+    }
+
+    /// Every WAFv2 resource, keyed as it appears in the registry.
+    fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
+        let found: Vec<_> = get_registry()
+            .resources
+            .iter()
+            .filter(|(key, _)| key.starts_with("wafv2-"))
+            .collect();
+        assert!(!found.is_empty(), "no wafv2 resources in the registry");
+        found
+    }
+
+    /// Scope as the list call sends it.
+    fn list_scope(resource: &ResourceDef) -> &str {
+        resource
+            .api_config
+            .as_ref()
+            .expect("wafv2 resources are data-driven")
+            .static_params
+            .get("Scope")
+            .and_then(|scope| scope.as_str())
+            .expect("wafv2 list calls must pin a Scope")
+    }
+
+    #[test]
+    fn wafv2_web_acls_exist_for_both_scopes() {
+        let regional = get_resource("wafv2-web-acls").expect("regional web ACLs");
+        assert_eq!(list_scope(regional), "REGIONAL");
+        assert!(!regional.is_global);
+
+        let cloudfront = get_resource("wafv2-web-acls-cloudfront").expect("CloudFront web ACLs");
+        assert_eq!(list_scope(cloudfront), "CLOUDFRONT");
+        assert!(
+            cloudfront.is_global,
+            "CloudFront-scope ACLs are one global set, so the title should not claim a region"
+        );
+    }
+
+    /// Scope is not optional on any WAFv2 call, and it must be the same one on the
+    /// list and the describe. Listing CLOUDFRONT then describing REGIONAL returns a
+    /// bare "not found" that looks like the resource vanished.
+    #[test]
+    fn every_wafv2_resource_uses_one_scope_throughout() {
+        for (key, resource) in wafv2_resources() {
+            let template = resource
+                .describe_config
+                .as_ref()
+                .and_then(|d| d.body_template.as_deref())
+                .unwrap_or_else(|| panic!("{} needs a describe body template", key));
+
+            let compact: String = template.chars().filter(|c| !c.is_whitespace()).collect();
+            let expected = format!("\"Scope\":\"{}\"", list_scope(resource));
+            assert!(
+                compact.contains(&expected),
+                "{} lists {} but describes with {}",
+                key,
+                expected,
+                template
+            );
+        }
+    }
+
+    /// CLOUDFRONT-scope objects are only served from us-east-1, and the endpoint comes
+    /// from the service entry, not from the resource's own is_global flag.
+    #[test]
+    fn every_wafv2_resource_calls_the_endpoint_for_its_scope() {
+        for (key, resource) in wafv2_resources() {
+            let cloudfront = list_scope(resource) == "CLOUDFRONT";
+
+            for service_name in [
+                resource
+                    .api_config
+                    .as_ref()
+                    .and_then(|c| c.service_name.as_deref())
+                    .unwrap_or(&resource.service),
+                resource
+                    .describe_config
+                    .as_ref()
+                    .and_then(|d| d.service_name.as_deref())
+                    .unwrap_or(&resource.service),
+            ] {
+                let service = crate::aws::http::get_service(service_name)
+                    .unwrap_or_else(|| panic!("{} uses unknown service {}", key, service_name));
+                assert_eq!(
+                    service.is_global,
+                    cloudfront,
+                    "{} is scoped {} but {} points at the {} endpoint",
+                    key,
+                    list_scope(resource),
+                    service_name,
+                    if service.is_global {
+                        "us-east-1"
+                    } else {
+                        "selected region"
+                    }
+                );
+            }
+        }
+    }
+
+    /// Describe needs the name and the id, and only the ARN carries both, so the ARN
+    /// has to be the id field and has to be mapped. Miss either and `d` describes an
+    /// empty string.
+    #[test]
+    fn every_wafv2_resource_describes_from_its_arn() {
+        for (key, resource) in wafv2_resources() {
+            assert_eq!(resource.id_field, "ARN", "{} id field", key);
+            assert!(
+                resource.field_mappings.contains_key("ARN"),
+                "{} does not map ARN, so its id would be blank",
+                key
+            );
+        }
     }
 
     #[test]

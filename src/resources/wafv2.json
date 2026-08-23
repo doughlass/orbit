@@ -1,0 +1,185 @@
+{
+  "resources": {
+    "wafv2-web-acls": {
+      "display_name": "WAF Web ACLs",
+      "service": "wafv2",
+      "sdk_method": "list_web_acls",
+      "sdk_method_params": {},
+      "response_path": "web_acls",
+      "id_field": "ARN",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "DESCRIPTION", "json_path": "Description", "width": 44 },
+        { "header": "ID", "json_path": "Id", "width": 26 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+
+      "api_config": {
+        "protocol": "json",
+        "action": "ListWebACLs",
+        "response_root": "/WebACLs",
+        "static_params": {
+          "Scope": "REGIONAL"
+        },
+        "pagination": {
+          "input_token": "NextMarker",
+          "output_token": "/NextMarker",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "Id": { "source": "/Id", "default": "-" },
+        "Description": { "source": "/Description", "default": "-" },
+        "ARN": { "source": "/ARN", "default": "-" }
+      },
+      "describe_config": {
+        "protocol": "json",
+        "action": "GetWebACL",
+        "body_template": "{\"Name\": \"{arn_name}\", \"Id\": \"{arn_id}\", \"Scope\": \"REGIONAL\"}",
+        "response_path": "/WebACL"
+      }
+    },
+
+    "wafv2-web-acls-cloudfront": {
+      "display_name": "WAF Web ACLs (CloudFront)",
+      "service": "wafv2",
+      "sdk_method": "list_web_acls",
+      "sdk_method_params": {},
+      "response_path": "web_acls",
+      "id_field": "ARN",
+      "name_field": "Name",
+      "is_global": true,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "DESCRIPTION", "json_path": "Description", "width": 44 },
+        { "header": "ID", "json_path": "Id", "width": 26 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+
+      "api_config": {
+        "protocol": "json",
+        "service_name": "wafv2-global",
+        "action": "ListWebACLs",
+        "response_root": "/WebACLs",
+        "static_params": {
+          "Scope": "CLOUDFRONT"
+        },
+        "pagination": {
+          "input_token": "NextMarker",
+          "output_token": "/NextMarker",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "Id": { "source": "/Id", "default": "-" },
+        "Description": { "source": "/Description", "default": "-" },
+        "ARN": { "source": "/ARN", "default": "-" }
+      },
+      "describe_config": {
+        "protocol": "json",
+        "service_name": "wafv2-global",
+        "action": "GetWebACL",
+        "body_template": "{\"Name\": \"{arn_name}\", \"Id\": \"{arn_id}\", \"Scope\": \"CLOUDFRONT\"}",
+        "response_path": "/WebACL"
+      }
+    },
+
+    "wafv2-ip-sets": {
+      "display_name": "WAF IP Sets",
+      "service": "wafv2",
+      "sdk_method": "list_ip_sets",
+      "sdk_method_params": {},
+      "response_path": "ip_sets",
+      "id_field": "ARN",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "DESCRIPTION", "json_path": "Description", "width": 44 },
+        { "header": "ID", "json_path": "Id", "width": 26 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+
+      "api_config": {
+        "protocol": "json",
+        "action": "ListIPSets",
+        "response_root": "/IPSets",
+        "static_params": {
+          "Scope": "REGIONAL"
+        },
+        "pagination": {
+          "input_token": "NextMarker",
+          "output_token": "/NextMarker",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "Id": { "source": "/Id", "default": "-" },
+        "Description": { "source": "/Description", "default": "-" },
+        "ARN": { "source": "/ARN", "default": "-" }
+      },
+      "describe_config": {
+        "protocol": "json",
+        "action": "GetIPSet",
+        "body_template": "{\"Name\": \"{arn_name}\", \"Id\": \"{arn_id}\", \"Scope\": \"REGIONAL\"}",
+        "response_path": "/IPSet"
+      }
+    },
+
+    "wafv2-rule-groups": {
+      "display_name": "WAF Rule Groups",
+      "service": "wafv2",
+      "sdk_method": "list_rule_groups",
+      "sdk_method_params": {},
+      "response_path": "rule_groups",
+      "id_field": "ARN",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "DESCRIPTION", "json_path": "Description", "width": 44 },
+        { "header": "ID", "json_path": "Id", "width": 26 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+
+      "api_config": {
+        "protocol": "json",
+        "action": "ListRuleGroups",
+        "response_root": "/RuleGroups",
+        "static_params": {
+          "Scope": "REGIONAL"
+        },
+        "pagination": {
+          "input_token": "NextMarker",
+          "output_token": "/NextMarker",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "Id": { "source": "/Id", "default": "-" },
+        "Description": { "source": "/Description", "default": "-" },
+        "ARN": { "source": "/ARN", "default": "-" }
+      },
+      "describe_config": {
+        "protocol": "json",
+        "action": "GetRuleGroup",
+        "body_template": "{\"Name\": \"{arn_name}\", \"Id\": \"{arn_id}\", \"Scope\": \"REGIONAL\"}",
+        "response_path": "/RuleGroup"
+      }
+    }
+  }
+}
