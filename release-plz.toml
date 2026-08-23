@@ -1,11 +1,8 @@
 [workspace]
-# We disable release-plz's own GitHub release because our release.yml
-# (triggered by the tag release-plz pushes) handles multi-platform builds,
-# Docker images and the final GitHub release.
+# release-plz's own GitHub release is disabled — our release.yml
+# (triggered by the tag) handles multi-platform binary builds, the
+# GitHub release and Docker images.
 git_release = false
 
-# Publish to crates.io on release. Requires CARGO_REGISTRY_TOKEN (or
-# trusted publishing) in the workflow. Token must have publish-new +
-# publish-update scopes for the first release; publish-update only is
-# enough after the crate exists.
-publish = true
+# No crates.io publishing. The binary is the artifact.
+publish = false
