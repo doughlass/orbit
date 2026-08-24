@@ -239,7 +239,13 @@ fn render_keybindings_col1(f: &mut Frame, app: &App, area: Rect) {
         let mut b: Vec<(String, String)> = vec![("<d>".to_string(), "Describe".to_string())];
 
         // Add resource-specific actions
-        for action in resource.actions.iter().take(4) {
+        for action in resource.actions.iter() {
+            if app.readonly && action.requires_confirm() {
+                continue;
+            }
+            if b.len() >= 5 {
+                break;
+            }
             if let Some(ref shortcut) = action.shortcut {
                 b.push((format!("<{}>", shortcut), action.display_name.clone()));
             }

@@ -16,10 +16,15 @@ pub fn render(f: &mut Frame, app: &App) {
 
     // Add resource-specific actions section FIRST (most important)
     if let Some(resource) = app.current_resource() {
-        if !resource.actions.is_empty() {
+        let visible_actions: Vec<_> = resource
+            .actions
+            .iter()
+            .filter(|a| !app.readonly || !a.requires_confirm())
+            .collect();
+        if !visible_actions.is_empty() {
             let section_title = format!("{} Actions", resource.display_name);
             help_text.push(create_section(&section_title));
-            for action in &resource.actions {
+            for action in &visible_actions {
                 let shortcut = action.shortcut.as_deref().unwrap_or(&action.key);
                 help_text.push(create_key_line(shortcut, &action.display_name));
             }

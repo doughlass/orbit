@@ -54,7 +54,7 @@ pub fn generate_bash() -> String {
 
     case "${cmd}" in
         orbit)
-            opts="-p -r -h -V --profile --region --log-level --readonly --endpoint-url --help --version completion help"
+            opts="-p -r -h -V --profile --region --log-level --readonly --write --endpoint-url --help --version completion help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]]; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -123,7 +123,8 @@ _orbit() {
         '--region=[AWS region to use]:REGION:_orbit_regions' \
         '--log-level=[Log level for debugging]:LOG_LEVEL:(off error warn info debug trace)' \
         '--endpoint-url=[Custom AWS endpoint URL]:ENDPOINT_URL:_default' \
-        '--readonly[Run in read-only mode]' \
+        '--readonly[Run in read-only mode (default)]' \
+        '--write[Run in write mode (allow all write operations)]' \
         '-h[Print help]' \
         '--help[Print help]' \
         '-V[Print version]' \
@@ -202,7 +203,8 @@ complete -c orbit -s r -l region -d 'AWS region to use' -xa "(orbit list-regions
 complete -c orbit -l log-level -d 'Log level for debugging' -xa "off error warn info debug trace"
 
 # Other options
-complete -c orbit -l readonly -d 'Run in read-only mode'
+complete -c orbit -l readonly -d 'Run in read-only mode (default)'
+complete -c orbit -l write -d 'Run in write mode (allow all write operations)'
 complete -c orbit -l endpoint-url -d 'Custom AWS endpoint URL'
 complete -c orbit -s h -l help -d 'Print help'
 complete -c orbit -s V -l version -d 'Print version'
@@ -281,7 +283,7 @@ Register-ArgumentCompleter -Native -CommandName 'orbit' -ScriptBlock {
 
     switch ($command) {
         'orbit' {
-            @('--profile', '-p', '--region', '-r', '--log-level', '--readonly', '--endpoint-url', '--help', '-h', '--version', '-V', 'completion', 'help') | ForEach-Object {
+            @('--profile', '-p', '--region', '-r', '--log-level', '--readonly', '--write', '--endpoint-url', '--help', '-h', '--version', '-V', 'completion', 'help') | ForEach-Object {
                 if ($_ -like "$wordToComplete*") {
                     $completions += [CompletionResult]::new($_, $_, 'ParameterName', $_)
                 }

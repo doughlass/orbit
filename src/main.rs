@@ -45,9 +45,13 @@ struct Args {
     #[arg(long, value_enum, default_value = "off")]
     log_level: LogLevel,
 
-    /// Run in read-only mode (block all write operations)
-    #[arg(long)]
+    /// Run in read-only mode (block all write operations). This is the default.
+    #[arg(long, default_value = "true")]
     readonly: bool,
+
+    /// Run in write mode (allow all write operations). Overrides --readonly.
+    #[arg(long)]
+    write: bool,
 
     /// Custom AWS endpoint URL (for LocalStack, etc.). Also reads from AWS_ENDPOINT_URL env var.
     #[arg(long)]
@@ -333,7 +337,9 @@ async fn initialize_inner<B: Backend>(
 where
     B::Error: Send + Sync + 'static,
 {
-    let mut splash = SplashState::new();
+    let readonly = !args.write && args.readonly;
+
+    let mut splash = SplashState::new(readonly);
 
     // Render initial splash
     terminal.draw(|f| render_splash(f, &splash))?;
@@ -422,7 +428,7 @@ where
                     config,
                     available_profiles,
                     available_regions,
-                    readonly: args.readonly,
+                    readonly,
                 }));
             }
             ClientResult::ConsoleLoginRequired {
@@ -444,7 +450,7 @@ where
                     config,
                     available_profiles,
                     available_regions,
-                    readonly: args.readonly,
+                    readonly,
                 }));
             }
         }
@@ -498,7 +504,7 @@ where
         available_regions,
         instances,
         config,
-        args.readonly,
+        readonly,
         endpoint_url,
         demo,
         &first_resource,
