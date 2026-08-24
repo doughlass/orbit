@@ -43,7 +43,23 @@
         "protocol": "rest-json",
         "method": "GET",
         "path": "/clusters/{resource_id}",
-        "response_path": "/cluster"
+        "response_path": "/cluster",
+        "describe_fields": [
+          { "label": "Status",           "source": "/status" },
+          { "label": "Version",          "source": "/version" },
+          { "label": "Platform",         "source": "/platformVersion" },
+          { "label": "ARN",              "source": "/arn" },
+          { "label": "Endpoint",         "source": "/endpoint" },
+          { "label": "Role ARN",         "source": "/roleArn" },
+          { "label": "Service CIDR",     "source": "/kubernetesNetworkConfig/serviceIpv4Cidr" },
+          { "label": "IP Family",        "source": "/kubernetesNetworkConfig/ipFamily" },
+          { "label": "VPC Subnets",      "source": "/resourcesVpcConfig/subnetIds", "transform": "array_to_csv" },
+          { "label": "Security Groups",   "source": "/resourcesVpcConfig/securityGroupIds", "transform": "array_to_csv" },
+          { "label": "Public Endpoint",  "source": "/resourcesVpcConfig/endpointPublicAccess", "transform": "bool_to_yes_no" },
+          { "label": "Private Endpoint", "source": "/resourcesVpcConfig/endpointPrivateAccess", "transform": "bool_to_yes_no" },
+          { "label": "OIDC Issuer",      "source": "/identity/oidc/issuer" },
+          { "label": "Created",          "source": "/createdAt" }
+        ]
       }
     }
   }

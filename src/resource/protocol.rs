@@ -217,6 +217,20 @@ pub struct ActionConfig {
     pub special_handling: Option<String>,
 }
 
+/// A single field to extract and display in the formatted describe view.
+/// When a resource's describe_config carries describe_fields, the describe
+/// panel renders a labelled key-value table instead of the raw JSON dump.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DescribeField {
+    /// Display label (e.g., "Status", "Endpoint")
+    pub label: String,
+    /// Path into the describe response JSON to extract the value
+    pub source: String,
+    /// Optional transform to apply, same names as field_mappings transforms
+    #[serde(default)]
+    pub transform: Option<String>,
+}
+
 /// Configuration for describe operation (single resource details)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DescribeConfig {
@@ -254,6 +268,11 @@ pub struct DescribeConfig {
     /// Additional API calls to enrich the response (e.g., S3 bucket versioning/encryption)
     #[serde(default)]
     pub enrich_calls: Vec<EnrichCall>,
+
+    /// Fields to display in the formatted describe view. When present, the
+    /// describe panel renders a labelled list instead of a raw JSON dump.
+    #[serde(default)]
+    pub describe_fields: Vec<DescribeField>,
 }
 
 /// Additional API call to enrich describe response

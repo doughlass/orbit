@@ -19,6 +19,7 @@ use ratatui::{
     },
     Frame,
 };
+use serde_json::Value;
 use std::cmp::Reverse;
 
 pub fn render(f: &mut Frame, app: &App) {
@@ -492,35 +493,106 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
         (inner_area, None)
     };
 
-    // Apply JSON syntax highlighting with search match highlighting
-    let search_text = &app.describe_search_text;
-    let lines: Vec<Line> = json
-        .lines()
-        .enumerate()
-        .map(|(line_num, line)| {
-            let is_current_match = app
-                .describe_match_lines
-                .get(app.describe_current_match)
-                .map(|&m| m == line_num)
-                .unwrap_or(false);
-            highlight_json_line_with_search(line, search_text, is_current_match)
-        })
-        .collect();
-    let total_lines = lines.len();
+    // Check if this resource has a formatted describe layout
+    let describe_fields = app
+        .current_resource()
+        .and_then(|r| r.describe_config.as_ref())
+        .map(|dc| &dc.describe_fields)
+        .filter(|fields| !fields.is_empty());
 
-    // Calculate max scroll based on content area
-    let visible_lines = content_area.height as usize;
-    let max_scroll = total_lines.saturating_sub(visible_lines);
-    let scroll = app.describe_scroll.min(max_scroll);
+    if let Some(fields) = describe_fields {
+        if let Some(ref data) = app.describe_data {
+            let lines = render_formatted_describe(fields, data);
+            let total_lines = lines.len();
+            let visible_lines = content_area.height as usize;
+            let max_scroll = total_lines.saturating_sub(visible_lines);
+            let scroll = app.describe_scroll.min(max_scroll);
 
-    let paragraph = Paragraph::new(lines.clone())
-        .wrap(Wrap { trim: false })
-        .scroll((scroll as u16, 0));
-    f.render_widget(paragraph, content_area);
+            let paragraph = Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .scroll((scroll as u16, 0));
+            f.render_widget(paragraph, content_area);
+        }
+    } else {
+        // Apply JSON syntax highlighting with search match highlighting
+        let search_text = &app.describe_search_text;
+        let lines: Vec<Line> = json
+            .lines()
+            .enumerate()
+            .map(|(line_num, line)| {
+                let is_current_match = app
+                    .describe_match_lines
+                    .get(app.describe_current_match)
+                    .map(|&m| m == line_num)
+                    .unwrap_or(false);
+                highlight_json_line_with_search(line, search_text, is_current_match)
+            })
+            .collect();
+        let total_lines = lines.len();
 
-    // Render search bar if active
-    if let Some(search_area) = search_area {
-        render_describe_search_bar(f, app, search_area);
+        // Calculate max scroll based on content area
+        let visible_lines = content_area.height as usize;
+        let max_scroll = total_lines.saturating_sub(visible_lines);
+        let scroll = app.describe_scroll.min(max_scroll);
+
+        let paragraph = Paragraph::new(lines.clone())
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0));
+        f.render_widget(paragraph, content_area);
+
+        // Render search bar if active
+        if let Some(search_area) = search_area {
+            render_describe_search_bar(f, app, search_area);
+        }
+    }
+}
+
+fn render_formatted_describe(
+    fields: &[crate::resource::protocol::DescribeField],
+    data: &Value,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line> = vec![Line::from("")];
+
+    for field in fields {
+        let value = crate::resource::path_extractor::extract_by_path(data, &field.source);
+
+        let value = if let Some(ref transform) = field.transform {
+            crate::resource::field_mapper::apply_transform(&value, transform)
+        } else {
+            value
+        };
+
+        let display = value_to_describe_string(&value);
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {:<20}", field.label),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(display, Style::default().fg(Color::White)),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+    lines
+}
+
+fn value_to_describe_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => {
+            if *b {
+                "Yes".to_string()
+            } else {
+                "No".to_string()
+            }
+        }
+        Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(value_to_describe_string).collect();
+            items.join(", ")
+        }
+        Value::Object(_) | Value::Null => "-".to_string(),
     }
 }
 

@@ -923,6 +923,32 @@ mod tests {
         }
     }
 
+    /// Every describe_field must have a non-empty label and source. A blank label
+    /// renders an empty row with no purpose, and a blank source silently returns
+    /// null for every resource, showing "-" in every cell.
+    #[test]
+    fn describe_fields_have_labels_and_sources() {
+        let registry = get_registry();
+        for (key, resource) in &registry.resources {
+            if let Some(ref dc) = resource.describe_config {
+                for (i, field) in dc.describe_fields.iter().enumerate() {
+                    assert!(
+                        !field.label.is_empty(),
+                        "{} describe_fields[{}] label is empty",
+                        key,
+                        i
+                    );
+                    assert!(
+                        !field.source.is_empty(),
+                        "{} describe_fields[{}] source is empty",
+                        key,
+                        i
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_elbv2_load_balancers_resource_exists() {
         let resource = get_resource("elbv2-load-balancers");
