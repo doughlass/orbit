@@ -16,6 +16,7 @@ use crate::aws::client::AwsClients;
 use crate::aws::http::xml_to_json;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use tracing::debug;
 
 // =============================================================================
@@ -543,6 +544,7 @@ async fn invoke_describe(
     resource_key: &str,
     clients: &AwsClients,
     resource_id: &str,
+    parent_params: &HashMap<String, String>,
 ) -> Result<Value> {
     let resource_def =
         get_resource(resource_key).ok_or_else(|| anyhow!("Unknown resource: {}", resource_key))?;
@@ -617,7 +619,10 @@ async fn invoke_describe(
                 .as_ref()
                 .ok_or_else(|| anyhow!("REST-JSON describe requires 'path' field"))?;
 
-            let path = path_template.replace("{resource_id}", resource_id);
+            let mut path = path_template.replace("{resource_id}", resource_id);
+            for (key, value) in parent_params {
+                path = path.replace(&format!("{{{}}}", key), value);
+            }
             let response = clients
                 .http
                 .rest_json_request(service, method, &path, None)
@@ -638,7 +643,10 @@ async fn invoke_describe(
                 .as_ref()
                 .ok_or_else(|| anyhow!("REST-XML describe requires 'path' field"))?;
 
-            let path = path_template.replace("{resource_id}", resource_id);
+            let mut path = path_template.replace("{resource_id}", resource_id);
+            for (key, value) in parent_params {
+                path = path.replace(&format!("{{{}}}", key), value);
+            }
             let xml = clients
                 .http
                 .rest_xml_request(service, method, &path, None)
@@ -827,6 +835,7 @@ pub async fn describe_resource(
     resource_key: &str,
     clients: &AwsClients,
     resource_id: &str,
+    parent_params: &HashMap<String, String>,
 ) -> Result<Value> {
     // S3 buckets need special handling for region resolution
     if resource_key == "s3-buckets" {
@@ -843,7 +852,7 @@ pub async fn describe_resource(
         ));
     }
 
-    invoke_describe(resource_key, clients, resource_id).await
+    invoke_describe(resource_key, clients, resource_id, parent_params).await
 }
 
 /// Special handler for S3 bucket describe (needs region resolution)

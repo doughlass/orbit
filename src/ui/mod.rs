@@ -592,7 +592,14 @@ fn value_to_describe_string(value: &Value) -> String {
             let items: Vec<String> = arr.iter().map(value_to_describe_string).collect();
             items.join(", ")
         }
-        Value::Object(_) | Value::Null => "-".to_string(),
+        Value::Object(obj) => {
+            let pairs: Vec<String> = obj
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, value_to_describe_string(v)))
+                .collect();
+            pairs.join(", ")
+        }
+        Value::Null => "-".to_string(),
     }
 }
 

@@ -1328,10 +1328,31 @@ impl App {
                     // Fall back to existing describe_resource logic
                     let id = crate::resource::extract_json_value(&item, &resource_def.id_field);
                     if id != "-" && !id.is_empty() {
+                        // Collect parent params for REST path placeholders
+                        let parent_params = self
+                            .parent_context
+                            .as_ref()
+                            .map(|ctx| {
+                                let mut params = std::collections::HashMap::new();
+                                let sub = ctx.resource_key.clone();
+                                if let Some(parent_resource) = crate::resource::get_resource(&sub) {
+                                    let parent_id = crate::resource::extract_json_value(
+                                        &ctx.item,
+                                        &parent_resource.id_field,
+                                    );
+                                    if parent_id != "-" && !parent_id.is_empty() {
+                                        params.insert(parent_resource.id_field.clone(), parent_id);
+                                    }
+                                }
+                                params
+                            })
+                            .unwrap_or_default();
+
                         match crate::resource::describe_resource(
                             &self.current_resource_key,
                             &self.clients,
                             &id,
+                            &parent_params,
                         )
                         .await
                         {
