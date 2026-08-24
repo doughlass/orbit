@@ -96,11 +96,25 @@ fn render_context_column(f: &mut Frame, app: &App, area: Rect) {
 
     // Show parent context if navigating
     if let Some(parent) = &app.parent_context {
-        lines.push(Line::from(vec![
+        let mut context_spans = vec![
             Span::styled("Context:", Style::default().fg(Color::DarkGray)),
             Span::raw(" "),
             Span::styled(&parent.display_name, Style::default().fg(Color::Yellow)),
-        ]));
+        ];
+
+        if let Some(count) = parent
+            .item
+            .get("ResourceRecordSetCount")
+            .and_then(|v| v.as_str())
+        {
+            context_spans.push(Span::raw(" "));
+            context_spans.push(Span::styled(
+                format!("({} records)", count),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+
+        lines.push(Line::from(context_spans));
     }
 
     // Show read-only mode indicator
