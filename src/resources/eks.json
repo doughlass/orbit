@@ -253,7 +253,11 @@
       "is_global": false,
       "requires_parent": true,
       "columns": [
-        { "header": "ID", "json_path": "id", "width": 50 }
+        { "header": "ID", "json_path": "id", "width": 40 },
+        { "header": "STATUS", "json_path": "Status", "width": 14, "color_map": "state" },
+        { "header": "TYPE", "json_path": "Type", "width": 18 },
+        { "header": "VERSION", "json_path": "Version", "width": 10 },
+        { "header": "SUBMITTED", "json_path": "Submitted", "width": 20 }
       ],
       "sub_resources": [],
       "actions": [],
@@ -267,10 +271,19 @@
           "output_token": "/nextToken",
           "max_results_param": "maxResults",
           "max_results": 100
+        },
+        "list_enrich": {
+          "method": "GET",
+          "path": "/clusters/{name}/updates/{resource_id}",
+          "response_path": "/update"
         }
       },
       "field_mappings": {
-        "id": { "source": "", "default": "-" }
+        "id": { "source": "/id", "default": "-" },
+        "Status": { "source": "/status", "default": "-" },
+        "Type": { "source": "/type", "default": "-" },
+        "Version": { "source": "/version", "default": "-" },
+        "Submitted": { "source": "/createdAt", "default": "-" }
       },
       "describe_config": {
         "protocol": "rest-json",

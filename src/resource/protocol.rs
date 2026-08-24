@@ -105,6 +105,12 @@ pub struct ApiConfig {
     #[serde(default)]
     pub pagination: Option<PaginationConfig>,
 
+    /// Per-item enrichment: when the list response returns sparse items (e.g.
+    /// EKS update IDs), call a describe-style API for each item to get full
+    /// detail fields. The enriched response replaces each item.
+    #[serde(default)]
+    pub list_enrich: Option<ListEnrichConfig>,
+
     /// Pre-request hooks (e.g., "resolve_s3_bucket_region")
     #[serde(default)]
     pub pre_hooks: Vec<String>,
@@ -116,6 +122,19 @@ pub struct ApiConfig {
     /// For composite operations, the sequence of operations
     #[serde(default)]
     pub operations: Vec<CompositeOperation>,
+}
+
+/// Per-item enrichment config for list responses that return sparse items.
+/// Each item from the list has its `{resource_id}` placeholder filled and
+/// the describe API called for it. The result replaces the sparse item.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ListEnrichConfig {
+    /// HTTP method for the per-item call
+    pub method: String,
+    /// URL path template with {resource_id} placeholder
+    pub path: String,
+    /// JSON pointer to extract the full object from the describe response
+    pub response_path: Option<String>,
 }
 
 /// A single operation in a composite API call
