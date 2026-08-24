@@ -41,9 +41,9 @@ const SPLASH_WORDMARK: [&str; 6] = [
     r" ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝   ╚═╝   ",
 ];
 
-/// Rows the logo block adds beyond the art itself: a blank line, the tagline
-/// and the version.
-const LOGO_TRAILER_ROWS: u16 = 3;
+/// Rows the logo block adds beyond the art itself: a blank line, the tagline,
+/// the version, and the mode indicator.
+const LOGO_TRAILER_ROWS: u16 = 4;
 
 /// Rows below the logo block: two spacers, the loading bar and the status line.
 const BELOW_LOGO_ROWS: u16 = 5;
@@ -67,15 +67,17 @@ pub struct SplashState {
     pub total_steps: usize,
     pub current_message: String,
     pub spinner_frame: usize,
+    pub readonly: bool,
 }
 
 impl SplashState {
-    pub fn new() -> Self {
+    pub fn new(readonly: bool) -> Self {
         Self {
             current_step: 0,
             total_steps: 6,
             current_message: "Initializing...".to_string(),
             spinner_frame: 0,
+            readonly,
         }
     }
 
@@ -115,12 +117,12 @@ pub fn render(f: &mut Frame, splash: &SplashState) {
     ])
     .split(vertical[1]);
 
-    render_big_logo(f, logo, content[0]);
+    render_big_logo(f, logo, splash.readonly, content[0]);
     render_loading_bar(f, splash, content[2]);
     render_status(f, splash, content[4]);
 }
 
-fn render_big_logo(f: &mut Frame, logo: &[&str], area: Rect) {
+fn render_big_logo(f: &mut Frame, logo: &[&str], readonly: bool, area: Rect) {
     let brand = Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD);
@@ -139,6 +141,22 @@ fn render_big_logo(f: &mut Frame, logo: &[&str], area: Rect) {
         crate::VERSION,
         Style::default().fg(Color::DarkGray),
     )));
+
+    let mode_style = if readonly {
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    };
+    let mode_text = if readonly {
+        "Mode:  READONLY"
+    } else {
+        "Mode:  WRITE"
+    };
+    logo_lines.push(Line::from(Span::styled(mode_text, mode_style)));
 
     let paragraph = Paragraph::new(logo_lines).alignment(Alignment::Center);
     f.render_widget(paragraph, area);
