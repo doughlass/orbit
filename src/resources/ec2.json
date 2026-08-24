@@ -28,7 +28,7 @@
         "action": "DescribeImages",
         "response_root": "/DescribeImagesResponse/imagesSet/item",
         "static_params": {
-          "Owner.1": "amazon"
+          "Owner.1": "self"
         },
         "pagination": {
           "input_token": "NextToken",
