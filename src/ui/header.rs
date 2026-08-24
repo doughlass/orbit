@@ -102,11 +102,11 @@ fn render_context_column(f: &mut Frame, app: &App, area: Rect) {
             Span::styled(&parent.display_name, Style::default().fg(Color::Yellow)),
         ];
 
-        if let Some(count) = parent
-            .item
-            .get("ResourceRecordSetCount")
-            .and_then(|v| v.as_str())
-        {
+        if let Some(count) = parent.item.get("ResourceRecordSetCount").and_then(|v| {
+            v.as_str()
+                .map(|s| s.to_string())
+                .or_else(|| v.as_u64().map(|n| n.to_string()))
+        }) {
             context_spans.push(Span::raw(" "));
             context_spans.push(Span::styled(
                 format!("({} records)", count),

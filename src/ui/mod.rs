@@ -175,12 +175,27 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
         let is_global = resource.is_global;
         let has_more = app.pagination.has_more;
 
-        let count_str = if has_more {
+        // Route53 records and similar: parent carries the authoritative total
+        let parent_total = app
+            .parent_context
+            .as_ref()
+            .and_then(|p| p.item.get("ResourceRecordSetCount"))
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .or_else(|| v.as_u64().map(|n| n as usize))
+            });
+
+        let count_str = if let Some(pt) = parent_total {
+            format!("{}/{}", count, pt)
+        } else if has_more {
             format!("{}+", count)
         } else {
             count.to_string()
         };
-        let total_str = if has_more {
+        let total_str = if let Some(pt) = parent_total {
+            format!("{}/{}", total, pt)
+        } else if has_more {
             format!("{}+", total)
         } else {
             total.to_string()
