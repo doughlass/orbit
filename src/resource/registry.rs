@@ -969,8 +969,12 @@ mod tests {
             .sub_resources
             .iter()
             .any(|s| s.resource_key == "eks-addons"));
+        assert!(clusters
+            .sub_resources
+            .iter()
+            .any(|s| s.resource_key == "eks-updates"));
 
-        // All three sub-resources must use 'name' as filter_param
+        // All sub-resources must use 'name' as filter_param
         for sub in &clusters.sub_resources {
             assert_eq!(
                 sub.filter_param, "name",
@@ -987,7 +991,12 @@ mod tests {
 
     #[test]
     fn eks_sub_resources_require_parent() {
-        for key in &["eks-nodegroups", "eks-fargate-profiles", "eks-addons"] {
+        for key in &[
+            "eks-nodegroups",
+            "eks-fargate-profiles",
+            "eks-addons",
+            "eks-updates",
+        ] {
             let resource = get_resource(key).unwrap_or_else(|| panic!("{}", key));
             assert!(
                 resource.requires_parent,

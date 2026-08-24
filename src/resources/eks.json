@@ -16,7 +16,8 @@
       "sub_resources": [
         { "shortcut": "n", "display_name": "Node Groups", "resource_key": "eks-nodegroups", "parent_id_field": "name", "filter_param": "name" },
         { "shortcut": "f", "display_name": "Fargate Profiles", "resource_key": "eks-fargate-profiles", "parent_id_field": "name", "filter_param": "name" },
-        { "shortcut": "a", "display_name": "Add-ons", "resource_key": "eks-addons", "parent_id_field": "name", "filter_param": "name" }
+        { "shortcut": "a", "display_name": "Add-ons", "resource_key": "eks-addons", "parent_id_field": "name", "filter_param": "name" },
+        { "shortcut": "u", "display_name": "Updates", "resource_key": "eks-updates", "parent_id_field": "name", "filter_param": "name" }
       ],
       "actions": [
         { "key": "ctrl+d", "display_name": "Delete Cluster", "shortcut": "ctrl+d", "sdk_method": "delete_cluster", "confirm": { "message": "Delete EKS cluster", "default_yes": false, "destructive": true } }
@@ -63,6 +64,9 @@
           { "label": "Public Endpoint",  "source": "/resourcesVpcConfig/endpointPublicAccess", "transform": "bool_to_yes_no" },
           { "label": "Private Endpoint", "source": "/resourcesVpcConfig/endpointPrivateAccess", "transform": "bool_to_yes_no" },
           { "label": "OIDC Issuer",      "source": "/identity/oidc/issuer" },
+          { "label": "Auth Mode",        "source": "/accessConfig/authenticationMode" },
+          { "label": "Log Types",        "source": "/logging/clusterLogging" },
+          { "label": "Health Issues",    "source": "/health/issues" },
           { "label": "Created",          "source": "/createdAt" }
         ]
       }
@@ -235,6 +239,53 @@
           { "label": "Type",                  "source": "/addonType" },
           { "label": "ARN",                   "source": "/addonArn" },
           { "label": "Created",               "source": "/createdAt" }
+        ]
+      }
+    },
+    "eks-updates": {
+      "display_name": "EKS Updates",
+      "service": "eks",
+      "sdk_method": "list_updates",
+      "sdk_method_params": {},
+      "response_path": "updates",
+      "id_field": "id",
+      "name_field": "id",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "ID", "json_path": "id", "width": 50 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/clusters/{name}/updates",
+        "response_root": "/updateIds",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "id": { "source": "", "default": "-" }
+      },
+      "describe_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/clusters/{name}/updates/{resource_id}",
+        "response_path": "/update",
+        "describe_fields": [
+          { "label": "ID",               "source": "/id" },
+          { "label": "Status",           "source": "/status" },
+          { "label": "Type",             "source": "/type" },
+          { "label": "Version",          "source": "/version" },
+          { "label": "Platform",         "source": "/platformVersion" },
+          { "label": "Params",           "source": "/params" },
+          { "label": "Error",            "source": "/errors" },
+          { "label": "Created",          "source": "/createdAt" }
         ]
       }
     }
