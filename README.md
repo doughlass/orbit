@@ -512,7 +512,7 @@ Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) 
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. Copyright is retained by the original author, Hüseyin Babal, as required by the MIT licence.
+Licensed under MIT. See [LICENSE](LICENSE) for details.
 
 orbit is an independent project. It is not affiliated with, endorsed by, or sponsored by Amazon Web Services, Inc. "AWS" is a trademark of Amazon.com, Inc. or its affiliates.
 
