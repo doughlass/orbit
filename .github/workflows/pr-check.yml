@@ -12,7 +12,7 @@ permissions:
 jobs:
   check-issue-link:
     name: Check Issue Link
-    if: ${{ !startsWith(github.head_ref, 'release-plz-') }}
+    if: ${{ !startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login != 'doughlass' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check PR description for issue link
