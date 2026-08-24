@@ -5,6 +5,19 @@ All notable changes to orbit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1](https://github.com/doughlass/orbit/compare/v1.1.0...v1.1.1) - 2026-08-24
+
+### Fixed
+
+- *(ci)* add Accept header to homebrew formula downloads
+
+### Other
+
+- release v1.1.1
+- rewrite README and CHANGELOG for orbit
+- update copyright to doughlass
+- add orbit copyright to LICENSE
+
 ## [1.1.0](https://github.com/doughlass/orbit/releases/tag/v1.1.0) - 2026-08-24
 
 ### Added
