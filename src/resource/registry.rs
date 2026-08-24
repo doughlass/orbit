@@ -950,6 +950,65 @@ mod tests {
     }
 
     #[test]
+    fn eks_clusters_have_nodegroups_as_enter_sub_resource() {
+        let clusters = get_resource("eks-clusters").expect("eks-clusters");
+        assert_eq!(
+            clusters.enter_sub_resource.as_deref(),
+            Some("eks-nodegroups"),
+            "Enter on an EKS cluster should list node groups"
+        );
+        assert!(clusters
+            .sub_resources
+            .iter()
+            .any(|s| s.resource_key == "eks-nodegroups"));
+        assert!(clusters
+            .sub_resources
+            .iter()
+            .any(|s| s.resource_key == "eks-fargate-profiles"));
+        assert!(clusters
+            .sub_resources
+            .iter()
+            .any(|s| s.resource_key == "eks-addons"));
+
+        // All three sub-resources must use 'name' as filter_param
+        for sub in &clusters.sub_resources {
+            assert_eq!(
+                sub.filter_param, "name",
+                "{} sub_resource filter_param",
+                sub.resource_key
+            );
+            assert_eq!(
+                sub.parent_id_field, "name",
+                "{} sub_resource parent_id_field",
+                sub.resource_key
+            );
+        }
+    }
+
+    #[test]
+    fn eks_sub_resources_require_parent() {
+        for key in &["eks-nodegroups", "eks-fargate-profiles", "eks-addons"] {
+            let resource = get_resource(key).unwrap_or_else(|| panic!("{}", key));
+            assert!(
+                resource.requires_parent,
+                "{} must require a parent cluster",
+                key
+            );
+            assert!(
+                resource.describe_config.is_some(),
+                "{} must have a describe_config",
+                key
+            );
+            let dc = resource.describe_config.as_ref().unwrap();
+            assert!(
+                !dc.describe_fields.is_empty(),
+                "{} must have describe_fields for formatted overview",
+                key
+            );
+        }
+    }
+
+    #[test]
     fn test_elbv2_load_balancers_resource_exists() {
         let resource = get_resource("elbv2-load-balancers");
         assert!(
