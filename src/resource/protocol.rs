@@ -23,6 +23,17 @@ pub enum ApiProtocol {
     RestXml,
 }
 
+/// A single field in a multi-token pagination scheme (e.g., Route53 records
+/// needs both NextRecordName and NextRecordType sent together on every page).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct MultiTokenField {
+    /// Query parameter name sent on the request, e.g. "name"
+    pub query_param: String,
+    /// JSON path to extract this token from the response, e.g.
+    /// "/ListResourceRecordSetsResponse/NextRecordName"
+    pub response_path: String,
+}
+
 /// Pagination configuration for API calls
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct PaginationConfig {
@@ -38,6 +49,11 @@ pub struct PaginationConfig {
     /// Default max results value
     #[serde(default)]
     pub max_results: Option<u32>,
+    /// Multi-token pagination fields for APIs that page on several coordinated
+    /// values (Route53 ListResourceRecordSets, etc.). Mutually exclusive with
+    /// input_token/output_token — only one scheme is used per resource.
+    #[serde(default)]
+    pub multi_token: Option<Vec<MultiTokenField>>,
 }
 
 /// Configuration for a single API operation

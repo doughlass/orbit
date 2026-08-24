@@ -11,6 +11,7 @@ use crate::resource::path_extractor::{extract_by_path, extract_list};
 use crate::resource::protocol::ApiConfig;
 use anyhow::Result;
 use serde_json::Value;
+use std::collections::HashMap;
 
 pub struct RestXmlProtocolHandler;
 
@@ -52,7 +53,21 @@ impl RestXmlProtocolHandler {
         if let Some(token) = params.get("_page_token").and_then(|v| v.as_str()) {
             if let Some(pagination) = &config.pagination {
                 if let Some(input_token) = &pagination.input_token {
+                    // Single-token pagination
                     query_parts.push(format!("{}={}", input_token, urlencoding::encode(token)));
+                } else if let Some(multi) = &pagination.multi_token {
+                    // Multi-token pagination: _page_token is a JSON map
+                    if let Ok(token_map) = serde_json::from_str::<HashMap<String, String>>(token) {
+                        for field in multi {
+                            if let Some(value) = token_map.get(&field.query_param) {
+                                query_parts.push(format!(
+                                    "{}={}",
+                                    field.query_param,
+                                    urlencoding::encode(value)
+                                ));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -97,15 +112,34 @@ impl ProtocolHandler for RestXmlProtocolHandler {
             vec![]
         };
 
-        // Extract next token if pagination is configured
-        let next_token = config
-            .pagination
-            .as_ref()
-            .and_then(|p| p.output_token.as_ref())
-            .and_then(|path| {
-                let token = extract_by_path(&json, path);
-                token.as_str().map(|s| s.to_string())
-            });
+        // Extract next token(s) if pagination is configured
+        let next_token = config.pagination.as_ref().and_then(|p| {
+            // Single-token pagination
+            if let Some(path) = &p.output_token {
+                extract_by_path(&json, path).as_str().map(|s| s.to_string())
+            } else if let Some(multi) = &p.multi_token {
+                // Multi-token pagination: collect all tokens into a JSON map
+                let mut map = serde_json::Map::new();
+                for field in multi {
+                    let value = extract_by_path(&json, &field.response_path);
+                    if !value.is_null() {
+                        if let Some(s) = value.as_str() {
+                            map.insert(
+                                field.query_param.clone(),
+                                serde_json::Value::String(s.to_string()),
+                            );
+                        }
+                    }
+                }
+                if map.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::Value::Object(map).to_string())
+                }
+            } else {
+                None
+            }
+        });
 
         Ok((items, next_token))
     }
@@ -114,6 +148,7 @@ impl ProtocolHandler for RestXmlProtocolHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resource::protocol::{MultiTokenField, PaginationConfig};
 
     #[test]
     fn test_parse_s3_list_buckets() {
@@ -275,5 +310,79 @@ mod tests {
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0]["Name"], "example.com.");
+    }
+
+    /// ListResourceRecordSets produces two pagination tokens (NextRecordName +
+    /// NextRecordType) that must be sent together on the following request.
+    /// The multi-token scheme serializes them as a JSON map.
+    #[test]
+    fn test_parse_route53_records_with_multi_token_pagination() {
+        let xml = r#"<?xml version="1.0"?>
+<ListResourceRecordSetsResponse>
+  <ResourceRecordSets>
+    <ResourceRecordSet>
+      <Name>_dmarc.example.com.</Name>
+      <Type>TXT</Type>
+      <TTL>300</TTL>
+      <ResourceRecords>
+        <ResourceRecord>
+          <Value>"v=DMARC1; p=reject"</Value>
+        </ResourceRecord>
+      </ResourceRecords>
+    </ResourceRecordSet>
+    <ResourceRecordSet>
+      <Name>www.example.com.</Name>
+      <Type>A</Type>
+      <TTL>60</TTL>
+      <ResourceRecords>
+        <ResourceRecord>
+          <Value>10.0.0.1</Value>
+        </ResourceRecord>
+      </ResourceRecords>
+    </ResourceRecordSet>
+  </ResourceRecordSets>
+  <IsTruncated>true</IsTruncated>
+  <NextRecordName>www.example.com.</NextRecordName>
+  <NextRecordType>A</NextRecordType>
+  <MaxItems>2</MaxItems>
+</ListResourceRecordSetsResponse>"#;
+
+        let config = ApiConfig {
+            response_root: Some(
+                "/ListResourceRecordSetsResponse/ResourceRecordSets/ResourceRecordSet".to_string(),
+            ),
+            pagination: Some(PaginationConfig {
+                multi_token: Some(vec![
+                    MultiTokenField {
+                        query_param: "name".to_string(),
+                        response_path: "/ListResourceRecordSetsResponse/NextRecordName".to_string(),
+                    },
+                    MultiTokenField {
+                        query_param: "type".to_string(),
+                        response_path: "/ListResourceRecordSetsResponse/NextRecordType".to_string(),
+                    },
+                ]),
+                max_results_param: Some("maxitems".to_string()),
+                max_results: Some(100),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let handler = RestXmlProtocolHandler;
+        let (items, next_token) = handler.parse_items(xml, &config).unwrap();
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["Name"], "_dmarc.example.com.");
+        assert_eq!(items[0]["Type"], "TXT");
+        assert_eq!(items[1]["Name"], "www.example.com.");
+        assert_eq!(items[1]["Type"], "A");
+
+        // Multi-token must be serialised as a JSON map
+        assert!(next_token.is_some(), "multi-token next_token must be Some");
+        let token_map: HashMap<String, String> =
+            serde_json::from_str(&next_token.unwrap()).unwrap();
+        assert_eq!(token_map.get("name").unwrap(), "www.example.com.");
+        assert_eq!(token_map.get("type").unwrap(), "A");
     }
 }

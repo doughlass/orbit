@@ -721,6 +721,54 @@ mod tests {
         );
     }
 
+    /// ListResourceRecordSets pages on two coordinated tokens (NextRecordName +
+    /// NextRecordType). A single-token PaginationConfig cannot represent this, so
+    /// the resource must use the multi_token scheme instead.
+    #[test]
+    fn route53_records_use_multi_token_pagination() {
+        let records = get_resource("route53-records").expect("route53-records");
+        let config = records
+            .api_config
+            .as_ref()
+            .expect("route53-records needs api_config");
+        let pagination = config
+            .pagination
+            .as_ref()
+            .expect("route53-records needs pagination");
+
+        assert!(
+            pagination.multi_token.is_some(),
+            "route53-records must use multi_token, not single input_token/output_token"
+        );
+        assert!(
+            pagination.input_token.is_none() && pagination.output_token.is_none(),
+            "route53-records must not set single-token fields alongside multi_token"
+        );
+
+        let multi = pagination.multi_token.as_ref().unwrap();
+        assert_eq!(
+            multi.len(),
+            2,
+            "route53-records needs two tokens: name + type"
+        );
+
+        let names: Vec<&str> = multi.iter().map(|f| f.query_param.as_str()).collect();
+        assert!(
+            names.contains(&"name"),
+            "route53-records needs a 'name' query param"
+        );
+        assert!(
+            names.contains(&"type"),
+            "route53-records needs a 'type' query param"
+        );
+
+        assert_eq!(
+            pagination.max_results_param.as_deref(),
+            Some("maxitems"),
+            "route53-records max_results_param"
+        );
+    }
+
     /// The EC2 networking family, listed explicitly so that dropping one from the JSON
     /// is a test failure rather than a silently smaller loop.
     const VPC_NETWORKING_KEYS: &[&str] = &[
