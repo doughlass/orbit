@@ -3,392 +3,100 @@
 █▄█ █▀▄ █▄█ █  █
 ```
 
-# orbit - Terminal UI for AWS
+# orbit — Terminal UI for AWS
 
-**orbit** provides a terminal UI to interact with your AWS resources. The aim of this project is to make it easier to navigate, observe, and manage your AWS infrastructure in the wild.
+Browse, observe and manage your AWS resources from the terminal. Keyboard-driven, vim-style navigation. Built for operators who live in the shell.
 
----
-
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-orange.svg)](https://www.rust-lang.org/)
-
-> orbit is maintained independently. See [Acknowledgments](#acknowledgments).
-
----
-
-## Screenshots
+[![Crates.io](https://img.shields.io/crates/v/orbit-tui.svg)](https://crates.io/crates/orbit-tui)
 
 <p align="center">
-  <img src="assets/screenshot-ec2.png" alt="EC2 Instances View" width="800"/>
+  <img src="assets/screenshot-ec2.png" alt="EC2 Instances" width="800"/>
 </p>
 
 <p align="center">
-  <img src="assets/screenshot-r53.png" alt="Route53 Hosted Zones View" width="800"/>
+  <img src="assets/screenshot-r53.png" alt="Route53 Hosted Zones" width="800"/>
 </p>
 
----
-
-## Features
-
-- **Multi-Profile Support** - Easily switch between AWS profiles
-- **Multi-Region Support** - Navigate across different AWS regions
-- **61 Resource Types** - Browse and manage resources across 32 AWS services
-- **Manual Refresh** - Refresh resources with a single keystroke
-- **Pagination** - Navigate through large resource lists with `]` / `[` keys
-- **Keyboard-Driven** - Vim-like navigation and commands
-- **Resource Actions** - Start, stop, terminate EC2 instances directly
-- **Detailed Views** - JSON/YAML view of resource details
-- **Filtering** - Filter resources locally with fuzzy matching, or by AWS tags (server-side) for supported resources
-- **Autocomplete** - Smart resource type autocomplete with fuzzy matching
-
----
-
-## Installation
-
-The crate is named `orbit-tui` (the name `orbit` was already taken on crates.io) but the binary it installs is `orbit`.
-
-### Using Cargo
+## Install
 
 ```bash
-cargo install --git https://github.com/doughlass/orbit
+brew tap doughlass/tap && brew install orbit   # macOS / Linux (Homebrew)
+cargo install orbit-tui                         # via crates.io
+docker run --rm -it -v ~/.aws:/root/.aws:ro ghcr.io/doughlass/orbit   # Docker
 ```
 
-### From Source
+The crate is named `orbit-tui` (the name `orbit` was taken on crates.io). The installed binary is `orbit`.
 
-orbit is built with Rust. Make sure you have Rust 1.94+ installed, along with a C compiler and linker.
+Pre-built binaries for macOS (arm64/x86_64), Linux (musl arm64/x86_64) and Windows (x86_64) are available on the [releases page](https://github.com/doughlass/orbit/releases).
 
-#### Build Dependencies
+### From source
 
-| Platform | Install Command |
-|----------|-----------------|
-| **Amazon Linux / RHEL / Fedora** | `sudo yum groupinstall "Development Tools" -y` |
-| **Ubuntu / Debian** | `sudo apt update && sudo apt install build-essential -y` |
-| **macOS** | `xcode-select --install` |
-| **Windows** | Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) |
+Requires Rust 1.94+ and a C compiler.
 
 ```bash
-# Clone the repository
-git clone https://github.com/doughlass/orbit.git
-cd orbit
-
-# Build and run
+git clone https://github.com/doughlass/orbit.git && cd orbit
 cargo build --release
 ./target/release/orbit
 ```
 
-### Using Docker
+## Quick start
 
 ```bash
-# Build locally
-docker build -t orbit .
-
-# Run interactively
-docker run --rm -it -v ~/.aws:/root/.aws:ro orbit
-
-# Launch with a specific profile
-docker run --rm -it -v ~/.aws:/root/.aws:ro orbit --profile production
-
-# Launch in a specific region
-docker run --rm -it -v ~/.aws:/root/.aws:ro orbit --region us-west-2
-
-# Using environment variables
-docker run --rm -it \
-  -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
-  -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
-  -e AWS_REGION=us-east-1 \
-  orbit
+orbit                               # default profile and region
+orbit --profile prod                # specific profile
+orbit --region eu-west-1            # specific region
+orbit --readonly                    # block all write operations
+orbit --demo                        # synthetic data, no AWS connection
+orbit --demo all                    # EC2 + Route53 + CloudFront demo
+orbit --demo ec2-instances,rds      # choose resources to demo
+orbit --log-level debug             # write debug log
 ```
 
-> **Note:** Use `-it` flags for interactive terminal support (required for TUI). Mount your `~/.aws` directory as read-only to use your existing AWS credentials.
-
----
-
-## Prerequisites
-
-- **AWS Credentials** - See [Authentication](#authentication) section below
-- **IAM Permissions** - Your AWS user/role needs appropriate read permissions for the services you want to browse. At minimum, you'll need `Describe*` and `List*` permissions.
-
----
-
-## Authentication
-
-orbit uses a credential chain, trying each source in order:
-
-| Priority | Source | Description |
-|----------|--------|-------------|
-| 1 | Environment Variables | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` |
-| 2 | **AWS SSO** | If profile has SSO configured, uses SSO (prompts for login if needed) |
-| 3 | **AWS Console Login** | If profile has `login_session` configured, prompts for console login |
-| 4 | **Role Assumption** | If profile has `role_arn` + `source_profile`, assumes the role |
-| 5 | Credentials File | `~/.aws/credentials` |
-| 6 | Config File | `~/.aws/config` |
-| 7 | IMDSv2 | EC2 instance metadata |
-
-### AWS SSO
-
-orbit supports AWS SSO. If your profile uses SSO and the token is expired, orbit will prompt you to authenticate via browser.
-
-Both SSO config formats are supported:
-- Modern: `sso_session` reference to `[sso-session X]` section
-- Legacy: `sso_start_url` directly in profile
-
-If you already logged in via `aws sso login`, orbit will use the cached token automatically.
-
-### AWS Console Login
-
-orbit supports AWS Console Login (`aws login`). If your profile uses `login_session` and credentials are expired, orbit will prompt you to run `aws login` in another terminal.
-
-```ini
-[profile console-profile]
-login_session = my-login-session
-
-[login-session my-login-session]
-sso_start_url = https://my-portal.awsapps.com/start
-sso_region = us-east-1
-sso_registration_scopes = sso:account:access
-```
-
-If you already logged in via `aws login`, orbit will use the cached credentials automatically.
-
-### IAM Role Assumption
-
-orbit supports assuming IAM roles using `role_arn` with either `source_profile` or `credential_source`. This is commonly used for:
-- Cross-account access (e.g., dev account assuming role in prod account)
-- Least-privilege access patterns
-- Chained role assumption
-- Container-based deployments (ECS, Lambda)
-
-#### Using source_profile
-
-Reference another named profile for source credentials:
-
-```ini
-[profile base]
-region = us-east-1
-
-[profile production]
-role_arn = arn:aws:iam::123456789012:role/ProductionAccess
-source_profile = base
-region = us-west-2
-
-# Optional: external_id for cross-account trust
-[profile partner-account]
-role_arn = arn:aws:iam::987654321098:role/PartnerAccess
-source_profile = base
-external_id = my-external-id
-```
-
-#### Using credential_source
-
-Load source credentials from environment, EC2 metadata, or ECS container:
-
-```ini
-# For ECS tasks with task IAM roles
-[profile ecs-admin]
-role_arn = arn:aws:iam::123456789012:role/AdminRole
-credential_source = EcsContainer
-
-# For EC2 instances with instance roles
-[profile ec2-admin]
-role_arn = arn:aws:iam::123456789012:role/AdminRole
-credential_source = Ec2InstanceMetadata
-
-# For environments with AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY set
-[profile env-admin]
-role_arn = arn:aws:iam::123456789012:role/AdminRole
-credential_source = Environment
-```
-
-**Supported credential_source values:**
-
-| Value | Description |
-|-------|-------------|
-| `Environment` | Load from `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` |
-| `Ec2InstanceMetadata` | Load from EC2 instance metadata (IMDSv2) |
-| `EcsContainer` | Load from ECS container credentials endpoint |
-
-**Supported options:**
-
-| Option | Required | Description |
-|--------|----------|-------------|
-| `role_arn` | Yes | ARN of the IAM role to assume |
-| `source_profile` | One of | Profile to use for source credentials |
-| `credential_source` | these | Where to load source credentials from |
-| `external_id` | No | External ID for cross-account trust policies |
-| `role_session_name` | No | Custom session name (default: `orbit-session`) |
-| `duration_seconds` | No | Session duration in seconds (default: 3600) |
-| `region` | No | Region for STS endpoint |
-
-**Notes:**
-- Use exactly one of `source_profile` OR `credential_source` (not both)
-- Chained role assumption is supported (source_profile can also use role_arn)
-- Temporary credentials are cached and automatically refreshed before expiration
-- ECS container credentials require `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `AWS_CONTAINER_CREDENTIALS_FULL_URI` environment variables (set automatically by ECS)
-
----
-
-## Quick Start
+Shell completions for bash, zsh and fish:
 
 ```bash
-# Launch orbit with default profile
-orbit
-
-# Launch with a specific profile
-orbit --profile production
-
-# Launch in a specific region
-orbit --region us-west-2
-
-# Enable debug logging
-orbit --log-level debug
-
-# Run in read-only mode (blocks all write operations)
-orbit --readonly
-
-# Use with LocalStack or custom endpoint
-orbit --endpoint-url http://localhost:4566
-
-# Or via environment variable
-AWS_ENDPOINT_URL=http://localhost:4566 orbit
+eval "$(orbit completion bash)"     # add to ~/.bashrc
+eval "$(orbit completion zsh)"      # add to ~/.zshrc
+orbit completion fish | source      # add to config.fish
 ```
 
-### Log File Locations
+## Features
 
-| Platform | Path |
-|----------|------|
-| **Linux** | `~/.config/orbit/orbit.log` |
-| **macOS** | `~/Library/Application Support/orbit/orbit.log` |
-| **Windows** | `%APPDATA%\orbit\orbit.log` |
+- **60+ resource types** across 32 AWS services
+- **Keyboard-driven** — vim keys, `:` command mode, `/` filtering
+- **Fuzzy filtering** — client-side, or server-side AWS tag filters where supported
+- **Sortable columns** — click a column header with `j`/`k` to sort
+- **Resource actions** — start, stop, terminate EC2 instances, view secret values, SSM shell connect
+- **Data-driven** — every resource type is a JSON definition, no hardcoded keys in Rust
+- **Multi-profile, multi-region** — SSO, role assumption, console login, credential chain
+- **Demo mode** — `--demo` starts instantly with synthetic data for screenshots or testing
+- **Read-only mode** — `--readonly` blocks all mutating operations
+- **Pagination** — large resource lists with `]`/`[` keys
 
-### Shell Completion
+## Key bindings
 
-orbit supports shell completion for bash, zsh, fish, and PowerShell.
+| Key | Action |
+|-----|--------|
+| `j` `k` `↑` `↓` | Navigate items |
+| `gg` `G` | Jump top / bottom |
+| `PgUp` `PgDn` `Ctrl+b` `Ctrl+f` | Page up / down |
+| `]` `[` | Next / previous page |
+| `Enter` | Describe resource or enter sub-resource |
+| `d` | Describe selected resource |
+| `:` | Open resource picker |
+| `/` | Filter (fuzzy match or AWS tag filters) |
+| `J` `K` | Sort by column |
+| `R` | Refresh |
+| `0`–`5` | Quick region switch |
+| `?` | Help |
+| `Ctrl+c` | Quit |
+| `Esc` `Backspace` | Go back |
 
-```bash
-# Bash (add to ~/.bashrc)
-eval "$(orbit completion bash)"
+Resource-specific actions appear in the help screen (`?`). Examples: `c` connects to EC2 via SSM, `x` reveals a secret value, `i` lists ECR images.
 
-# Zsh (add to ~/.zshrc)
-eval "$(orbit completion zsh)"
-
-# Fish (add to ~/.config/fish/config.fish)
-orbit completion fish | source
-
-# PowerShell (add to $PROFILE)
-orbit completion powershell | Out-String | Invoke-Expression
-```
-
-After adding the completion script, restart your shell or source the config file.
-
----
-
-## Key Bindings
-
-| Action | Key | Description |
-|--------|-----|-------------|
-| **Navigation** | | |
-| Move up | `k` / `↑` | Move selection up |
-| Move down | `j` / `↓` | Move selection down |
-| Top | `gg` / `Home` | Jump to first item |
-| Bottom | `G` / `End` | Jump to last item |
-| Page up | `PgUp` / `Ctrl+b` | Scroll up one page |
-| Page down | `PgDn` / `Ctrl+f` | Scroll down one page |
-| **Pagination** | | |
-| Next page | `]` | Load next page of results |
-| Previous page | `[` | Load previous page of results |
-| **Views** | | |
-| Resource picker | `:` | Open resource type selector |
-| Describe | `Enter` / `d` | View resource details |
-| Back | `Esc` / `Backspace` | Go back to previous view |
-| Help | `?` | Show help screen |
-| **Actions** | | |
-| Refresh | `R` | Refresh current view (resets pagination) |
-| Filter | `/` | Filter resources |
-| Region shortcuts | `0-5` | Quick switch to common regions |
-| Quit | `Ctrl-c` | Exit orbit |
-| **EC2 Actions** | | |
-| Connect (SSM) | `c` | Open SSM shell session to instance |
-| Start instance | `s` | Start selected EC2 instance |
-| Stop instance | `S` | Stop selected EC2 instance |
-| Terminate | `Ctrl+d` | Terminate selected EC2 instance |
-
----
-
-## Filtering
-
-Press `/` to enter filter mode. orbit supports two types of filtering:
-
-### Local Filtering (All Resources)
-
-Type any text to filter resources locally by name, ID, or other visible attributes. Uses fuzzy matching.
-
-```
-/web-server     # Filter by name containing "web-server"
-/i-0123         # Filter by instance ID
-```
-
-### AWS API Filtering (Server-Side)
-
-For supported resources, you can filter using AWS API filters directly. This is more efficient for large resource lists as filtering happens server-side.
-
-**How to use:**
-1. Press `/` to enter filter mode
-2. Type `F` and press `Tab` to autocomplete `Filters: `
-3. Enter filter key-value pairs: `Filters: owner=amazon, architecture=arm64`
-4. Press `Enter` to apply the filter (triggers AWS API call)
-5. Press `Esc` to clear the filter
-
-**Syntax:**
-```
-Filters: key=value, key2=value2
-```
-
-**Examples by Resource:**
-
-| Resource | Example Filters |
-|----------|----------------|
-| AMIs | `Filters: owner=amazon, architecture=arm64, state=available` |
-| EC2 Instances | `Filters: instance-state-name=running, tag:Environment=prod` |
-| EBS Volumes | `Filters: status=available, tag:Name=my-volume` |
-| EBS Snapshots | `Filters: status=completed, owner-id=self` |
-
-**Common Filter Keys:**
-
-| Filter Key | Description | Example Values |
-|------------|-------------|----------------|
-| `owner` | AMI owner (AMIs only) | `amazon`, `self`, `aws-marketplace`, `<account-id>` |
-| `architecture` | CPU architecture | `arm64`, `x86_64` |
-| `state` / `status` | Resource state | `available`, `running`, `stopped` |
-| `tag:<key>` | Filter by tag | `tag:Environment=production` |
-
-> **Note:** When you enter filter mode on a supported resource, orbit shows available filter keys for that resource in the status bar.
-
----
-
-## Resource Navigation
-
-Press `:` to open the resource picker. Type to filter resources:
-
-```
-:ec2          # EC2 Instances
-:volumes      # EBS Volumes
-:snapshots    # EBS Snapshots
-:amis         # AMIs (Amazon Machine Images)
-:lambda       # Lambda Functions
-:s3           # S3 Buckets
-:rds          # RDS Instances
-:iam-users    # IAM Users
-:eks          # EKS Clusters
-:msk          # MSK Clusters
-```
-
-Use `Tab` to autocomplete and `Enter` to select.
-
----
-
-## Supported AWS Services
-
-orbit supports **32 AWS services** with **61 resource types** covering 95%+ of typical AWS usage:
+## Supported services
 
 | Category | Service | Resources |
 |----------|---------|-----------|
@@ -402,9 +110,9 @@ orbit supports **32 AWS services** with **61 resource types** covering 95%+ of t
 | | DynamoDB | Tables |
 | | ElastiCache | Clusters |
 | | Redshift | Clusters |
-| **Networking** | VPC | VPCs, Subnets, Security Groups |
+| **Networking** | VPC | VPCs, Subnets, Security Groups, Network ACLs, Route Tables, Internet Gateways, NAT Gateways, Elastic IPs, Network Interfaces, VPC Endpoints, VPC Peering Connections |
 | | ELBv2 | Load Balancers, Listeners, Rules, Target Groups, Targets |
-| | Route 53 | Hosted Zones |
+| | Route 53 | Hosted Zones, Records |
 | | CloudFront | Distributions |
 | | API Gateway | REST APIs |
 | **Security** | IAM | Users, Groups, Roles, Policies, Access Keys |
@@ -412,112 +120,55 @@ orbit supports **32 AWS services** with **61 resource types** covering 95%+ of t
 | | KMS | Keys |
 | | ACM | Certificates |
 | | Cognito | User Pools |
-| **Management** | CloudFormation | Stacks |
-| | CloudWatch | Log Groups |
+| | WAFv2 | Web ACLs, IP Sets, Rule Groups |
+| **Management** | CloudFormation | Stacks, Stack Events, Stack Outputs |
+| | CloudWatch | Log Groups, Log Streams |
 | | CloudTrail | Trails |
 | | SSM | Parameters |
-| | STS | Caller Identity |
 | **Messaging** | SQS | Queues |
 | | SNS | Topics |
 | | EventBridge | Event Buses, Rules |
-| **Containers** | ECR | Repositories |
+| **Containers** | ECR | Repositories, Images |
 | **DevOps** | CodePipeline | Pipelines |
 | | CodeBuild | Projects |
 | **Analytics** | Athena | Workgroups |
 | | MSK | Clusters |
 
-> **Missing a service?** [Open an issue](https://github.com/doughlass/orbit/issues/new) to propose adding it!
+> Missing a service? [Open an issue](https://github.com/doughlass/orbit/issues/new).
 
----
+## Authentication
+
+orbit uses the standard AWS credential chain: environment variables → SSO → console login → `~/.aws/credentials` → `~/.aws/config` → IMDSv2.
+
+For SSO: if your profile uses Identity Center and the token is expired, orbit prompts you to authenticate. If you already logged in via `aws sso login`, the cached token is reused.
+
+For role assumption: `role_arn` with `source_profile` or `credential_source` (EC2, ECS, Environment) is fully supported.
+
+Set `AWS_CA_BUNDLE` if you are behind a corporate proxy with SSL inspection.
+
+For LocalStack: `orbit --endpoint-url http://localhost:4566`.
 
 ## Configuration
 
-See [Authentication](#authentication) for credential setup.
+| Variable | Purpose |
+|----------|---------|
+| `AWS_PROFILE` | Default profile |
+| `AWS_REGION` | Default region |
+| `AWS_ENDPOINT_URL` | Custom endpoint (LocalStack) |
+| `AWS_CA_BUNDLE` | Corporate SSL certificate bundle |
 
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `AWS_PROFILE` | Default AWS profile to use |
-| `AWS_REGION` | Default AWS region |
-| `AWS_DEFAULT_REGION` | Fallback region (if `AWS_REGION` not set) |
-| `AWS_ACCESS_KEY_ID` | AWS access key |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key |
-| `AWS_SESSION_TOKEN` | AWS session token (for temporary credentials) |
-| `AWS_SHARED_CREDENTIALS_FILE` | Custom path to credentials file (default: `~/.aws/credentials`) |
-| `AWS_CONFIG_FILE` | Custom path to config file (default: `~/.aws/config`) |
-| `AWS_ENDPOINT_URL` | Custom endpoint URL (for LocalStack, etc.) - also used for STS AssumeRole |
-| `AWS_CA_BUNDLE` | Custom CA certificate bundle (PEM format) for corporate SSL inspection |
-| `SSL_CERT_FILE` | Alternative to `AWS_CA_BUNDLE` for custom CA certificates |
-
-### Corporate Proxy / SSL Inspection
-
-If you're behind a corporate proxy with SSL inspection, orbit may fail to connect to AWS services because the proxy's CA certificate is not trusted by default.
-
-To fix this, set `AWS_CA_BUNDLE` or `SSL_CERT_FILE` to point to your corporate CA certificate bundle:
-
-```bash
-# Windows
-set AWS_CA_BUNDLE=C:\path\to\corporate-ca-bundle.pem
-orbit
-
-# Linux/macOS
-export AWS_CA_BUNDLE=/path/to/corporate-ca-bundle.pem
-orbit
-```
-
-The PEM file can contain multiple certificates (certificate chain). orbit will load all certificates from the bundle and add them to the trusted root certificates.
-
-**Note:** This is the same environment variable used by AWS CLI, so if AWS CLI works with your CA bundle, orbit should work too.
-
----
-
-## SSM Connect (EC2 Shell Access)
-
-Press `c` on a running EC2 instance to open an interactive shell session via AWS Systems Manager.
-
-**Requirements:**
-- [session-manager-plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) must be installed
-- EC2 instance must have SSM Agent running
-- Instance must be running (not stopped/terminated)
-- Linux instances only (Windows not supported via shell)
-
-**Note:** When you exit the shell session (`exit`), you'll return to orbit.
-
----
-
-## Known Issues
-
-- Some resources may require specific IAM permissions not covered by basic read-only policies
-- Total resource count is not displayed due to AWS API limitations (most AWS APIs don't return total count)
-- Some global services (IAM, Route53, CloudFront) always use us-east-1
-
----
+Logs: `~/Library/Application Support/orbit/orbit.log` (macOS), `~/.config/orbit/orbit.log` (Linux).
 
 ## Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-**Important:** Before adding a new AWS service, please [open an issue](https://github.com/doughlass/orbit/issues/new) first.
-
----
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Before adding a new AWS service, please [open an issue](https://github.com/doughlass/orbit/issues/new) first.
 
 ## Acknowledgments
 
-- Inspired by [k9s](https://github.com/derailed/k9s) - the awesome Kubernetes CLI
-- Built with [Ratatui](https://github.com/ratatui-org/ratatui) - Rust TUI library
-- Uses [aws-sigv4](https://github.com/awslabs/aws-sdk-rust) for request signing
-
----
+Originally forked from [taws](https://github.com/huseyinbabal/taws) by Hüseyin Babal. Built with [Ratatui](https://github.com/ratatui-org/ratatui). Inspired by [k9s](https://github.com/derailed/k9s).
 
 ## License
 
 Licensed under MIT. See [LICENSE](LICENSE) for details.
 
-orbit is an independent project. It is not affiliated with, endorsed by, or sponsored by Amazon Web Services, Inc. "AWS" is a trademark of Amazon.com, Inc. or its affiliates.
-
----
-
-<p align="center">
-  Made with ❤️ for the AWS community
-</p>
+orbit is not affiliated with or endorsed by Amazon Web Services, Inc. "AWS" is a trademark of Amazon.com, Inc.
