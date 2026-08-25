@@ -19,7 +19,7 @@ pub fn render(f: &mut Frame, app: &App) {
         let visible_actions: Vec<_> = resource
             .actions
             .iter()
-            .filter(|a| !app.readonly || !a.requires_confirm())
+            .filter(|a| !app.readonly || (!a.requires_confirm() && a.sdk_method != "ssm_connect"))
             .collect();
         if !visible_actions.is_empty() {
             let section_title = format!("{} Actions", resource.display_name);

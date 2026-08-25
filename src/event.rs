@@ -260,7 +260,15 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
                                             handled = true;
                                         // Special handling for SSM connect
                                         } else if action.sdk_method == "ssm_connect" {
-                                            app.request_ssm_connect();
+                                            // An interactive shell is a write path
+                                            // by any reasonable definition
+                                            if app.readonly {
+                                                app.show_warning(
+                                                    "This operation is not supported in read-only mode",
+                                                );
+                                            } else {
+                                                app.request_ssm_connect();
+                                            }
                                             handled = true;
                                         // Download writes locally, so it never goes through dispatch
                                         } else if action.sdk_method == "download_object" {
@@ -1231,5 +1239,26 @@ mod tests {
 
         press(&mut app, KeyCode::Left, KeyModifiers::SHIFT).await;
         assert_eq!(app.h_scroll, 0, "Shift+Left must scroll left");
+    }
+
+    /// SSM connect opens an interactive shell — a write path — so readonly
+    /// must refuse it even though the action carries no confirm config and
+    /// would otherwise bypass the readonly gate as a "special case".
+    #[tokio::test]
+    async fn readonly_blocks_ssm_connect() {
+        let mut app = test_app();
+        app.items = vec![serde_json::json!({
+            "InstanceId": "i-123",
+            "Tags.Name": "web-1"
+        })];
+        app.apply_filter();
+        assert!(app.selected_item().is_some(), "row must be selected");
+
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::NONE).await;
+        assert!(
+            app.ssm_connect_request.is_none(),
+            "readonly must not open an SSM session"
+        );
+        assert!(app.warning_message.is_some(), "user should be told why");
     }
 }

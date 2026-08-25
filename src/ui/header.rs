@@ -254,7 +254,10 @@ fn render_keybindings_col1(f: &mut Frame, app: &App, area: Rect) {
 
         // Add resource-specific actions
         for action in resource.actions.iter() {
-            if app.readonly && action.requires_confirm() {
+            // Readonly hides everything the mode blocks: confirmed actions and
+            // SSM connect (an interactive shell), so no shortcut advertises
+            // something pressing it would refuse.
+            if app.readonly && (action.requires_confirm() || action.sdk_method == "ssm_connect") {
                 continue;
             }
             if b.len() >= 5 {
