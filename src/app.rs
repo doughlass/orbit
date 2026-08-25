@@ -341,6 +341,10 @@ pub struct App {
     // resource's full column list; the picker renders and edits this vec.
     pub column_picker_toggles: Vec<bool>,
     pub column_picker_selected: usize,
+
+    // Horizontal table scroll: index of the first visible column when the
+    // table overflows the terminal width. Zero in fit mode.
+    pub h_scroll: usize,
 }
 
 /// SSM Connect request data
@@ -539,6 +543,7 @@ impl App {
             sort: SortState::default(),
             column_picker_toggles: Vec::new(),
             column_picker_selected: 0,
+            h_scroll: 0,
         }
     }
 
@@ -678,6 +683,7 @@ impl App {
     /// Reset pagination state (call when navigating to new resource)
     pub fn reset_pagination(&mut self) {
         self.pagination = PaginationState::default();
+        self.h_scroll = 0;
     }
 
     /// Build AWS filters from parent context and AWS API filters
@@ -912,6 +918,23 @@ impl App {
         }
         self.sort.sort_by_cursor();
         self.apply_sort();
+    }
+
+    /// Scroll the table one column left. No-op at the start.
+    pub fn h_scroll_left(&mut self) {
+        self.h_scroll = self.h_scroll.saturating_sub(1);
+    }
+
+    /// Scroll the table one column right. The UI clamps against the number of
+    /// columns that actually overflow; here we only bound by the column count.
+    pub fn h_scroll_right(&mut self) {
+        let max = self
+            .current_resource()
+            .map(|r| r.columns.len())
+            .unwrap_or(0);
+        if self.h_scroll + 1 < max {
+            self.h_scroll += 1;
+        }
     }
 
     /// Drop the sort and restore the order the API returned

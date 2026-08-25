@@ -250,21 +250,71 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
     let inner_area = block.inner(area);
     f.render_widget(block, area);
 
-    // Apportion the JSON column weights across the real area; see column_layout
-    // for why the weights cannot go to ratatui as percentages. Sort indices
-    // stay pinned to positions in the full column list, so each visible
-    // column carries its original index.
+    // Column sizing has two modes. Fit mode apportions the JSON weights across
+    // the real area (see column_layout for why they cannot go to ratatui as
+    // percentages). Overflow mode kicks in when even minimum-width columns
+    // cannot fit: each column takes max(MIN_COLUMN_WIDTH, weight) cells and the
+    // table becomes a window onto a wider canvas scrolled with Shift+arrows.
+    // Sort indices stay pinned to positions in the full column list, so each
+    // rendered column carries its original index.
+    const MIN_COLUMN_WIDTH: u16 = 12;
     let visible_columns: Vec<(usize, &crate::resource::ColumnDef)> = app.effective_columns();
-    let weights: Vec<u16> = visible_columns.iter().map(|(_, col)| col.width).collect();
-    let (widths, column_widths) = column_layout(inner_area.width, &weights);
+    let min_widths: Vec<u16> = visible_columns
+        .iter()
+        .map(|(_, col)| col.width.max(MIN_COLUMN_WIDTH))
+        .collect();
+    let gaps_total = visible_columns.len().saturating_sub(1) as u16 * TABLE_COLUMN_SPACING;
+    let needed: u16 = min_widths.iter().sum::<u16>().saturating_add(gaps_total);
+    let overflow = !min_widths.is_empty() && needed > inner_area.width;
+
+    // (original index, column, cell width) for every column that renders
+    let mut render_columns: Vec<(usize, &crate::resource::ColumnDef, u16)> = Vec::new();
+    let mut h_scroll_info: Option<(usize, usize)> = None;
+
+    if overflow {
+        // Clamp the offset so scrolling right eventually pins the last columns
+        // rather than scrolling everything off-screen.
+        let max_offset = max_h_scroll_offset(&min_widths, inner_area.width);
+        let offset = app.h_scroll.min(max_offset);
+        let mut used: u16 = 0;
+        for (i, &w) in min_widths.iter().enumerate().skip(offset) {
+            let cost = if render_columns.is_empty() {
+                w
+            } else {
+                w + TABLE_COLUMN_SPACING
+            };
+            if used + cost > inner_area.width {
+                break;
+            }
+            used += cost;
+            let (idx, col) = visible_columns[i];
+            render_columns.push((idx, col, w));
+        }
+        h_scroll_info = Some((offset, min_widths.len()));
+    } else {
+        let weights: Vec<u16> = visible_columns.iter().map(|(_, col)| col.width).collect();
+        let (_, text_widths) = column_layout(inner_area.width, &weights);
+        for ((idx, col), w) in visible_columns.iter().zip(text_widths.iter()) {
+            render_columns.push((*idx, *col, *w as u16));
+        }
+    }
+
+    let widths: Vec<Constraint> = render_columns
+        .iter()
+        .map(|(_, _, w)| Constraint::Length(*w))
+        .collect();
+    let column_widths: Vec<usize> = render_columns
+        .iter()
+        .map(|(_, _, w)| (*w as usize).saturating_sub(CELL_PAD))
+        .collect();
 
     // Build header from column definitions with left padding.
     // Sorted column gets a direction arrow in cyan; the cursor column (what Tab
     // would sort) is underlined, so the two states stay tellable apart.
-    let header_cells = visible_columns
+    let header_cells = render_columns
         .iter()
         .enumerate()
-        .map(|(col_idx, (_, col))| {
+        .map(|(col_idx, (_, col, _))| {
             let is_sorted = app.sort.column == Some(col_idx);
             let (label, color) = if is_sorted {
                 (
@@ -291,10 +341,10 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
         .enumerate()
         .map(|(row_index, item)| {
             let is_selected = row_index == selected_row;
-            let cells = visible_columns
+            let cells = render_columns
                 .iter()
                 .enumerate()
-                .map(|(col_idx, (_, col))| {
+                .map(|(col_idx, (_, col, _))| {
                     let value = extract_json_value(item, &col.json_path);
                     let mut style = get_cell_style(&value, col);
                     if is_selected {
@@ -338,6 +388,44 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
     state.select(Some(app.selected));
 
     f.render_stateful_widget(table, inner_area, &mut state);
+
+    // Horizontal scrollbar on the table's bottom border when columns overflow.
+    // Overwrites the border line — the usual scrollbar-on-border aesthetic.
+    if let Some((offset, total)) = h_scroll_info {
+        let scrollbar_area = Rect {
+            x: area.x + 1,
+            y: area.y + area.height.saturating_sub(1),
+            width: area.width.saturating_sub(2),
+            height: 1,
+        };
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
+            .begin_symbol(None)
+            .end_symbol(None);
+        let mut sb_state = ScrollbarState::new(total).position(offset);
+        f.render_stateful_widget(scrollbar, scrollbar_area, &mut sb_state);
+    }
+}
+
+/// Furthest first-visible-column offset that still shows content: the point
+/// where the trailing columns fill the area exactly. Scrolling past it would
+/// just push every column off the right edge.
+fn max_h_scroll_offset(min_widths: &[u16], area_width: u16) -> usize {
+    let mut used: usize = 0;
+    let mut count: usize = 0;
+    for &w in min_widths.iter().rev() {
+        let cost = w as usize
+            + if count == 0 {
+                0
+            } else {
+                TABLE_COLUMN_SPACING as usize
+            };
+        if used + cost > area_width as usize {
+            break;
+        }
+        used += cost;
+        count += 1;
+    }
+    min_widths.len().saturating_sub(count)
 }
 
 /// Gap ratatui inserts between table columns. Matches the `.column_spacing()`
@@ -1030,11 +1118,27 @@ fn render_crumb(f: &mut Frame, app: &App, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use super::{column_layout, describe_title, truncate_cell, TABLE_COLUMN_SPACING};
+    use super::{
+        column_layout, describe_title, max_h_scroll_offset, truncate_cell, TABLE_COLUMN_SPACING,
+    };
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
     use ratatui::widgets::{Cell, Row, Table};
     use ratatui::Terminal;
+
+    /// The clamp must leave the trailing columns reachable: scrolling right
+    /// pins the last columns at the right edge instead of scrolling them all
+    /// off-screen. Three 12-cell columns in a 30-cell area fit two at a time
+    /// (12 + 1 spacing + 12 = 25, three would need 38), so the furthest
+    /// useful offset shows columns 1..=2, i.e. offset 1.
+    #[test]
+    fn max_h_scroll_pins_trailing_columns_in_view() {
+        assert_eq!(max_h_scroll_offset(&[12, 12, 12], 30), 1);
+        // Everything fits — no scrolling at all
+        assert_eq!(max_h_scroll_offset(&[12, 12, 12], 100), 0);
+        // A column wider than the area can never render; offset pins to the end
+        assert_eq!(max_h_scroll_offset(&[50], 30), 1);
+    }
 
     /// The real EC2 Instances weights: NAME, INSTANCE ID, STATE, TYPE, AZ,
     /// PUBLIC IP, PRIVATE IP. They sum to 111, which is the whole problem.

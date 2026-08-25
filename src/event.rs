@@ -182,6 +182,13 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
         }
 
+        // Horizontal table scroll when columns overflow the terminal. Must
+        // precede the plain arrow arms — Shift+Right still reports Right.
+        KeyCode::Right if key.modifiers.contains(KeyModifiers::SHIFT) => app.h_scroll_right(),
+        KeyCode::Left if key.modifiers.contains(KeyModifiers::SHIFT) => app.h_scroll_left(),
+        KeyCode::Char('.') => app.h_scroll_right(),
+        KeyCode::Char(',') => app.h_scroll_left(),
+
         // Column sorting - arrows only move the cursor, tab commits it to a sort
         KeyCode::Right => app.sort_cursor_right(),
         KeyCode::Left => app.sort_cursor_left(),
