@@ -89,6 +89,7 @@ pub fn render(f: &mut Frame, app: &App) {
         create_key_line("d", "Show details panel"),
         create_key_line("Enter", "Details, or open it if browsable (S3)"),
         create_key_line("J", "Show JSON view"),
+        create_key_line("v", "Column visibility picker"),
         create_key_line("?", "Toggle help"),
         Line::from(""),
         create_section("General"),

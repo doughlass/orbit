@@ -65,6 +65,15 @@ pub struct ColumnDef {
     pub width: u16,
     #[serde(default)]
     pub color_map: Option<String>,
+    /// Default visibility before the user saves column preferences. Extended
+    /// attribute columns are defined in JSON but start hidden; the picker
+    /// (p key) toggles them, and saved preferences override this entirely.
+    #[serde(default = "default_true")]
+    pub visible: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Sub-resource definition from JSON
@@ -985,6 +994,51 @@ mod tests {
                 sub.parent_id_field, "name",
                 "{} sub_resource parent_id_field",
                 sub.resource_key
+            );
+        }
+    }
+
+    #[test]
+    /// EC2's extended attribute columns exist for the picker but start hidden,
+    /// so the default table stays the compact 7-column view. A typo in a new
+    /// column's visible flag shows up here as a wrong default view.
+    fn ec2_instances_extended_columns_start_hidden() {
+        let resource = get_resource("ec2-instances").expect("ec2-instances");
+        assert!(
+            resource.columns.len() > 40,
+            "ec2-instances should carry the extended attribute set, got {}",
+            resource.columns.len()
+        );
+
+        let visible: Vec<&str> = resource
+            .columns
+            .iter()
+            .filter(|c| c.visible)
+            .map(|c| c.header.as_str())
+            .collect();
+        assert_eq!(
+            visible,
+            vec![
+                "NAME",
+                "INSTANCE ID",
+                "STATE",
+                "TYPE",
+                "AZ",
+                "PUBLIC IP",
+                "PRIVATE IP"
+            ],
+            "ec2-instances default visible columns"
+        );
+
+        // Every column's json_path must exist in field_mappings or the cell
+        // renders blank with no error.
+        for col in &resource.columns {
+            let root = col.json_path.split('.').next().unwrap_or("");
+            assert!(
+                resource.field_mappings.contains_key(root),
+                "ec2-instances column {} json_path root {} is not in field_mappings",
+                col.header,
+                root
             );
         }
     }

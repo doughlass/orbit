@@ -1,3 +1,4 @@
+mod column_picker;
 mod command_box;
 mod dialog;
 mod header;
@@ -61,6 +62,9 @@ pub fn render(f: &mut Frame, app: &App) {
     match app.mode {
         Mode::Help => {
             help::render(f, app);
+        }
+        Mode::ColumnPicker => {
+            column_picker::render(f, app);
         }
         Mode::Confirm | Mode::Warning | Mode::SsoLogin | Mode::ConsoleLogin => {
             dialog::render(f, app);
@@ -247,29 +251,35 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(block, area);
 
     // Apportion the JSON column weights across the real area; see column_layout
-    // for why the weights cannot go to ratatui as percentages.
-    let weights: Vec<u16> = resource.columns.iter().map(|col| col.width).collect();
+    // for why the weights cannot go to ratatui as percentages. Sort indices
+    // stay pinned to positions in the full column list, so each visible
+    // column carries its original index.
+    let visible_columns: Vec<(usize, &crate::resource::ColumnDef)> = app.effective_columns();
+    let weights: Vec<u16> = visible_columns.iter().map(|(_, col)| col.width).collect();
     let (widths, column_widths) = column_layout(inner_area.width, &weights);
 
     // Build header from column definitions with left padding.
     // Sorted column gets a direction arrow in cyan; the cursor column (what Tab
     // would sort) is underlined, so the two states stay tellable apart.
-    let header_cells = resource.columns.iter().enumerate().map(|(col_idx, col)| {
-        let is_sorted = app.sort.column == Some(col_idx);
-        let (label, color) = if is_sorted {
-            (
-                format!(" {} {}", col.header, app.sort.indicator()),
-                Color::Cyan,
-            )
-        } else {
-            (format!(" {}", col.header), Color::Yellow)
-        };
-        let mut style = Style::default().fg(color).add_modifier(Modifier::BOLD);
-        if app.sort.cursor == col_idx {
-            style = style.add_modifier(Modifier::UNDERLINED);
-        }
-        Cell::from(label).style(style)
-    });
+    let header_cells = visible_columns
+        .iter()
+        .enumerate()
+        .map(|(col_idx, (_, col))| {
+            let is_sorted = app.sort.column == Some(col_idx);
+            let (label, color) = if is_sorted {
+                (
+                    format!(" {} {}", col.header, app.sort.indicator()),
+                    Color::Cyan,
+                )
+            } else {
+                (format!(" {}", col.header), Color::Yellow)
+            };
+            let mut style = Style::default().fg(color).add_modifier(Modifier::BOLD);
+            if app.sort.cursor == col_idx {
+                style = style.add_modifier(Modifier::UNDERLINED);
+            }
+            Cell::from(label).style(style)
+        });
     let header = Row::new(header_cells).height(1);
 
     // Build rows from filtered items with left padding
@@ -281,33 +291,37 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
         .enumerate()
         .map(|(row_index, item)| {
             let is_selected = row_index == selected_row;
-            let cells = resource.columns.iter().enumerate().map(|(col_idx, col)| {
-                let value = extract_json_value(item, &col.json_path);
-                let mut style = get_cell_style(&value, col);
-                if is_selected {
-                    style = style.fg(Color::White);
-                }
-                let display_value = format_cell_value(&value, col);
-                let col_width = column_widths_clone.get(col_idx).copied().unwrap_or(40);
-                let display_value = truncate_cell(&display_value, col_width);
+            let cells = visible_columns
+                .iter()
+                .enumerate()
+                .map(|(col_idx, (_, col))| {
+                    let value = extract_json_value(item, &col.json_path);
+                    let mut style = get_cell_style(&value, col);
+                    if is_selected {
+                        style = style.fg(Color::White);
+                    }
+                    let display_value = format_cell_value(&value, col);
+                    let col_width = column_widths_clone.get(col_idx).copied().unwrap_or(40);
+                    let display_value = truncate_cell(&display_value, col_width);
 
-                if highlight_filter_matches
-                    && (col.json_path == resource.name_field || col.json_path == resource.id_field)
-                {
-                    let match_style = Style::default()
-                        .fg(Color::LightGreen)
-                        .add_modifier(Modifier::BOLD);
-                    highlight::fuzzy_cell(
-                        &display_value,
-                        query,
-                        &app.fuzzy_matcher,
-                        style,
-                        match_style,
-                    )
-                } else {
-                    Cell::from(format!(" {}", display_value)).style(style)
-                }
-            });
+                    if highlight_filter_matches
+                        && (col.json_path == resource.name_field
+                            || col.json_path == resource.id_field)
+                    {
+                        let match_style = Style::default()
+                            .fg(Color::LightGreen)
+                            .add_modifier(Modifier::BOLD);
+                        highlight::fuzzy_cell(
+                            &display_value,
+                            query,
+                            &app.fuzzy_matcher,
+                            style,
+                            match_style,
+                        )
+                    } else {
+                        Cell::from(format!(" {}", display_value)).style(style)
+                    }
+                });
             Row::new(cells)
         });
 

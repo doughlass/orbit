@@ -31,6 +31,7 @@ async fn handle_key_event(app: &mut App, key: KeyEvent) -> Result<bool> {
         Mode::SsoLogin => handle_sso_login_mode(app, key).await,
         Mode::ConsoleLogin => handle_console_login_mode(app, key).await,
         Mode::LogTail => handle_log_tail_mode(app, key).await,
+        Mode::ColumnPicker => handle_column_picker_mode(app, key),
     }
 }
 
@@ -196,6 +197,9 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
         // Mode switches
         KeyCode::Char(':') => app.enter_command_mode(),
         KeyCode::Char('?') => app.enter_help_mode(),
+
+        // Column visibility picker ('p' collides with IAM sub-resources)
+        KeyCode::Char('v') => app.enter_column_picker(),
 
         // Backspace goes back in navigation
         KeyCode::Backspace => {
@@ -441,6 +445,24 @@ fn handle_help_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
         KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
             app.exit_mode();
         }
+        _ => {}
+    }
+    Ok(false)
+}
+
+fn handle_column_picker_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
+    match key.code {
+        KeyCode::Char('j') | KeyCode::Down => {
+            if app.column_picker_selected + 1 < app.column_picker_toggles.len() {
+                app.column_picker_selected += 1;
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.column_picker_selected = app.column_picker_selected.saturating_sub(1);
+        }
+        KeyCode::Char(' ') => app.column_picker_toggle(),
+        KeyCode::Enter => app.save_column_picker(),
+        KeyCode::Esc => app.mode = Mode::Normal,
         _ => {}
     }
     Ok(false)

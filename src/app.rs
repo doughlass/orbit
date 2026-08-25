@@ -25,6 +25,7 @@ pub enum Mode {
     SsoLogin,     // SSO login dialog (IAM Identity Center)
     ConsoleLogin, // Console login dialog (aws login)
     LogTail,      // Tailing CloudWatch logs
+    ColumnPicker, // Column visibility picker (p)
 }
 
 /// Pending action that requires confirmation
@@ -335,6 +336,11 @@ pub struct App {
 
     // Client-side column sort for the current table
     pub sort: SortState,
+
+    // Column picker state (p key). Toggle state is indexed against the
+    // resource's full column list; the picker renders and edits this vec.
+    pub column_picker_toggles: Vec<bool>,
+    pub column_picker_selected: usize,
 }
 
 /// SSM Connect request data
@@ -531,6 +537,8 @@ impl App {
             ssm_connect_request: None,
             fuzzy_matcher: SkimMatcherV2::default().ignore_case(),
             sort: SortState::default(),
+            column_picker_toggles: Vec::new(),
+            column_picker_selected: 0,
         }
     }
 
@@ -1276,6 +1284,97 @@ impl App {
 
     pub fn enter_help_mode(&mut self) {
         self.mode = Mode::Help;
+    }
+
+    /// Open the column picker for the current resource. Toggle state starts
+    /// from saved preferences if any, otherwise from the JSON `visible` flags.
+    pub fn enter_column_picker(&mut self) {
+        let Some(resource) = self.current_resource() else {
+            return;
+        };
+        if resource.columns.is_empty() {
+            return;
+        }
+
+        let saved = self.config.column_preferences(&self.current_resource_key);
+        self.column_picker_toggles = resource
+            .columns
+            .iter()
+            .map(|col| match saved {
+                Some(visible) => visible.contains(&col.header),
+                None => col.visible,
+            })
+            .collect();
+        self.column_picker_selected = 0;
+        self.mode = Mode::ColumnPicker;
+    }
+
+    /// Toggle the column under the picker cursor. Refuses to hide the last
+    /// visible column — an empty table is never a useful outcome.
+    pub fn column_picker_toggle(&mut self) {
+        let idx = self.column_picker_selected;
+        if idx >= self.column_picker_toggles.len() {
+            return;
+        }
+        let visible_count = self.column_picker_toggles.iter().filter(|&&v| v).count();
+        if self.column_picker_toggles[idx] && visible_count <= 1 {
+            self.show_warning("At least one column must stay visible");
+            return;
+        }
+        self.column_picker_toggles[idx] = !self.column_picker_toggles[idx];
+    }
+
+    /// Save toggled columns to config (persisted to disk) and close.
+    pub fn save_column_picker(&mut self) {
+        let Some(resource) = self.current_resource() else {
+            self.mode = Mode::Normal;
+            return;
+        };
+
+        let visible: Vec<String> = resource
+            .columns
+            .iter()
+            .zip(&self.column_picker_toggles)
+            .filter(|(_, &on)| on)
+            .map(|(col, _)| col.header.clone())
+            .collect();
+
+        if visible.is_empty() {
+            self.mode = Mode::Normal;
+            return;
+        }
+
+        self.config
+            .column_preferences
+            .insert(self.current_resource_key.clone(), visible);
+        if let Err(e) = self.config.save() {
+            self.error_message = Some(format!("Failed to save config: {}", e));
+        }
+        self.mode = Mode::Normal;
+    }
+
+    /// Resolve the columns to render for the current resource, paired with each
+    /// column's original index so sort state stays pinned to full-list
+    /// positions even when columns are hidden. Saved picker preferences win
+    /// over the JSON `visible` flags.
+    pub fn effective_columns(&self) -> Vec<(usize, &crate::resource::ColumnDef)> {
+        let Some(resource) = self.current_resource() else {
+            return Vec::new();
+        };
+        match self.config.column_preferences(&self.current_resource_key) {
+            Some(visible) => resource
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, col)| visible.contains(&col.header))
+                .collect(),
+            None => resource
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, col)| col.visible)
+                .collect(),
+        }
     }
 
     pub async fn enter_describe_mode(&mut self) {
