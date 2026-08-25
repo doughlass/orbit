@@ -1043,6 +1043,32 @@ mod tests {
         }
     }
 
+    /// A column whose json_path root is missing from field_mappings renders
+    /// blank with no error at all — the exact failure mode the AGENTS doc
+    /// calls the easiest mistake in these files. Pin it across every resource
+    /// so new columns cannot ship silently broken. Resources without
+    /// field_mappings (s3-objects, sts-caller-identity) are exempt: their
+    /// items are built directly by special-case handlers in dispatch.rs.
+    #[test]
+    fn every_column_json_path_root_exists_in_field_mappings() {
+        let registry = get_registry();
+        for (key, resource) in &registry.resources {
+            if resource.field_mappings.is_empty() {
+                continue;
+            }
+            for col in &resource.columns {
+                let root = col.json_path.split('.').next().unwrap_or("");
+                let mapped = resource.field_mappings.contains_key(&col.json_path)
+                    || resource.field_mappings.contains_key(root);
+                assert!(
+                    mapped,
+                    "{} column {} reads json_path {} whose root {} is not in field_mappings",
+                    key, col.header, col.json_path, root
+                );
+            }
+        }
+    }
+
     #[test]
     fn eks_sub_resources_require_parent() {
         for key in &[

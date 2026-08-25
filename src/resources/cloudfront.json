@@ -15,7 +15,17 @@
         { "header": "ORIGINS", "json_path": "Origins", "width": 28 },
         { "header": "DOMAIN NAME", "json_path": "DomainName", "width": 18 },
         { "header": "STATUS", "json_path": "Status", "width": 9, "color_map": "state" },
-        { "header": "ENABLED", "json_path": "Enabled", "width": 5 }
+        { "header": "ENABLED", "json_path": "Enabled", "width": 5 },
+        { "header": "DESCRIPTION", "json_path": "Description", "width": 30, "visible": false },
+        { "header": "PRICE CLASS", "json_path": "PriceClass", "width": 12, "visible": false },
+        { "header": "SSL CERT", "json_path": "SslCertSource", "width": 10, "visible": false },
+        { "header": "CERTIFICATE", "json_path": "Certificate", "width": 40, "visible": false },
+        { "header": "LAST MODIFIED", "json_path": "LastModifiedTime", "width": 20, "visible": false },
+        { "header": "HTTP VERSION", "json_path": "HttpVersion", "width": 8, "visible": false },
+        { "header": "IPV6", "json_path": "Ipv6Enabled", "width": 5, "visible": false },
+        { "header": "STAGING", "json_path": "Staging", "width": 5, "visible": false },
+        { "header": "WEB ACL ID", "json_path": "WebACLId", "width": 30, "visible": false },
+        { "header": "ARN", "json_path": "Arn", "width": 60, "visible": false }
       ],
       "sub_resources": [],
       "actions": [],
@@ -41,7 +51,17 @@
           "default": "-"
         },
         "Status": { "source": "/Status", "default": "-" },
-        "Enabled": { "source": "/Enabled", "transform": "bool_to_yes_no" }
+        "Enabled": { "source": "/Enabled", "transform": "bool_to_yes_no" },
+        "Description": { "source": "/Comment", "default": "-" },
+        "PriceClass": { "source": "/PriceClass", "default": "-" },
+        "SslCertSource": { "source": "/ViewerCertificate/CertificateSource", "default": "-" },
+        "Certificate": { "source": "/ViewerCertificate/Certificate", "default": "-" },
+        "LastModifiedTime": { "source": "/LastModifiedTime", "default": "-" },
+        "HttpVersion": { "source": "/HttpVersion", "default": "-" },
+        "Ipv6Enabled": { "source": "/IsIPV6Enabled", "transform": "bool_to_yes_no", "default": "-" },
+        "Staging": { "source": "/Staging", "transform": "bool_to_yes_no", "default": "-" },
+        "WebACLId": { "source": "/WebACLId", "default": "-" },
+        "Arn": { "source": "/ARN", "default": "-" }
       }
     }
   }
