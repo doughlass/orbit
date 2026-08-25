@@ -129,6 +129,22 @@ pub struct SortState {
 }
 
 impl SortState {
+    /// Move the cursor one column right, wrapping at the end
+    pub fn cursor_right(&mut self, column_count: usize) {
+        if column_count == 0 {
+            return;
+        }
+        self.cursor = (self.cursor + 1) % column_count;
+    }
+
+    /// Move the cursor one column left, wrapping at the start
+    pub fn cursor_left(&mut self, column_count: usize) {
+        if column_count == 0 {
+            return;
+        }
+        self.cursor = (self.cursor + column_count - 1) % column_count;
+    }
+
     /// Sort by the cursor's column: ascending on a newly picked column, otherwise
     /// flip the direction of the column already sorted.
     pub fn sort_by_cursor(&mut self) {
@@ -885,24 +901,20 @@ impl App {
         );
     }
 
-    /// Tab through sort columns. Each column sorts ascending on first pick
-    /// and flips to descending on the next press, then Tab moves on: with
-    /// three columns the cycle is A0, D0, A1, D1, A2, D2, A0... The header
-    /// arrow always shows what is sorted, so no preview cursor is needed —
-    /// the arrow keys belong to horizontal scrolling now.
-    pub fn sort_next_column(&mut self) {
-        let count = self.sortable_column_count();
-        if count == 0 {
+    /// Move the column cursor right. Does not re-sort: Tab commits the choice.
+    pub fn sort_cursor_right(&mut self) {
+        self.sort.cursor_right(self.sortable_column_count());
+    }
+
+    /// Move the column cursor left. Does not re-sort: Tab commits the choice.
+    pub fn sort_cursor_left(&mut self) {
+        self.sort.cursor_left(self.sortable_column_count());
+    }
+
+    /// Sort by the cursor's column, or flip direction if it is already sorted
+    pub fn sort_by_cursor(&mut self) {
+        if self.sortable_column_count() == 0 {
             return;
-        }
-        match self.sort.column {
-            // Ascending on the cursor's column: the next press flips it
-            Some(sorted) if sorted == self.sort.cursor && !self.sort.descending => {}
-            // Descending here, or a different column sorted: move along
-            Some(_) => {
-                self.sort.cursor = (self.sort.cursor + 1) % count;
-            }
-            None => {}
         }
         self.sort.sort_by_cursor();
         self.apply_sort();
@@ -2556,6 +2568,53 @@ mod tests {
     #[test]
     fn test_sort_state_cursor_starts_on_first_column_unsorted() {
         let sort = SortState::default();
+        assert_eq!(sort.cursor, 0);
+        assert_eq!(sort.column, None);
+    }
+
+    #[test]
+    fn test_sort_state_cursor_right_moves_without_sorting() {
+        let mut sort = SortState::default();
+        sort.cursor_right(4);
+        assert_eq!(sort.cursor, 1);
+        assert_eq!(
+            sort.column, None,
+            "moving the cursor must not start a sort on its own"
+        );
+    }
+
+    #[test]
+    fn test_sort_state_cursor_right_wraps_to_first() {
+        let mut sort = SortState {
+            cursor: 3,
+            ..SortState::default()
+        };
+        sort.cursor_right(4);
+        assert_eq!(sort.cursor, 0);
+    }
+
+    #[test]
+    fn test_sort_state_cursor_left_wraps_to_last() {
+        let mut sort = SortState::default();
+        sort.cursor_left(4);
+        assert_eq!(sort.cursor, 3);
+    }
+
+    #[test]
+    fn test_sort_state_cursor_moves_leave_active_sort_alone() {
+        let mut sort = sorted_on(0, true);
+        sort.cursor_right(4);
+        sort.cursor_right(4);
+        assert_eq!(sort.cursor, 2);
+        assert_eq!(sort.column, Some(0), "the sorted column must not change");
+        assert!(sort.descending);
+    }
+
+    #[test]
+    fn test_sort_state_cursor_moves_are_noop_when_no_columns() {
+        let mut sort = SortState::default();
+        sort.cursor_right(0);
+        sort.cursor_left(0);
         assert_eq!(sort.cursor, 0);
         assert_eq!(sort.column, None);
     }
