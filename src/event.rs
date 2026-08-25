@@ -1174,3 +1174,62 @@ pub async fn poll_logs_if_tailing(app: &mut App) {
         let _ = app.poll_log_events().await;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::App;
+    use crate::aws::client::AwsClients;
+    use crate::config::Config;
+
+    fn test_app() -> App {
+        App::from_initialized(
+            AwsClients::dummy(),
+            "test".to_string(),
+            "eu-west-1".to_string(),
+            vec!["test".to_string()],
+            vec!["eu-west-1".to_string()],
+            vec![],
+            Config::default(),
+            true,
+            None,
+            false,
+            "ec2-instances",
+        )
+    }
+
+    async fn press(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
+        handle_normal_mode(app, KeyEvent::new(code, modifiers))
+            .await
+            .unwrap();
+    }
+
+    /// Horizontal scroll must react to both key forms. A regression here
+    /// leaves wide tables unscrollable with no error anywhere.
+    #[tokio::test]
+    async fn period_and_comma_scroll_horizontally() {
+        let mut app = test_app();
+        assert_eq!(app.h_scroll, 0);
+
+        press(&mut app, KeyCode::Char('.'), KeyModifiers::NONE).await;
+        assert_eq!(app.h_scroll, 1, "`.` must scroll right");
+
+        press(&mut app, KeyCode::Char(','), KeyModifiers::NONE).await;
+        assert_eq!(app.h_scroll, 0, "`,` must scroll left");
+
+        // Left at the start must not underflow
+        press(&mut app, KeyCode::Char(','), KeyModifiers::NONE).await;
+        assert_eq!(app.h_scroll, 0);
+    }
+
+    #[tokio::test]
+    async fn shift_arrows_scroll_horizontally() {
+        let mut app = test_app();
+
+        press(&mut app, KeyCode::Right, KeyModifiers::SHIFT).await;
+        assert_eq!(app.h_scroll, 1, "Shift+Right must scroll right");
+
+        press(&mut app, KeyCode::Left, KeyModifiers::SHIFT).await;
+        assert_eq!(app.h_scroll, 0, "Shift+Left must scroll left");
+    }
+}
