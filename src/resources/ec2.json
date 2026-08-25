@@ -92,7 +92,17 @@
         { "header": "TYPE", "json_path": "VolumeType", "width": 10 },
         { "header": "IOPS", "json_path": "Iops", "width": 8 },
         { "header": "AZ", "json_path": "AvailabilityZone", "width": 14 },
-        { "header": "ENCRYPTED", "json_path": "Encrypted", "width": 10, "color_map": "bool" }
+        { "header": "ENCRYPTED", "json_path": "Encrypted", "width": 10, "color_map": "bool" },
+        { "header": "THROUGHPUT", "json_path": "Throughput", "width": 10, "visible": false },
+        { "header": "SNAPSHOT ID", "json_path": "SnapshotId", "width": 22, "visible": false },
+        { "header": "SOURCE VOLUME ID", "json_path": "SourceVolumeId", "width": 24, "visible": false },
+        { "header": "CREATED", "json_path": "CreateTime", "width": 20, "visible": false },
+        { "header": "ATTACHED TO", "json_path": "AttachedTo", "width": 20, "visible": false },
+        { "header": "KMS KEY ID", "json_path": "KmsKeyId", "width": 50, "visible": false },
+        { "header": "FAST SNAPSHOT RESTORED", "json_path": "FastRestored", "width": 8, "visible": false },
+        { "header": "MULTI-ATTACH", "json_path": "MultiAttachEnabled", "width": 8, "visible": false },
+        { "header": "OUTPOST ARN", "json_path": "OutpostArn", "width": 60, "visible": false },
+        { "header": "OPERATOR", "json_path": "Operator", "width": 16, "visible": false }
       ],
       "sub_resources": [],
       "actions": [
@@ -119,7 +129,15 @@
         "Encrypted": { "source": "/encrypted", "transform": "bool_to_yes_no" },
         "SnapshotId": { "source": "/snapshotId", "default": "-" },
         "CreateTime": { "source": "/createTime", "default": "-" },
-        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" },
+        "Throughput": { "source": "/throughput", "default": "-" },
+        "SourceVolumeId": { "source": "/sourceVolumeId", "default": "-" },
+        "AttachedTo": { "source": "/attachmentSet/item/instanceId", "transform": "array_to_csv", "default": "-" },
+        "KmsKeyId": { "source": "/kmsKeyId", "default": "-" },
+        "FastRestored": { "source": "/fastRestored", "transform": "bool_to_yes_no", "default": "-" },
+        "MultiAttachEnabled": { "source": "/multiAttachEnabled", "transform": "bool_to_yes_no", "default": "-" },
+        "OutpostArn": { "source": "/outpostArn", "default": "-" },
+        "Operator": { "source": "/operator/name", "default": "-" }
       },
       "action_configs": {
         "delete_volume": {
