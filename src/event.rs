@@ -182,17 +182,15 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
         }
 
-        // Horizontal table scroll when columns overflow the terminal. Must
-        // precede the plain arrow arms — Shift+Right still reports Right.
-        KeyCode::Right if key.modifiers.contains(KeyModifiers::SHIFT) => app.h_scroll_right(),
-        KeyCode::Left if key.modifiers.contains(KeyModifiers::SHIFT) => app.h_scroll_left(),
+        // Horizontal table scroll — the arrow keys' primary job. `,` and `.`
+        // remain as alternates for terminals without modifier-aware arrows.
+        KeyCode::Right => app.h_scroll_right(),
+        KeyCode::Left => app.h_scroll_left(),
         KeyCode::Char('.') => app.h_scroll_right(),
         KeyCode::Char(',') => app.h_scroll_left(),
 
-        // Column sorting - arrows only move the cursor, tab commits it to a sort
-        KeyCode::Right => app.sort_cursor_right(),
-        KeyCode::Left => app.sort_cursor_left(),
-        KeyCode::Tab => app.sort_by_cursor(),
+        // Tab cycles the sort column (asc, then desc, then next); BackTab clears
+        KeyCode::Tab => app.sort_next_column(),
         KeyCode::BackTab => app.clear_sort(),
 
         // Manual refresh
@@ -1231,5 +1229,31 @@ mod tests {
 
         press(&mut app, KeyCode::Left, KeyModifiers::SHIFT).await;
         assert_eq!(app.h_scroll, 0, "Shift+Left must scroll left");
+    }
+
+    /// Tab cycles each column ascending then descending before moving on:
+    /// A0, D0, A1, D1... The header arrow is the only sort indicator, so a
+    /// broken cycle sorts the wrong column with nothing to say why.
+    #[tokio::test]
+    async fn tab_cycles_sort_columns_ascending_then_descending() {
+        let mut app = test_app();
+
+        press(&mut app, KeyCode::Tab, KeyModifiers::NONE).await;
+        assert_eq!(app.sort.column, Some(0));
+        assert!(!app.sort.descending, "first Tab sorts column 0 ascending");
+
+        press(&mut app, KeyCode::Tab, KeyModifiers::NONE).await;
+        assert_eq!(app.sort.column, Some(0));
+        assert!(app.sort.descending, "second Tab flips column 0");
+
+        press(&mut app, KeyCode::Tab, KeyModifiers::NONE).await;
+        assert_eq!(app.sort.column, Some(1));
+        assert!(
+            !app.sort.descending,
+            "third Tab moves to column 1 ascending"
+        );
+
+        press(&mut app, KeyCode::BackTab, KeyModifiers::NONE).await;
+        assert_eq!(app.sort.column, None, "BackTab clears the sort");
     }
 }
