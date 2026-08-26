@@ -12,7 +12,13 @@
       "columns": [
         { "header": "CLUSTER NAME", "json_path": "name", "width": 50 }
       ],
-      "sub_resources": [],
+      "enter_sub_resource": "eks-nodegroups",
+      "sub_resources": [
+        { "shortcut": "n", "display_name": "Node Groups", "resource_key": "eks-nodegroups", "parent_id_field": "name", "filter_param": "name" },
+        { "shortcut": "f", "display_name": "Fargate Profiles", "resource_key": "eks-fargate-profiles", "parent_id_field": "name", "filter_param": "name" },
+        { "shortcut": "a", "display_name": "Add-ons", "resource_key": "eks-addons", "parent_id_field": "name", "filter_param": "name" },
+        { "shortcut": "u", "display_name": "Updates", "resource_key": "eks-updates", "parent_id_field": "name", "filter_param": "name" }
+      ],
       "actions": [
         { "key": "ctrl+d", "display_name": "Delete Cluster", "shortcut": "ctrl+d", "sdk_method": "delete_cluster", "confirm": { "message": "Delete EKS cluster", "default_yes": false, "destructive": true } }
       ],
@@ -43,7 +49,257 @@
         "protocol": "rest-json",
         "method": "GET",
         "path": "/clusters/{resource_id}",
-        "response_path": "/cluster"
+        "response_path": "/cluster",
+        "describe_fields": [
+          { "label": "Status",           "source": "/status" },
+          { "label": "Version",          "source": "/version" },
+          { "label": "Platform",         "source": "/platformVersion" },
+          { "label": "ARN",              "source": "/arn" },
+          { "label": "Endpoint",         "source": "/endpoint" },
+          { "label": "Role ARN",         "source": "/roleArn" },
+          { "label": "Service CIDR",     "source": "/kubernetesNetworkConfig/serviceIpv4Cidr" },
+          { "label": "IP Family",        "source": "/kubernetesNetworkConfig/ipFamily" },
+          { "label": "VPC Subnets",      "source": "/resourcesVpcConfig/subnetIds", "transform": "array_to_csv" },
+          { "label": "Security Groups",   "source": "/resourcesVpcConfig/securityGroupIds", "transform": "array_to_csv" },
+          { "label": "Public Endpoint",  "source": "/resourcesVpcConfig/endpointPublicAccess", "transform": "bool_to_yes_no" },
+          { "label": "Private Endpoint", "source": "/resourcesVpcConfig/endpointPrivateAccess", "transform": "bool_to_yes_no" },
+          { "label": "OIDC Issuer",      "source": "/identity/oidc/issuer" },
+          { "label": "Auth Mode",        "source": "/accessConfig/authenticationMode" },
+          { "label": "Log Types",        "source": "/logging/clusterLogging" },
+          { "label": "Health Issues",    "source": "/health/issues" },
+          { "label": "Created",          "source": "/createdAt" }
+        ]
+      }
+    },
+    "eks-nodegroups": {
+      "display_name": "EKS Node Groups",
+      "service": "eks",
+      "sdk_method": "list_nodegroups",
+      "sdk_method_params": {},
+      "response_path": "nodegroups",
+      "id_field": "name",
+      "name_field": "name",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "NAME", "json_path": "name", "width": 50 }
+      ],
+      "sub_resources": [],
+      "actions": [
+        { "key": "ctrl+d", "display_name": "Delete Node Group", "shortcut": "ctrl+d", "sdk_method": "delete_nodegroup", "confirm": { "message": "Delete EKS node group", "default_yes": false, "destructive": true } }
+      ],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/clusters/{name}/node-groups",
+        "response_root": "/nodegroups",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "name": { "source": "", "default": "-" }
+      },
+      "action_configs": {
+        "delete_nodegroup": {
+          "action_id": "delete_nodegroup",
+          "protocol": "rest-json",
+          "method": "DELETE",
+          "path": "/clusters/{name}/node-groups/{resource_id}"
+        }
+      },
+      "describe_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/clusters/{name}/node-groups/{resource_id}",
+        "response_path": "/nodegroup",
+        "describe_fields": [
+          { "label": "Status",         "source": "/status" },
+          { "label": "AMI Type",       "source": "/amiType" },
+          { "label": "Release",        "source": "/releaseVersion" },
+          { "label": "Version",        "source": "/version" },
+          { "label": "Instance Types", "source": "/instanceTypes", "transform": "array_to_csv" },
+          { "label": "Disk Size",      "source": "/diskSize" },
+          { "label": "Min Size",      "source": "/scalingConfig/minSize" },
+          { "label": "Max Size",      "source": "/scalingConfig/maxSize" },
+          { "label": "Desired Size",  "source": "/scalingConfig/desiredSize" },
+          { "label": "Subnets",        "source": "/subnets", "transform": "array_to_csv" },
+          { "label": "ARN",            "source": "/nodegroupArn" },
+          { "label": "Created",        "source": "/createdAt" }
+        ]
+      }
+    },
+    "eks-fargate-profiles": {
+      "display_name": "EKS Fargate Profiles",
+      "service": "eks",
+      "sdk_method": "list_fargate_profiles",
+      "sdk_method_params": {},
+      "response_path": "fargate_profile_names",
+      "id_field": "name",
+      "name_field": "name",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "NAME", "json_path": "name", "width": 50 }
+      ],
+      "sub_resources": [],
+      "actions": [
+        { "key": "ctrl+d", "display_name": "Delete Profile", "shortcut": "ctrl+d", "sdk_method": "delete_fargate_profile", "confirm": { "message": "Delete Fargate profile", "default_yes": false, "destructive": true } }
+      ],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/clusters/{name}/fargate-profiles",
+        "response_root": "/fargateProfileNames",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "name": { "source": "", "default": "-" }
+      },
+      "action_configs": {
+        "delete_fargate_profile": {
+          "action_id": "delete_fargate_profile",
+          "protocol": "rest-json",
+          "method": "DELETE",
+          "path": "/clusters/{name}/fargate-profiles/{resource_id}"
+        }
+      },
+      "describe_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/clusters/{name}/fargate-profiles/{resource_id}",
+        "response_path": "/fargateProfile",
+        "describe_fields": [
+          { "label": "Status",             "source": "/status" },
+          { "label": "Pod Execution Role", "source": "/podExecutionRoleArn" },
+          { "label": "Subnets",            "source": "/subnets", "transform": "array_to_csv" },
+          { "label": "ARN",                "source": "/fargateProfileArn" },
+          { "label": "Created",            "source": "/createdAt" }
+        ]
+      }
+    },
+    "eks-addons": {
+      "display_name": "EKS Add-ons",
+      "service": "eks",
+      "sdk_method": "list_addons",
+      "sdk_method_params": {},
+      "response_path": "addons",
+      "id_field": "name",
+      "name_field": "name",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "NAME", "json_path": "name", "width": 50 }
+      ],
+      "sub_resources": [],
+      "actions": [
+        { "key": "ctrl+d", "display_name": "Delete Add-on", "shortcut": "ctrl+d", "sdk_method": "delete_addon", "confirm": { "message": "Delete EKS add-on", "default_yes": false, "destructive": true } }
+      ],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/clusters/{name}/addons",
+        "response_root": "/addons",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "name": { "source": "", "default": "-" }
+      },
+      "action_configs": {
+        "delete_addon": {
+          "action_id": "delete_addon",
+          "protocol": "rest-json",
+          "method": "DELETE",
+          "path": "/clusters/{name}/addons/{resource_id}"
+        }
+      },
+      "describe_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/clusters/{name}/addons/{resource_id}",
+        "response_path": "/addon",
+        "describe_fields": [
+          { "label": "Status",                "source": "/status" },
+          { "label": "Version",               "source": "/addonVersion" },
+          { "label": "Service Account Role",  "source": "/serviceAccountRoleArn" },
+          { "label": "Publisher",              "source": "/publisher" },
+          { "label": "Type",                  "source": "/addonType" },
+          { "label": "ARN",                   "source": "/addonArn" },
+          { "label": "Created",               "source": "/createdAt" }
+        ]
+      }
+    },
+    "eks-updates": {
+      "display_name": "EKS Updates",
+      "service": "eks",
+      "sdk_method": "list_updates",
+      "sdk_method_params": {},
+      "response_path": "updates",
+      "id_field": "id",
+      "name_field": "id",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "ID", "json_path": "id", "width": 40 },
+        { "header": "STATUS", "json_path": "Status", "width": 14, "color_map": "state" },
+        { "header": "TYPE", "json_path": "Type", "width": 18 },
+        { "header": "VERSION", "json_path": "Version", "width": 10 },
+        { "header": "SUBMITTED", "json_path": "Submitted", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/clusters/{name}/updates",
+        "response_root": "/updateIds",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        },
+        "list_enrich": {
+          "method": "GET",
+          "path": "/clusters/{name}/updates/{resource_id}",
+          "response_path": "/update"
+        }
+      },
+      "field_mappings": {
+        "id": { "source": "/id", "default": "-" },
+        "Status": { "source": "/status", "default": "-" },
+        "Type": { "source": "/type", "default": "-" },
+        "Version": { "source": "/version", "default": "-" },
+        "Submitted": { "source": "/createdAt", "default": "-" }
+      },
+      "describe_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/clusters/{name}/updates/{resource_id}",
+        "response_path": "/update",
+        "describe_fields": [
+          { "label": "ID",               "source": "/id" },
+          { "label": "Status",           "source": "/status" },
+          { "label": "Type",             "source": "/type" },
+          { "label": "Version",          "source": "/version" },
+          { "label": "Platform",         "source": "/platformVersion" },
+          { "label": "Params",           "source": "/params" },
+          { "label": "Error",            "source": "/errors" },
+          { "label": "Created",          "source": "/createdAt" }
+        ]
       }
     }
   }

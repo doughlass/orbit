@@ -25,6 +25,7 @@ pub enum Mode {
     SsoLogin,     // SSO login dialog (IAM Identity Center)
     ConsoleLogin, // Console login dialog (aws login)
     LogTail,      // Tailing CloudWatch logs
+    ColumnPicker, // Column visibility picker (p)
 }
 
 /// Pending action that requires confirmation
@@ -335,6 +336,15 @@ pub struct App {
 
     // Client-side column sort for the current table
     pub sort: SortState,
+
+    // Column picker state (p key). Toggle state is indexed against the
+    // resource's full column list; the picker renders and edits this vec.
+    pub column_picker_toggles: Vec<bool>,
+    pub column_picker_selected: usize,
+
+    // Horizontal table scroll: index of the first visible column when the
+    // table overflows the terminal width. Zero in fit mode.
+    pub h_scroll: usize,
 }
 
 /// SSM Connect request data
@@ -531,6 +541,9 @@ impl App {
             ssm_connect_request: None,
             fuzzy_matcher: SkimMatcherV2::default().ignore_case(),
             sort: SortState::default(),
+            column_picker_toggles: Vec::new(),
+            column_picker_selected: 0,
+            h_scroll: 0,
         }
     }
 
@@ -670,6 +683,7 @@ impl App {
     /// Reset pagination state (call when navigating to new resource)
     pub fn reset_pagination(&mut self) {
         self.pagination = PaginationState::default();
+        self.h_scroll = 0;
     }
 
     /// Build AWS filters from parent context and AWS API filters
@@ -904,6 +918,23 @@ impl App {
         }
         self.sort.sort_by_cursor();
         self.apply_sort();
+    }
+
+    /// Scroll the table one column left. No-op at the start.
+    pub fn h_scroll_left(&mut self) {
+        self.h_scroll = self.h_scroll.saturating_sub(1);
+    }
+
+    /// Scroll the table one column right. The UI clamps against the number of
+    /// columns that actually overflow; here we only bound by the column count.
+    pub fn h_scroll_right(&mut self) {
+        let max = self
+            .current_resource()
+            .map(|r| r.columns.len())
+            .unwrap_or(0);
+        if self.h_scroll + 1 < max {
+            self.h_scroll += 1;
+        }
     }
 
     /// Drop the sort and restore the order the API returned
@@ -1278,6 +1309,97 @@ impl App {
         self.mode = Mode::Help;
     }
 
+    /// Open the column picker for the current resource. Toggle state starts
+    /// from saved preferences if any, otherwise from the JSON `visible` flags.
+    pub fn enter_column_picker(&mut self) {
+        let Some(resource) = self.current_resource() else {
+            return;
+        };
+        if resource.columns.is_empty() {
+            return;
+        }
+
+        let saved = self.config.column_preferences(&self.current_resource_key);
+        self.column_picker_toggles = resource
+            .columns
+            .iter()
+            .map(|col| match saved {
+                Some(visible) => visible.contains(&col.header),
+                None => col.visible,
+            })
+            .collect();
+        self.column_picker_selected = 0;
+        self.mode = Mode::ColumnPicker;
+    }
+
+    /// Toggle the column under the picker cursor. Refuses to hide the last
+    /// visible column — an empty table is never a useful outcome.
+    pub fn column_picker_toggle(&mut self) {
+        let idx = self.column_picker_selected;
+        if idx >= self.column_picker_toggles.len() {
+            return;
+        }
+        let visible_count = self.column_picker_toggles.iter().filter(|&&v| v).count();
+        if self.column_picker_toggles[idx] && visible_count <= 1 {
+            self.show_warning("At least one column must stay visible");
+            return;
+        }
+        self.column_picker_toggles[idx] = !self.column_picker_toggles[idx];
+    }
+
+    /// Save toggled columns to config (persisted to disk) and close.
+    pub fn save_column_picker(&mut self) {
+        let Some(resource) = self.current_resource() else {
+            self.mode = Mode::Normal;
+            return;
+        };
+
+        let visible: Vec<String> = resource
+            .columns
+            .iter()
+            .zip(&self.column_picker_toggles)
+            .filter(|(_, &on)| on)
+            .map(|(col, _)| col.header.clone())
+            .collect();
+
+        if visible.is_empty() {
+            self.mode = Mode::Normal;
+            return;
+        }
+
+        self.config
+            .column_preferences
+            .insert(self.current_resource_key.clone(), visible);
+        if let Err(e) = self.config.save() {
+            self.error_message = Some(format!("Failed to save config: {}", e));
+        }
+        self.mode = Mode::Normal;
+    }
+
+    /// Resolve the columns to render for the current resource, paired with each
+    /// column's original index so sort state stays pinned to full-list
+    /// positions even when columns are hidden. Saved picker preferences win
+    /// over the JSON `visible` flags.
+    pub fn effective_columns(&self) -> Vec<(usize, &crate::resource::ColumnDef)> {
+        let Some(resource) = self.current_resource() else {
+            return Vec::new();
+        };
+        match self.config.column_preferences(&self.current_resource_key) {
+            Some(visible) => resource
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, col)| visible.contains(&col.header))
+                .collect(),
+            None => resource
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, col)| col.visible)
+                .collect(),
+        }
+    }
+
     pub async fn enter_describe_mode(&mut self) {
         if self.filtered_items.is_empty() {
             return;
@@ -1328,10 +1450,31 @@ impl App {
                     // Fall back to existing describe_resource logic
                     let id = crate::resource::extract_json_value(&item, &resource_def.id_field);
                     if id != "-" && !id.is_empty() {
+                        // Collect parent params for REST path placeholders
+                        let parent_params = self
+                            .parent_context
+                            .as_ref()
+                            .map(|ctx| {
+                                let mut params = std::collections::HashMap::new();
+                                let sub = ctx.resource_key.clone();
+                                if let Some(parent_resource) = crate::resource::get_resource(&sub) {
+                                    let parent_id = crate::resource::extract_json_value(
+                                        &ctx.item,
+                                        &parent_resource.id_field,
+                                    );
+                                    if parent_id != "-" && !parent_id.is_empty() {
+                                        params.insert(parent_resource.id_field.clone(), parent_id);
+                                    }
+                                }
+                                params
+                            })
+                            .unwrap_or_default();
+
                         match crate::resource::describe_resource(
                             &self.current_resource_key,
                             &self.clients,
                             &id,
+                            &parent_params,
                         )
                         .await
                         {

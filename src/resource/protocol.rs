@@ -23,6 +23,17 @@ pub enum ApiProtocol {
     RestXml,
 }
 
+/// A single field in a multi-token pagination scheme (e.g., Route53 records
+/// needs both NextRecordName and NextRecordType sent together on every page).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct MultiTokenField {
+    /// Query parameter name sent on the request, e.g. "name"
+    pub query_param: String,
+    /// JSON path to extract this token from the response, e.g.
+    /// "/ListResourceRecordSetsResponse/NextRecordName"
+    pub response_path: String,
+}
+
 /// Pagination configuration for API calls
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct PaginationConfig {
@@ -38,6 +49,11 @@ pub struct PaginationConfig {
     /// Default max results value
     #[serde(default)]
     pub max_results: Option<u32>,
+    /// Multi-token pagination fields for APIs that page on several coordinated
+    /// values (Route53 ListResourceRecordSets, etc.). Mutually exclusive with
+    /// input_token/output_token — only one scheme is used per resource.
+    #[serde(default)]
+    pub multi_token: Option<Vec<MultiTokenField>>,
 }
 
 /// Configuration for a single API operation
@@ -89,6 +105,12 @@ pub struct ApiConfig {
     #[serde(default)]
     pub pagination: Option<PaginationConfig>,
 
+    /// Per-item enrichment: when the list response returns sparse items (e.g.
+    /// EKS update IDs), call a describe-style API for each item to get full
+    /// detail fields. The enriched response replaces each item.
+    #[serde(default)]
+    pub list_enrich: Option<ListEnrichConfig>,
+
     /// Pre-request hooks (e.g., "resolve_s3_bucket_region")
     #[serde(default)]
     pub pre_hooks: Vec<String>,
@@ -100,6 +122,19 @@ pub struct ApiConfig {
     /// For composite operations, the sequence of operations
     #[serde(default)]
     pub operations: Vec<CompositeOperation>,
+}
+
+/// Per-item enrichment config for list responses that return sparse items.
+/// Each item from the list has its `{resource_id}` placeholder filled and
+/// the describe API called for it. The result replaces the sparse item.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ListEnrichConfig {
+    /// HTTP method for the per-item call
+    pub method: String,
+    /// URL path template with {resource_id} placeholder
+    pub path: String,
+    /// JSON pointer to extract the full object from the describe response
+    pub response_path: Option<String>,
 }
 
 /// A single operation in a composite API call
@@ -201,6 +236,20 @@ pub struct ActionConfig {
     pub special_handling: Option<String>,
 }
 
+/// A single field to extract and display in the formatted describe view.
+/// When a resource's describe_config carries describe_fields, the describe
+/// panel renders a labelled key-value table instead of the raw JSON dump.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DescribeField {
+    /// Display label (e.g., "Status", "Endpoint")
+    pub label: String,
+    /// Path into the describe response JSON to extract the value
+    pub source: String,
+    /// Optional transform to apply, same names as field_mappings transforms
+    #[serde(default)]
+    pub transform: Option<String>,
+}
+
 /// Configuration for describe operation (single resource details)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DescribeConfig {
@@ -238,6 +287,11 @@ pub struct DescribeConfig {
     /// Additional API calls to enrich the response (e.g., S3 bucket versioning/encryption)
     #[serde(default)]
     pub enrich_calls: Vec<EnrichCall>,
+
+    /// Fields to display in the formatted describe view. When present, the
+    /// describe panel renders a labelled list instead of a raw JSON dump.
+    #[serde(default)]
+    pub describe_fields: Vec<DescribeField>,
 }
 
 /// Additional API call to enrich describe response

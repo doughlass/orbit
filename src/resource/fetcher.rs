@@ -178,6 +178,15 @@ fn extract_items(response: &Value, path: &str) -> Result<Vec<Value>> {
 /// Extract a value from a JSON object using dot notation path
 /// Supports: "Field", "Field.SubField", "Field.0", "Tags.Name"
 pub fn extract_json_value(item: &Value, path: &str) -> String {
+    // Field mapping keys may contain dots themselves ("Config.PrivateZone"),
+    // producing mapped items with literal dotted keys. Try the whole path as
+    // one key before dot-navigation, or those columns would always miss.
+    if let Value::Object(map) = item {
+        if let Some(value) = map.get(path) {
+            return value_to_cell_string(value);
+        }
+    }
+
     let parts: Vec<&str> = path.split('.').collect();
     let mut current = item.clone();
 
@@ -209,12 +218,16 @@ pub fn extract_json_value(item: &Value, path: &str) -> String {
         };
     }
 
-    // Convert final value to string
-    match current {
-        Value::String(s) => s,
+    value_to_cell_string(&current)
+}
+
+/// Convert an extracted JSON value to its table cell representation
+fn value_to_cell_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
         Value::Number(n) => n.to_string(),
         Value::Bool(b) => {
-            if b {
+            if *b {
                 "Yes".to_string()
             } else {
                 "No".to_string()
@@ -222,5 +235,26 @@ pub fn extract_json_value(item: &Value, path: &str) -> String {
         }
         Value::Null => "-".to_string(),
         _ => "-".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Field mapping keys can contain dots ("Config.PrivateZone"), so mapped
+    /// items carry literal dotted keys. Dot-navigation would miss them and
+    /// render "-" forever — the whole path must be tried as one key first.
+    #[test]
+    fn dotted_mapping_keys_are_read_as_literal_keys() {
+        let item = json!({
+            "Config.PrivateZone": "Private",
+            "Name": "example.com."
+        });
+
+        assert_eq!(extract_json_value(&item, "Config.PrivateZone"), "Private");
+        assert_eq!(extract_json_value(&item, "Name"), "example.com.");
+        assert_eq!(extract_json_value(&item, "Missing.Path"), "-");
     }
 }

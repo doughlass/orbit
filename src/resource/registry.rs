@@ -65,6 +65,15 @@ pub struct ColumnDef {
     pub width: u16,
     #[serde(default)]
     pub color_map: Option<String>,
+    /// Default visibility before the user saves column preferences. Extended
+    /// attribute columns are defined in JSON but start hidden; the picker
+    /// (p key) toggles them, and saved preferences override this entirely.
+    #[serde(default = "default_true")]
+    pub visible: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Sub-resource definition from JSON
@@ -721,6 +730,54 @@ mod tests {
         );
     }
 
+    /// ListResourceRecordSets pages on two coordinated tokens (NextRecordName +
+    /// NextRecordType). A single-token PaginationConfig cannot represent this, so
+    /// the resource must use the multi_token scheme instead.
+    #[test]
+    fn route53_records_use_multi_token_pagination() {
+        let records = get_resource("route53-records").expect("route53-records");
+        let config = records
+            .api_config
+            .as_ref()
+            .expect("route53-records needs api_config");
+        let pagination = config
+            .pagination
+            .as_ref()
+            .expect("route53-records needs pagination");
+
+        assert!(
+            pagination.multi_token.is_some(),
+            "route53-records must use multi_token, not single input_token/output_token"
+        );
+        assert!(
+            pagination.input_token.is_none() && pagination.output_token.is_none(),
+            "route53-records must not set single-token fields alongside multi_token"
+        );
+
+        let multi = pagination.multi_token.as_ref().unwrap();
+        assert_eq!(
+            multi.len(),
+            2,
+            "route53-records needs two tokens: name + type"
+        );
+
+        let names: Vec<&str> = multi.iter().map(|f| f.query_param.as_str()).collect();
+        assert!(
+            names.contains(&"name"),
+            "route53-records needs a 'name' query param"
+        );
+        assert!(
+            names.contains(&"type"),
+            "route53-records needs a 'type' query param"
+        );
+
+        assert_eq!(
+            pagination.max_results_param.as_deref(),
+            Some("maxitems"),
+            "route53-records max_results_param"
+        );
+    }
+
     /// The EC2 networking family, listed explicitly so that dropping one from the JSON
     /// is a test failure rather than a silently smaller loop.
     const VPC_NETWORKING_KEYS: &[&str] = &[
@@ -870,6 +927,171 @@ mod tests {
             assert!(
                 !resource.name_field.is_empty(),
                 "Resource {} should have name_field",
+                key
+            );
+        }
+    }
+
+    /// Every describe_field must have a non-empty label and source. A blank label
+    /// renders an empty row with no purpose, and a blank source silently returns
+    /// null for every resource, showing "-" in every cell.
+    #[test]
+    fn describe_fields_have_labels_and_sources() {
+        let registry = get_registry();
+        for (key, resource) in &registry.resources {
+            if let Some(ref dc) = resource.describe_config {
+                for (i, field) in dc.describe_fields.iter().enumerate() {
+                    assert!(
+                        !field.label.is_empty(),
+                        "{} describe_fields[{}] label is empty",
+                        key,
+                        i
+                    );
+                    assert!(
+                        !field.source.is_empty(),
+                        "{} describe_fields[{}] source is empty",
+                        key,
+                        i
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn eks_clusters_have_nodegroups_as_enter_sub_resource() {
+        let clusters = get_resource("eks-clusters").expect("eks-clusters");
+        assert_eq!(
+            clusters.enter_sub_resource.as_deref(),
+            Some("eks-nodegroups"),
+            "Enter on an EKS cluster should list node groups"
+        );
+        assert!(clusters
+            .sub_resources
+            .iter()
+            .any(|s| s.resource_key == "eks-nodegroups"));
+        assert!(clusters
+            .sub_resources
+            .iter()
+            .any(|s| s.resource_key == "eks-fargate-profiles"));
+        assert!(clusters
+            .sub_resources
+            .iter()
+            .any(|s| s.resource_key == "eks-addons"));
+        assert!(clusters
+            .sub_resources
+            .iter()
+            .any(|s| s.resource_key == "eks-updates"));
+
+        // All sub-resources must use 'name' as filter_param
+        for sub in &clusters.sub_resources {
+            assert_eq!(
+                sub.filter_param, "name",
+                "{} sub_resource filter_param",
+                sub.resource_key
+            );
+            assert_eq!(
+                sub.parent_id_field, "name",
+                "{} sub_resource parent_id_field",
+                sub.resource_key
+            );
+        }
+    }
+
+    #[test]
+    /// EC2's extended attribute columns exist for the picker but start hidden,
+    /// so the default table stays the compact 7-column view. A typo in a new
+    /// column's visible flag shows up here as a wrong default view.
+    fn ec2_instances_extended_columns_start_hidden() {
+        let resource = get_resource("ec2-instances").expect("ec2-instances");
+        assert!(
+            resource.columns.len() > 40,
+            "ec2-instances should carry the extended attribute set, got {}",
+            resource.columns.len()
+        );
+
+        let visible: Vec<&str> = resource
+            .columns
+            .iter()
+            .filter(|c| c.visible)
+            .map(|c| c.header.as_str())
+            .collect();
+        assert_eq!(
+            visible,
+            vec![
+                "NAME",
+                "INSTANCE ID",
+                "STATE",
+                "TYPE",
+                "AZ",
+                "PUBLIC IP",
+                "PRIVATE IP"
+            ],
+            "ec2-instances default visible columns"
+        );
+
+        // Every column's json_path must exist in field_mappings or the cell
+        // renders blank with no error.
+        for col in &resource.columns {
+            let root = col.json_path.split('.').next().unwrap_or("");
+            assert!(
+                resource.field_mappings.contains_key(root),
+                "ec2-instances column {} json_path root {} is not in field_mappings",
+                col.header,
+                root
+            );
+        }
+    }
+
+    /// A column whose json_path root is missing from field_mappings renders
+    /// blank with no error at all — the exact failure mode the AGENTS doc
+    /// calls the easiest mistake in these files. Pin it across every resource
+    /// so new columns cannot ship silently broken. Resources without
+    /// field_mappings (s3-objects, sts-caller-identity) are exempt: their
+    /// items are built directly by special-case handlers in dispatch.rs.
+    #[test]
+    fn every_column_json_path_root_exists_in_field_mappings() {
+        let registry = get_registry();
+        for (key, resource) in &registry.resources {
+            if resource.field_mappings.is_empty() {
+                continue;
+            }
+            for col in &resource.columns {
+                let root = col.json_path.split('.').next().unwrap_or("");
+                let mapped = resource.field_mappings.contains_key(&col.json_path)
+                    || resource.field_mappings.contains_key(root);
+                assert!(
+                    mapped,
+                    "{} column {} reads json_path {} whose root {} is not in field_mappings",
+                    key, col.header, col.json_path, root
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn eks_sub_resources_require_parent() {
+        for key in &[
+            "eks-nodegroups",
+            "eks-fargate-profiles",
+            "eks-addons",
+            "eks-updates",
+        ] {
+            let resource = get_resource(key).unwrap_or_else(|| panic!("{}", key));
+            assert!(
+                resource.requires_parent,
+                "{} must require a parent cluster",
+                key
+            );
+            assert!(
+                resource.describe_config.is_some(),
+                "{} must have a describe_config",
+                key
+            );
+            let dc = resource.describe_config.as_ref().unwrap();
+            assert!(
+                !dc.describe_fields.is_empty(),
+                "{} must have describe_fields for formatted overview",
                 key
             );
         }

@@ -1,3 +1,4 @@
+mod column_picker;
 mod command_box;
 mod dialog;
 mod header;
@@ -19,6 +20,7 @@ use ratatui::{
     },
     Frame,
 };
+use serde_json::Value;
 use std::cmp::Reverse;
 
 pub fn render(f: &mut Frame, app: &App) {
@@ -60,6 +62,9 @@ pub fn render(f: &mut Frame, app: &App) {
     match app.mode {
         Mode::Help => {
             help::render(f, app);
+        }
+        Mode::ColumnPicker => {
+            column_picker::render(f, app);
         }
         Mode::Confirm | Mode::Warning | Mode::SsoLogin | Mode::ConsoleLogin => {
             dialog::render(f, app);
@@ -175,12 +180,27 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
         let is_global = resource.is_global;
         let has_more = app.pagination.has_more;
 
-        let count_str = if has_more {
+        // Route53 records and similar: parent carries the authoritative total
+        let parent_total = app
+            .parent_context
+            .as_ref()
+            .and_then(|p| p.item.get("ResourceRecordSetCount"))
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .or_else(|| v.as_u64().map(|n| n as usize))
+            });
+
+        let count_str = if let Some(pt) = parent_total {
+            format!("{}/{}", count, pt)
+        } else if has_more {
             format!("{}+", count)
         } else {
             count.to_string()
         };
-        let total_str = if has_more {
+        let total_str = if let Some(pt) = parent_total {
+            format!("{}/{}", total, pt)
+        } else if has_more {
             format!("{}+", total)
         } else {
             total.to_string()
@@ -230,30 +250,86 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
     let inner_area = block.inner(area);
     f.render_widget(block, area);
 
-    // Apportion the JSON column weights across the real area; see column_layout
-    // for why the weights cannot go to ratatui as percentages.
-    let weights: Vec<u16> = resource.columns.iter().map(|col| col.width).collect();
-    let (widths, column_widths) = column_layout(inner_area.width, &weights);
+    // Column sizing has two modes. Fit mode apportions the JSON weights across
+    // the real area (see column_layout for why they cannot go to ratatui as
+    // percentages). Overflow mode kicks in when even minimum-width columns
+    // cannot fit: each column takes max(MIN_COLUMN_WIDTH, weight) cells and the
+    // table becomes a window onto a wider canvas scrolled with Shift+arrows.
+    // Sort indices stay pinned to positions in the full column list, so each
+    // rendered column carries its original index.
+    const MIN_COLUMN_WIDTH: u16 = 12;
+    let visible_columns: Vec<(usize, &crate::resource::ColumnDef)> = app.effective_columns();
+    let min_widths: Vec<u16> = visible_columns
+        .iter()
+        .map(|(_, col)| col.width.max(MIN_COLUMN_WIDTH))
+        .collect();
+    let gaps_total = visible_columns.len().saturating_sub(1) as u16 * TABLE_COLUMN_SPACING;
+    let needed: u16 = min_widths.iter().sum::<u16>().saturating_add(gaps_total);
+    let overflow = !min_widths.is_empty() && needed > inner_area.width;
+
+    // (original index, column, cell width) for every column that renders
+    let mut render_columns: Vec<(usize, &crate::resource::ColumnDef, u16)> = Vec::new();
+    let mut h_scroll_info: Option<(usize, usize)> = None;
+
+    if overflow {
+        // Clamp the offset so scrolling right eventually pins the last columns
+        // rather than scrolling everything off-screen.
+        let max_offset = max_h_scroll_offset(&min_widths, inner_area.width);
+        let offset = app.h_scroll.min(max_offset);
+        let mut used: u16 = 0;
+        for (i, &w) in min_widths.iter().enumerate().skip(offset) {
+            let cost = if render_columns.is_empty() {
+                w
+            } else {
+                w + TABLE_COLUMN_SPACING
+            };
+            if used + cost > inner_area.width {
+                break;
+            }
+            used += cost;
+            let (idx, col) = visible_columns[i];
+            render_columns.push((idx, col, w));
+        }
+        h_scroll_info = Some((offset, min_widths.len()));
+    } else {
+        let weights: Vec<u16> = visible_columns.iter().map(|(_, col)| col.width).collect();
+        let (_, text_widths) = column_layout(inner_area.width, &weights);
+        for ((idx, col), w) in visible_columns.iter().zip(text_widths.iter()) {
+            render_columns.push((*idx, *col, *w as u16));
+        }
+    }
+
+    let widths: Vec<Constraint> = render_columns
+        .iter()
+        .map(|(_, _, w)| Constraint::Length(*w))
+        .collect();
+    let column_widths: Vec<usize> = render_columns
+        .iter()
+        .map(|(_, _, w)| (*w as usize).saturating_sub(CELL_PAD))
+        .collect();
 
     // Build header from column definitions with left padding.
     // Sorted column gets a direction arrow in cyan; the cursor column (what Tab
     // would sort) is underlined, so the two states stay tellable apart.
-    let header_cells = resource.columns.iter().enumerate().map(|(col_idx, col)| {
-        let is_sorted = app.sort.column == Some(col_idx);
-        let (label, color) = if is_sorted {
-            (
-                format!(" {} {}", col.header, app.sort.indicator()),
-                Color::Cyan,
-            )
-        } else {
-            (format!(" {}", col.header), Color::Yellow)
-        };
-        let mut style = Style::default().fg(color).add_modifier(Modifier::BOLD);
-        if app.sort.cursor == col_idx {
-            style = style.add_modifier(Modifier::UNDERLINED);
-        }
-        Cell::from(label).style(style)
-    });
+    let header_cells = render_columns
+        .iter()
+        .enumerate()
+        .map(|(col_idx, (_, col, _))| {
+            let is_sorted = app.sort.column == Some(col_idx);
+            let (label, color) = if is_sorted {
+                (
+                    format!(" {} {}", col.header, app.sort.indicator()),
+                    Color::Cyan,
+                )
+            } else {
+                (format!(" {}", col.header), Color::Yellow)
+            };
+            let mut style = Style::default().fg(color).add_modifier(Modifier::BOLD);
+            if app.sort.cursor == col_idx {
+                style = style.add_modifier(Modifier::UNDERLINED);
+            }
+            Cell::from(label).style(style)
+        });
     let header = Row::new(header_cells).height(1);
 
     // Build rows from filtered items with left padding
@@ -265,33 +341,37 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
         .enumerate()
         .map(|(row_index, item)| {
             let is_selected = row_index == selected_row;
-            let cells = resource.columns.iter().enumerate().map(|(col_idx, col)| {
-                let value = extract_json_value(item, &col.json_path);
-                let mut style = get_cell_style(&value, col);
-                if is_selected {
-                    style = style.fg(Color::White);
-                }
-                let display_value = format_cell_value(&value, col);
-                let col_width = column_widths_clone.get(col_idx).copied().unwrap_or(40);
-                let display_value = truncate_cell(&display_value, col_width);
+            let cells = render_columns
+                .iter()
+                .enumerate()
+                .map(|(col_idx, (_, col, _))| {
+                    let value = extract_json_value(item, &col.json_path);
+                    let mut style = get_cell_style(&value, col);
+                    if is_selected {
+                        style = style.fg(Color::White);
+                    }
+                    let display_value = format_cell_value(&value, col);
+                    let col_width = column_widths_clone.get(col_idx).copied().unwrap_or(40);
+                    let display_value = truncate_cell(&display_value, col_width);
 
-                if highlight_filter_matches
-                    && (col.json_path == resource.name_field || col.json_path == resource.id_field)
-                {
-                    let match_style = Style::default()
-                        .fg(Color::LightGreen)
-                        .add_modifier(Modifier::BOLD);
-                    highlight::fuzzy_cell(
-                        &display_value,
-                        query,
-                        &app.fuzzy_matcher,
-                        style,
-                        match_style,
-                    )
-                } else {
-                    Cell::from(format!(" {}", display_value)).style(style)
-                }
-            });
+                    if highlight_filter_matches
+                        && (col.json_path == resource.name_field
+                            || col.json_path == resource.id_field)
+                    {
+                        let match_style = Style::default()
+                            .fg(Color::LightGreen)
+                            .add_modifier(Modifier::BOLD);
+                        highlight::fuzzy_cell(
+                            &display_value,
+                            query,
+                            &app.fuzzy_matcher,
+                            style,
+                            match_style,
+                        )
+                    } else {
+                        Cell::from(format!(" {}", display_value)).style(style)
+                    }
+                });
             Row::new(cells)
         });
 
@@ -308,6 +388,44 @@ fn render_dynamic_table(f: &mut Frame, app: &App, area: Rect) {
     state.select(Some(app.selected));
 
     f.render_stateful_widget(table, inner_area, &mut state);
+
+    // Horizontal scrollbar on the table's bottom border when columns overflow.
+    // Overwrites the border line — the usual scrollbar-on-border aesthetic.
+    if let Some((offset, total)) = h_scroll_info {
+        let scrollbar_area = Rect {
+            x: area.x + 1,
+            y: area.y + area.height.saturating_sub(1),
+            width: area.width.saturating_sub(2),
+            height: 1,
+        };
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
+            .begin_symbol(None)
+            .end_symbol(None);
+        let mut sb_state = ScrollbarState::new(total).position(offset);
+        f.render_stateful_widget(scrollbar, scrollbar_area, &mut sb_state);
+    }
+}
+
+/// Furthest first-visible-column offset that still shows content: the point
+/// where the trailing columns fill the area exactly. Scrolling past it would
+/// just push every column off the right edge.
+fn max_h_scroll_offset(min_widths: &[u16], area_width: u16) -> usize {
+    let mut used: usize = 0;
+    let mut count: usize = 0;
+    for &w in min_widths.iter().rev() {
+        let cost = w as usize
+            + if count == 0 {
+                0
+            } else {
+                TABLE_COLUMN_SPACING as usize
+            };
+        if used + cost > area_width as usize {
+            break;
+        }
+        used += cost;
+        count += 1;
+    }
+    min_widths.len().saturating_sub(count)
 }
 
 /// Gap ratatui inserts between table columns. Matches the `.column_spacing()`
@@ -477,35 +595,113 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
         (inner_area, None)
     };
 
-    // Apply JSON syntax highlighting with search match highlighting
-    let search_text = &app.describe_search_text;
-    let lines: Vec<Line> = json
-        .lines()
-        .enumerate()
-        .map(|(line_num, line)| {
-            let is_current_match = app
-                .describe_match_lines
-                .get(app.describe_current_match)
-                .map(|&m| m == line_num)
-                .unwrap_or(false);
-            highlight_json_line_with_search(line, search_text, is_current_match)
-        })
-        .collect();
-    let total_lines = lines.len();
+    // Check if this resource has a formatted describe layout
+    let describe_fields = app
+        .current_resource()
+        .and_then(|r| r.describe_config.as_ref())
+        .map(|dc| &dc.describe_fields)
+        .filter(|fields| !fields.is_empty());
 
-    // Calculate max scroll based on content area
-    let visible_lines = content_area.height as usize;
-    let max_scroll = total_lines.saturating_sub(visible_lines);
-    let scroll = app.describe_scroll.min(max_scroll);
+    if let Some(fields) = describe_fields {
+        if let Some(ref data) = app.describe_data {
+            let lines = render_formatted_describe(fields, data);
+            let total_lines = lines.len();
+            let visible_lines = content_area.height as usize;
+            let max_scroll = total_lines.saturating_sub(visible_lines);
+            let scroll = app.describe_scroll.min(max_scroll);
 
-    let paragraph = Paragraph::new(lines.clone())
-        .wrap(Wrap { trim: false })
-        .scroll((scroll as u16, 0));
-    f.render_widget(paragraph, content_area);
+            let paragraph = Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .scroll((scroll as u16, 0));
+            f.render_widget(paragraph, content_area);
+        }
+    } else {
+        // Apply JSON syntax highlighting with search match highlighting
+        let search_text = &app.describe_search_text;
+        let lines: Vec<Line> = json
+            .lines()
+            .enumerate()
+            .map(|(line_num, line)| {
+                let is_current_match = app
+                    .describe_match_lines
+                    .get(app.describe_current_match)
+                    .map(|&m| m == line_num)
+                    .unwrap_or(false);
+                highlight_json_line_with_search(line, search_text, is_current_match)
+            })
+            .collect();
+        let total_lines = lines.len();
 
-    // Render search bar if active
-    if let Some(search_area) = search_area {
-        render_describe_search_bar(f, app, search_area);
+        // Calculate max scroll based on content area
+        let visible_lines = content_area.height as usize;
+        let max_scroll = total_lines.saturating_sub(visible_lines);
+        let scroll = app.describe_scroll.min(max_scroll);
+
+        let paragraph = Paragraph::new(lines.clone())
+            .wrap(Wrap { trim: false })
+            .scroll((scroll as u16, 0));
+        f.render_widget(paragraph, content_area);
+
+        // Render search bar if active
+        if let Some(search_area) = search_area {
+            render_describe_search_bar(f, app, search_area);
+        }
+    }
+}
+
+fn render_formatted_describe(
+    fields: &[crate::resource::protocol::DescribeField],
+    data: &Value,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line> = vec![Line::from("")];
+
+    for field in fields {
+        let value = crate::resource::path_extractor::extract_by_path(data, &field.source);
+
+        let value = if let Some(ref transform) = field.transform {
+            crate::resource::field_mapper::apply_transform(&value, transform)
+        } else {
+            value
+        };
+
+        let display = value_to_describe_string(&value);
+
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {:<20}", field.label),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(display, Style::default().fg(Color::White)),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+    lines
+}
+
+fn value_to_describe_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => {
+            if *b {
+                "Yes".to_string()
+            } else {
+                "No".to_string()
+            }
+        }
+        Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(value_to_describe_string).collect();
+            items.join(", ")
+        }
+        Value::Object(obj) => {
+            let pairs: Vec<String> = obj
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, value_to_describe_string(v)))
+                .collect();
+            pairs.join(", ")
+        }
+        Value::Null => "-".to_string(),
     }
 }
 
@@ -922,11 +1118,27 @@ fn render_crumb(f: &mut Frame, app: &App, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use super::{column_layout, describe_title, truncate_cell, TABLE_COLUMN_SPACING};
+    use super::{
+        column_layout, describe_title, max_h_scroll_offset, truncate_cell, TABLE_COLUMN_SPACING,
+    };
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
     use ratatui::widgets::{Cell, Row, Table};
     use ratatui::Terminal;
+
+    /// The clamp must leave the trailing columns reachable: scrolling right
+    /// pins the last columns at the right edge instead of scrolling them all
+    /// off-screen. Three 12-cell columns in a 30-cell area fit two at a time
+    /// (12 + 1 spacing + 12 = 25, three would need 38), so the furthest
+    /// useful offset shows columns 1..=2, i.e. offset 1.
+    #[test]
+    fn max_h_scroll_pins_trailing_columns_in_view() {
+        assert_eq!(max_h_scroll_offset(&[12, 12, 12], 30), 1);
+        // Everything fits — no scrolling at all
+        assert_eq!(max_h_scroll_offset(&[12, 12, 12], 100), 0);
+        // A column wider than the area can never render; offset pins to the end
+        assert_eq!(max_h_scroll_offset(&[50], 30), 1);
+    }
 
     /// The real EC2 Instances weights: NAME, INSTANCE ID, STATE, TYPE, AZ,
     /// PUBLIC IP, PRIVATE IP. They sum to 111, which is the whole problem.

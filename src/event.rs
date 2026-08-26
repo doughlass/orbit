@@ -31,6 +31,7 @@ async fn handle_key_event(app: &mut App, key: KeyEvent) -> Result<bool> {
         Mode::SsoLogin => handle_sso_login_mode(app, key).await,
         Mode::ConsoleLogin => handle_console_login_mode(app, key).await,
         Mode::LogTail => handle_log_tail_mode(app, key).await,
+        Mode::ColumnPicker => handle_column_picker_mode(app, key),
     }
 }
 
@@ -181,6 +182,13 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
         }
 
+        // Horizontal table scroll when columns overflow the terminal. Must
+        // precede the plain arrow arms — Shift+Right still reports Right.
+        KeyCode::Right if key.modifiers.contains(KeyModifiers::SHIFT) => app.h_scroll_right(),
+        KeyCode::Left if key.modifiers.contains(KeyModifiers::SHIFT) => app.h_scroll_left(),
+        KeyCode::Char('.') => app.h_scroll_right(),
+        KeyCode::Char(',') => app.h_scroll_left(),
+
         // Column sorting - arrows only move the cursor, tab commits it to a sort
         KeyCode::Right => app.sort_cursor_right(),
         KeyCode::Left => app.sort_cursor_left(),
@@ -196,6 +204,9 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
         // Mode switches
         KeyCode::Char(':') => app.enter_command_mode(),
         KeyCode::Char('?') => app.enter_help_mode(),
+
+        // Column visibility picker ('p' collides with IAM sub-resources)
+        KeyCode::Char('v') => app.enter_column_picker(),
 
         // Backspace goes back in navigation
         KeyCode::Backspace => {
@@ -249,7 +260,15 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
                                             handled = true;
                                         // Special handling for SSM connect
                                         } else if action.sdk_method == "ssm_connect" {
-                                            app.request_ssm_connect();
+                                            // An interactive shell is a write path
+                                            // by any reasonable definition
+                                            if app.readonly {
+                                                app.show_warning(
+                                                    "This operation is not supported in read-only mode",
+                                                );
+                                            } else {
+                                                app.request_ssm_connect();
+                                            }
                                             handled = true;
                                         // Download writes locally, so it never goes through dispatch
                                         } else if action.sdk_method == "download_object" {
@@ -441,6 +460,24 @@ fn handle_help_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
         KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
             app.exit_mode();
         }
+        _ => {}
+    }
+    Ok(false)
+}
+
+fn handle_column_picker_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
+    match key.code {
+        KeyCode::Char('j') | KeyCode::Down => {
+            if app.column_picker_selected + 1 < app.column_picker_toggles.len() {
+                app.column_picker_selected += 1;
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.column_picker_selected = app.column_picker_selected.saturating_sub(1);
+        }
+        KeyCode::Char(' ') => app.column_picker_toggle(),
+        KeyCode::Enter => app.save_column_picker(),
+        KeyCode::Esc => app.mode = Mode::Normal,
         _ => {}
     }
     Ok(false)
@@ -1143,5 +1180,85 @@ pub async fn poll_logs_if_tailing(app: &mut App) {
 
     if should_poll {
         let _ = app.poll_log_events().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::App;
+    use crate::aws::client::AwsClients;
+    use crate::config::Config;
+
+    fn test_app() -> App {
+        App::from_initialized(
+            AwsClients::dummy(),
+            "test".to_string(),
+            "eu-west-1".to_string(),
+            vec!["test".to_string()],
+            vec!["eu-west-1".to_string()],
+            vec![],
+            Config::default(),
+            true,
+            None,
+            false,
+            "ec2-instances",
+        )
+    }
+
+    async fn press(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
+        handle_normal_mode(app, KeyEvent::new(code, modifiers))
+            .await
+            .unwrap();
+    }
+
+    /// Horizontal scroll must react to both key forms. A regression here
+    /// leaves wide tables unscrollable with no error anywhere.
+    #[tokio::test]
+    async fn period_and_comma_scroll_horizontally() {
+        let mut app = test_app();
+        assert_eq!(app.h_scroll, 0);
+
+        press(&mut app, KeyCode::Char('.'), KeyModifiers::NONE).await;
+        assert_eq!(app.h_scroll, 1, "`.` must scroll right");
+
+        press(&mut app, KeyCode::Char(','), KeyModifiers::NONE).await;
+        assert_eq!(app.h_scroll, 0, "`,` must scroll left");
+
+        // Left at the start must not underflow
+        press(&mut app, KeyCode::Char(','), KeyModifiers::NONE).await;
+        assert_eq!(app.h_scroll, 0);
+    }
+
+    #[tokio::test]
+    async fn shift_arrows_scroll_horizontally() {
+        let mut app = test_app();
+
+        press(&mut app, KeyCode::Right, KeyModifiers::SHIFT).await;
+        assert_eq!(app.h_scroll, 1, "Shift+Right must scroll right");
+
+        press(&mut app, KeyCode::Left, KeyModifiers::SHIFT).await;
+        assert_eq!(app.h_scroll, 0, "Shift+Left must scroll left");
+    }
+
+    /// SSM connect opens an interactive shell — a write path — so readonly
+    /// must refuse it even though the action carries no confirm config and
+    /// would otherwise bypass the readonly gate as a "special case".
+    #[tokio::test]
+    async fn readonly_blocks_ssm_connect() {
+        let mut app = test_app();
+        app.items = vec![serde_json::json!({
+            "InstanceId": "i-123",
+            "Tags.Name": "web-1"
+        })];
+        app.apply_filter();
+        assert!(app.selected_item().is_some(), "row must be selected");
+
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::NONE).await;
+        assert!(
+            app.ssm_connect_request.is_none(),
+            "readonly must not open an SSM session"
+        );
+        assert!(app.warning_message.is_some(), "user should be told why");
     }
 }

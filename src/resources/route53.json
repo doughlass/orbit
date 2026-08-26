@@ -61,7 +61,15 @@
         "protocol": "rest-xml",
         "method": "GET",
         "path": "/2013-04-01{hosted_zone_id}/rrset",
-        "response_root": "/ListResourceRecordSetsResponse/ResourceRecordSets/ResourceRecordSet"
+        "response_root": "/ListResourceRecordSetsResponse/ResourceRecordSets/ResourceRecordSet",
+        "pagination": {
+          "multi_token": [
+            { "query_param": "name", "response_path": "/ListResourceRecordSetsResponse/NextRecordName" },
+            { "query_param": "type", "response_path": "/ListResourceRecordSetsResponse/NextRecordType" }
+          ],
+          "max_results_param": "maxitems",
+          "max_results": 100
+        }
       },
       "field_mappings": {
         "RecordId": { "source": "/", "transform": "route53_record_id" },

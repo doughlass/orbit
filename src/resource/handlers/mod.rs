@@ -104,11 +104,54 @@ impl UnifiedProtocolHandler {
         // Parse items from response
         let (items, next_token) = self.parse_items(&response, config)?;
 
-        // Apply field mappings if provided
+        // Per-item enrichment: call describe for each sparse list item BEFORE
+        // field mappings so the enriched full objects get properly mapped.
+        let mut enriched = items;
+        if let Some(ref enrich) = config.list_enrich {
+            for item in &mut enriched {
+                let id = item
+                    .as_str()
+                    .or_else(|| {
+                        item.get("name")
+                            .or_else(|| item.get("id"))
+                            .and_then(|v| v.as_str())
+                    })
+                    .map(|s| s.to_string());
+
+                if let Some(id) = id {
+                    let mut enrich_path = enrich.path.clone();
+                    enrich_path = enrich_path.replace("{resource_id}", &id);
+                    if let Value::Object(map) = params {
+                        for (key, value) in map {
+                            if let Some(s) = value.as_str() {
+                                enrich_path = enrich_path.replace(&format!("{{{}}}", key), s);
+                            }
+                        }
+                    }
+
+                    if let Ok(response) = clients
+                        .http
+                        .rest_json_request(service, &enrich.method, &enrich_path, None)
+                        .await
+                    {
+                        if let Ok(json) = serde_json::from_str::<Value>(&response) {
+                            let full = if let Some(ref rp) = enrich.response_path {
+                                json.pointer(rp).cloned().unwrap_or(json)
+                            } else {
+                                json
+                            };
+                            *item = full;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Apply field mappings if provided (after enrichment so rich items map)
         let mapped_items = if field_mappings.is_empty() {
-            items
+            enriched
         } else {
-            items
+            enriched
                 .iter()
                 .map(|item| apply_field_mappings(item, field_mappings))
                 .collect()

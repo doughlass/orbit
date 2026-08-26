@@ -19,7 +19,7 @@ pub fn render(f: &mut Frame, app: &App) {
         let visible_actions: Vec<_> = resource
             .actions
             .iter()
-            .filter(|a| !app.readonly || !a.requires_confirm())
+            .filter(|a| !app.readonly || (!a.requires_confirm() && a.sdk_method != "ssm_connect"))
             .collect();
         if !visible_actions.is_empty() {
             let section_title = format!("{} Actions", resource.display_name);
@@ -89,11 +89,13 @@ pub fn render(f: &mut Frame, app: &App) {
         create_key_line("d", "Show details panel"),
         create_key_line("Enter", "Details, or open it if browsable (S3)"),
         create_key_line("J", "Show JSON view"),
+        create_key_line("v", "Column visibility picker"),
         create_key_line("?", "Toggle help"),
         Line::from(""),
         create_section("General"),
         create_key_line("/", "Filter / Search"),
         create_key_line(":", "Command mode"),
+        create_key_line("⇧←/→ or ,/.", "Scroll table horizontally"),
         create_key_line(":profiles", "Switch AWS profile"),
         create_key_line(":regions", "Switch AWS region"),
         create_key_line("Backspace", "Go back"),

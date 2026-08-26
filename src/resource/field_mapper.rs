@@ -59,7 +59,7 @@ pub fn apply_field_mappings(item: &Value, mappings: &HashMap<String, FieldMappin
 }
 
 /// Apply a named transformation to a value
-fn apply_transform(value: &Value, transform: &str) -> Value {
+pub fn apply_transform(value: &Value, transform: &str) -> Value {
     match transform {
         "tags_to_map" => transform_tags_to_map(value),
         "format_bytes" => transform_format_bytes(value),

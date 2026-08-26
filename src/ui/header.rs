@@ -96,11 +96,25 @@ fn render_context_column(f: &mut Frame, app: &App, area: Rect) {
 
     // Show parent context if navigating
     if let Some(parent) = &app.parent_context {
-        lines.push(Line::from(vec![
+        let mut context_spans = vec![
             Span::styled("Context:", Style::default().fg(Color::DarkGray)),
             Span::raw(" "),
             Span::styled(&parent.display_name, Style::default().fg(Color::Yellow)),
-        ]));
+        ];
+
+        if let Some(count) = parent.item.get("ResourceRecordSetCount").and_then(|v| {
+            v.as_str()
+                .map(|s| s.to_string())
+                .or_else(|| v.as_u64().map(|n| n.to_string()))
+        }) {
+            context_spans.push(Span::raw(" "));
+            context_spans.push(Span::styled(
+                format!("({} records)", count),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+
+        lines.push(Line::from(context_spans));
     }
 
     // Show read-only mode indicator
@@ -240,7 +254,10 @@ fn render_keybindings_col1(f: &mut Frame, app: &App, area: Rect) {
 
         // Add resource-specific actions
         for action in resource.actions.iter() {
-            if app.readonly && action.requires_confirm() {
+            // Readonly hides everything the mode blocks: confirmed actions and
+            // SSM connect (an interactive shell), so no shortcut advertises
+            // something pressing it would refuse.
+            if app.readonly && (action.requires_confirm() || action.sdk_method == "ssm_connect") {
                 continue;
             }
             if b.len() >= 5 {

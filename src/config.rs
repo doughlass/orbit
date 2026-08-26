@@ -27,6 +27,12 @@ pub struct Config {
     /// Recently used regions (most recent first, max 6)
     #[serde(default)]
     pub recently_used_regions: Vec<String>,
+
+    /// Per-resource visible column headers, as saved from the column picker
+    /// (p). Keyed by resource key; a resource with no entry shows the columns
+    /// the resource JSON marks visible.
+    #[serde(default)]
+    pub column_preferences: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Config {
@@ -122,6 +128,12 @@ impl Config {
         self.recently_used_regions.clone()
     }
 
+    /// Saved visible column headers for a resource, if the user has
+    /// customised them. None means "use the JSON defaults".
+    pub fn column_preferences(&self, resource_key: &str) -> Option<&Vec<String>> {
+        self.column_preferences.get(resource_key)
+    }
+
     /// Update last resource and save
     #[allow(dead_code)]
     pub fn set_last_resource(&mut self, resource: &str) -> Result<()> {
@@ -186,6 +198,7 @@ mod tests {
             region: Some("eu-west-1".to_string()),
             last_resource: Some("ec2-instances".to_string()),
             recently_used_regions: vec!["eu-west-1".to_string(), "us-east-1".to_string()],
+            column_preferences: std::collections::HashMap::new(),
         };
 
         let yaml = serde_yaml::to_string(&config).unwrap();
@@ -195,6 +208,24 @@ mod tests {
         assert_eq!(parsed.region, config.region);
         assert_eq!(parsed.last_resource, config.last_resource);
         assert_eq!(parsed.recently_used_regions, config.recently_used_regions);
+    }
+
+    /// Column preferences must survive a serialise round-trip so a config
+    /// copied between machines restores the same table views.
+    #[test]
+    fn test_column_preferences_round_trip() {
+        let mut config = Config::default();
+        config.column_preferences.insert(
+            "ec2-instances".to_string(),
+            vec!["NAME".to_string(), "STATE".to_string()],
+        );
+
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        let parsed: Config = serde_yaml::from_str(&yaml).unwrap();
+
+        let prefs = parsed.column_preferences("ec2-instances").unwrap();
+        assert_eq!(prefs, &vec!["NAME".to_string(), "STATE".to_string()]);
+        assert!(parsed.column_preferences("eks-clusters").is_none());
     }
 
     #[test]
