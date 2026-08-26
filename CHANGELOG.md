@@ -5,6 +5,34 @@ All notable changes to orbit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/doughlass/orbit/compare/v1.2.0...v1.3.0) - 2026-08-26
+
+### Added
+
+- EBS volumes extended attribute columns
+- arrow keys scroll tables; Tab cycles the sort column
+- horizontal table scrolling when columns overflow
+- CloudFront extended columns; fix dotted mapping key extraction
+- column visibility picker with persisted preferences
+- per-item list enrichment for EKS update history
+- EKS update history and enhanced cluster describe
+- EKS sub-resources — nodegroups, fargate profiles, add-ons
+- formatted describe view with labelled key-value fields
+- default AMI listing to owner=self instead of amazon
+- show total record count in Route53 records header
+- multi-token pagination for Route53 records
+
+### Fixed
+
+- block SSM connect in readonly mode
+- show real record total instead of 100+ in Route53 title
+
+### Other
+
+- Revert "feat: arrow keys scroll tables; Tab cycles the sort column"
+- pin horizontal scroll key handling end-to-end
+- verify EKS sub-resources are wired in the registry
+
 ## [1.2.0](https://github.com/doughlass/orbit/compare/v1.1.2...v1.2.0) - 2026-08-24
 
 ### Added
