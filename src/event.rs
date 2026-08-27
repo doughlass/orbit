@@ -416,6 +416,8 @@ async fn handle_filter_input(app: &mut App, key: KeyEvent) -> Result<bool> {
         // Navigation while filtering - allow arrow keys to move selection
         KeyCode::Up => app.previous(),
         KeyCode::Down => app.next(),
+        KeyCode::Left => app.sort_cursor_left(),
+        KeyCode::Right => app.sort_cursor_right(),
         KeyCode::PageUp => app.page_up(10),
         KeyCode::PageDown => app.page_down(10),
         KeyCode::Home => app.go_to_top(),
