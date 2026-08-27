@@ -920,6 +920,29 @@ impl App {
         self.apply_sort();
     }
 
+    /// Tab through sort columns. Each column sorts ascending on first pick
+    /// and flips to descending on the next press, then Tab moves on: with
+    /// three columns the cycle is A0, D0, A1, D1, A2, D2, A0... The header
+    /// arrow always shows what is sorted, so no preview cursor is needed —
+    /// the arrow keys belong to horizontal scrolling now.
+    pub fn sort_next_column(&mut self) {
+        let count = self.sortable_column_count();
+        if count == 0 {
+            return;
+        }
+        match self.sort.column {
+            // Ascending on the cursor's column: the next press flips it
+            Some(sorted) if sorted == self.sort.cursor && !self.sort.descending => {}
+            // Descending here, or a different column sorted: move along
+            Some(_) => {
+                self.sort.cursor = (self.sort.cursor + 1) % count;
+            }
+            None => {}
+        }
+        self.sort.sort_by_cursor();
+        self.apply_sort();
+    }
+
     /// Scroll the table one column left. No-op at the start.
     pub fn h_scroll_left(&mut self) {
         self.h_scroll = self.h_scroll.saturating_sub(1);
