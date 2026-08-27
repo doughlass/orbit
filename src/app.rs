@@ -2311,7 +2311,7 @@ fn download_dir() -> PathBuf {
 
 /// Largest object we will pull down. Downloads block the event loop, so an
 /// unbounded fetch would freeze the TUI with no progress bar and no way to cancel.
-const MAX_DOWNLOAD_BYTES: u64 = 100 * 1024 * 1024;
+const MAX_DOWNLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GB
 
 /// What Enter should do on the selected row.
 #[derive(Debug, Clone, PartialEq)]
@@ -2953,7 +2953,7 @@ mod tests {
         let error = download_size_error(MAX_DOWNLOAD_BYTES + 1);
         assert!(error.is_some(), "objects above the cap must be refused");
         assert!(
-            error.unwrap().contains("100"),
+            error.unwrap().contains("2048"),
             "message should name the limit so the user knows why"
         );
     }
