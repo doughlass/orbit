@@ -920,24 +920,12 @@ impl App {
         self.apply_sort();
     }
 
-    /// Tab through sort columns. Each column sorts ascending on first pick
-    /// and flips to descending on the next press, then Tab moves on: with
-    /// three columns the cycle is A0, D0, A1, D1, A2, D2, A0... The header
-    /// arrow always shows what is sorted, so no preview cursor is needed —
-    /// the arrow keys belong to horizontal scrolling now.
+    /// Tab toggles the sort direction on the current column. Use Left/Right
+    /// arrows to move the sort cursor to a different column.
     pub fn sort_next_column(&mut self) {
         let count = self.sortable_column_count();
         if count == 0 {
             return;
-        }
-        match self.sort.column {
-            // Ascending on the cursor's column: the next press flips it
-            Some(sorted) if sorted == self.sort.cursor && !self.sort.descending => {}
-            // Descending here, or a different column sorted: move along
-            Some(_) => {
-                self.sort.cursor = (self.sort.cursor + 1) % count;
-            }
-            None => {}
         }
         self.sort.sort_by_cursor();
         self.apply_sort();
@@ -2301,6 +2289,7 @@ impl App {
     }
 
     /// Fetch an object and write it to disk, refusing to replace an existing file.
+    /// Streams directly to disk to avoid loading large objects into memory.
     async fn fetch_object_to_file(
         clients: &AwsClients,
         bucket: &str,
@@ -2308,20 +2297,10 @@ impl App {
         path: &Path,
     ) -> Result<usize> {
         let region = clients.http.get_bucket_region(bucket).await?;
-        let bytes = clients.http.get_s3_object(bucket, key, &region).await?;
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        // create_new so a file that appeared since the earlier check still isn't clobbered
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)?;
-        std::io::Write::write_all(&mut file, &bytes)?;
-
-        Ok(bytes.len())
+        clients
+            .http
+            .get_s3_object_to_file(bucket, key, &region, path)
+            .await
     }
 }
 

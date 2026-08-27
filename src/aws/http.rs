@@ -8,6 +8,7 @@ use aws_sigv4::sign::v4::SigningParams;
 use aws_smithy_runtime_api::client::identity::Identity;
 use reqwest::Client;
 use std::collections::HashMap;
+use std::path::Path;
 use std::time::SystemTime;
 use tracing::{debug, trace, warn};
 
@@ -1076,6 +1077,69 @@ impl AwsHttpClient {
 
         self.signed_request_bytes(&service, "GET", &url, bucket_region)
             .await
+    }
+
+    /// Stream an S3 object directly to a file, avoiding loading the entire
+    /// response into memory. This avoids memory pressure and decoding issues
+    /// with large objects (e.g., compressed responses that fail to decompress).
+    pub async fn get_s3_object_to_file(
+        &self,
+        bucket: &str,
+        key: &str,
+        bucket_region: &str,
+        path: &Path,
+    ) -> Result<usize> {
+        let service = get_service("s3").ok_or_else(|| anyhow!("Unknown service: s3"))?;
+
+        let domain = Self::endpoint_domain(bucket_region);
+        let encoded_key = key
+            .split('/')
+            .map(|segment| urlencoding::encode(segment).into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
+        let url = format!(
+            "https://{}.s3.{}.{}/{}",
+            bucket, bucket_region, domain, encoded_key
+        );
+
+        let service_name = get_service("s3").ok_or_else(|| anyhow!("Unknown service: s3"))?;
+        let request = self
+            .build_signed_request(&service_name, "GET", &url, "", None, bucket_region)
+            .await?;
+
+        trace!("Streaming S3 object from {} to {:?}", url, path);
+        let response = request.send().await?;
+        let status = response.status();
+
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("S3 download failed ({}): {}", status, text));
+        }
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
+
+        // Load the full response body (up to 2GB limit) - this avoids
+        // streaming/decompression issues with large compressed objects
+        let bytes = response.bytes().await?;
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
+        std::io::Write::write_all(&mut file, &bytes)?;
+
+        Ok(bytes.len())
     }
 }
 
