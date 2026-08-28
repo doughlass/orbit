@@ -167,7 +167,7 @@ jobs:
         run: sha256sum ${{ env.CRATE_NAME }}-* > checksums.txt
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             ${{ env.CRATE_NAME }}-*
