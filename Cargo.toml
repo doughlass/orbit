@@ -67,6 +67,9 @@ hex = "0.4"
 fuzzy-matcher = "0.3.7"
 async-trait = "0.1.89"
 arboard = "3.6"
+# Self-update extracts the release tarball
+flate2 = "1"
+tar = "0.4"
 
 [dev-dependencies]
 dirs = "6.0"

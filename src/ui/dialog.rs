@@ -1,4 +1,5 @@
 use crate::app::{App, ConsoleLoginState, Mode, SsoLoginState};
+use crate::version_check::InstallMethod;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -13,6 +14,7 @@ pub fn render(f: &mut Frame, app: &App) {
         Mode::Warning => render_warning_dialog(f, app),
         Mode::SsoLogin => render_sso_dialog(f, app),
         Mode::ConsoleLogin => render_console_login_dialog(f, app),
+        Mode::Update => render_update_dialog(f, app),
         _ => {}
     }
 }
@@ -476,6 +478,100 @@ fn render_console_login_dialog(f: &mut Frame, app: &App) {
     }
 }
 
+/// Render the "a newer version is available" prompt. The action wording and
+/// the command shown depend on how orbit was installed, so the user is never
+/// told to do something their package manager will fight.
+fn render_update_dialog(f: &mut Frame, app: &App) {
+    let Some(info) = &app.update_available else {
+        return;
+    };
+
+    let area = centered_rect(75, 11, f.area());
+    f.render_widget(Clear, area);
+
+    if info.in_progress {
+        let text = vec![
+            Line::from(Span::styled(
+                "<Updating orbit>",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                format!(
+                    "Downloading v{} and replacing the current binary...",
+                    info.latest
+                ),
+                Style::default().fg(Color::White),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "orbit will restart automatically.",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ];
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow));
+        let paragraph = Paragraph::new(text)
+            .block(block)
+            .alignment(Alignment::Center);
+        f.render_widget(paragraph, area);
+        return;
+    }
+
+    let action_line = match info.method {
+        InstallMethod::Cargo | InstallMethod::Brew => {
+            format!("Update with package manager: {}", info.method.label())
+        }
+        _ => format!("Update method: {}", info.method.label()),
+    };
+
+    let text = vec![
+        Line::from(Span::styled(
+            "<Update available>",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            format!(
+                "A new version of orbit is available: v{} (you have v{})",
+                info.latest,
+                crate::VERSION
+            ),
+            Style::default().fg(Color::White),
+        )),
+        Line::from(Span::styled(
+            action_line,
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                " [u] update ",
+                Style::default().fg(Color::Black).bg(Color::Cyan),
+            ),
+            Span::raw("    "),
+            Span::styled(
+                " [c] continue ",
+                Style::default().fg(Color::Black).bg(Color::Magenta),
+            ),
+        ]),
+    ];
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+    let paragraph = Paragraph::new(text)
+        .block(block)
+        .alignment(Alignment::Center);
+    f.render_widget(paragraph, area);
+}
+
 fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -494,4 +590,64 @@ fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{App, UpdateInfo};
+    use crate::aws::client::AwsClients;
+    use crate::config::Config;
+    use crate::version_check::InstallMethod;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    fn test_app() -> App {
+        App::from_initialized(
+            AwsClients::dummy(),
+            "test".to_string(),
+            "eu-west-1".to_string(),
+            vec!["test".to_string()],
+            vec!["eu-west-1".to_string()],
+            vec![],
+            Config::default(),
+            true,
+            None,
+            true,
+            "ec2-instances",
+        )
+    }
+
+    /// A render-panic here crashes the whole TUI, and the update dialog is the
+    /// first thing a user on a stale binary sees, so pin that it draws.
+    #[test]
+    fn update_dialog_renders_when_update_is_available() {
+        let mut app = test_app();
+        app.mode = Mode::Update;
+        app.update_available = Some(UpdateInfo {
+            latest: "9.9.9".to_string(),
+            method: InstallMethod::Raw,
+            in_progress: false,
+            should_quit: false,
+        });
+
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| render_update_dialog(f, &app))
+            .expect("update dialog must render without panicking");
+
+        let buffer = terminal.backend().buffer();
+        let rendered: String = buffer
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect::<Vec<_>>()
+            .join("");
+        assert!(
+            rendered.contains("Update available"),
+            "title should be shown, got: {}",
+            rendered
+        );
+    }
 }
