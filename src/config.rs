@@ -157,7 +157,7 @@ impl Config {
             .ok()
             .or_else(|| std::env::var("AWS_DEFAULT_REGION").ok())
             .or_else(|| self.region.clone())
-            .unwrap_or_else(|| "us-east-1".to_string())
+            .unwrap_or_else(|| "eu-west-1".to_string())
     }
 }
 
