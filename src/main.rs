@@ -6,6 +6,7 @@ mod demo;
 mod event;
 mod resource;
 mod ui;
+mod version_check;
 
 /// Version from Cargo.toml, embedded at compile time.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -57,6 +58,11 @@ struct Args {
     #[arg(long)]
     endpoint_url: Option<String>,
 
+    /// Force a version check on startup and prompt to update if a newer
+    /// version exists, ignoring the once-a-day auto-check cache.
+    #[arg(long)]
+    update: bool,
+
     /// Run with synthetic demo data (no AWS connection required).
     /// Bare `--demo` shows EC2 instances. `--demo all` shows everything.
     /// Or choose specific resources: `--demo ec2-instances,route53-hosted-zones`.
@@ -81,6 +87,14 @@ enum Command {
     /// List available AWS regions (for shell completion)
     #[command(hide = true)]
     ListRegions,
+    /// Internal: apply a staged self-update then relaunch (hidden helper)
+    #[command(hide = true)]
+    UpdateApply {
+        /// Path to the staged new binary
+        staged_path: String,
+        /// Path of the currently-running binary to replace
+        current_path: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -189,6 +203,13 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         }
+        Some(Command::UpdateApply {
+            staged_path,
+            current_path,
+        }) => {
+            version_check::apply_update(staged_path, current_path);
+            return Ok(());
+        }
         None => {}
     }
 
@@ -208,7 +229,7 @@ async fn main() -> Result<()> {
     match result {
         Ok(Some(mut app)) => {
             // Run the main app
-            let run_result = run_app(&mut terminal, &mut app).await;
+            let run_result = run_app(&mut terminal, &mut app, args.update).await;
 
             // Restore terminal
             cleanup_terminal(&mut terminal)?;
@@ -1601,15 +1622,75 @@ where
     Ok(())
 }
 
-async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()>
+async fn run_app<B: Backend>(
+    terminal: &mut Terminal<B>,
+    app: &mut App,
+    force_update_check: bool,
+) -> Result<()>
 where
     B::Error: Send + Sync + 'static,
 {
+    // Kick off the up-to-once-a-day version check in the background so startup
+    // is never blocked on the network. The result is polled each loop; when it
+    // arrives the Update prompt appears. `--update` forces the check to ignore
+    // the daily cache.
+    let mut update_rx = {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let _ = tx.send(
+                tokio::task::spawn_blocking(move || {
+                    version_check::check_with_cache(force_update_check)
+                })
+                .await
+                .unwrap_or(None),
+            );
+        });
+        Some(rx)
+    };
+
     loop {
         terminal.draw(|f| ui::render(f, app))?;
 
+        // Surface a completed version check as the Update prompt. Polls the
+        // channel so the loop stays responsive (never blocks on the network);
+        // `None` — up to date or a silent network failure — leaves
+        // `update_available` unset, so no prompt appears.
+        if app.update_available.is_none() {
+            if let Some(rx) = &mut update_rx {
+                match rx.try_recv() {
+                    Ok(Some(latest)) => {
+                        let method = version_check::InstallMethod::detect(
+                            std::env::current_exe().unwrap_or_default().as_path(),
+                        );
+                        app.update_available = Some(app::UpdateInfo {
+                            latest,
+                            method,
+                            in_progress: false,
+                            should_quit: false,
+                        });
+                        app.mode = Mode::Update;
+                        update_rx = None;
+                    }
+                    Ok(None) | Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
+                        update_rx = None;
+                    }
+                    Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {}
+                }
+            }
+        }
+
         // Handle user input
         if event::handle_events(app).await? {
+            return Ok(());
+        }
+
+        // A raw-binary self-update handed off a relaunch: quit the current run.
+        if app
+            .update_available
+            .as_ref()
+            .map(|u| u.should_quit)
+            .unwrap_or(false)
+        {
             return Ok(());
         }
 

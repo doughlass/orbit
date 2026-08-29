@@ -26,6 +26,7 @@ pub enum Mode {
     ConsoleLogin, // Console login dialog (aws login)
     LogTail,      // Tailing CloudWatch logs
     ColumnPicker, // Column visibility picker (p)
+    Update,       // A newer version is available; offer to update
 }
 
 /// Pending action that requires confirmation
@@ -365,6 +366,23 @@ pub struct App {
 
     // A requested S3 download awaiting execution by the main loop.
     pub pending_download: Option<PendingDownload>,
+
+    // A newer version detected on startup, shown as an Update prompt. The
+    // install method is captured once so the dialog and its key handler agree.
+    pub update_available: Option<UpdateInfo>,
+}
+
+/// Info shown in the Update dialog and used by its key handler.
+#[derive(Debug, Clone)]
+pub struct UpdateInfo {
+    /// Latest version, e.g. "1.4.1" (no leading v).
+    pub latest: String,
+    /// How the current orbit was installed, deciding what "update" does.
+    pub method: crate::version_check::InstallMethod,
+    /// True while a raw-binary self-update is running (spawned helper).
+    pub in_progress: bool,
+    /// Set after the update/relaunch is handed off, so the loop can quit.
+    pub should_quit: bool,
 }
 
 /// SSM Connect request data
@@ -566,6 +584,7 @@ impl App {
             h_scroll: 0,
             download_progress: None,
             pending_download: None,
+            update_available: None,
         }
     }
 

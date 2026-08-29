@@ -32,6 +32,7 @@ async fn handle_key_event(app: &mut App, key: KeyEvent) -> Result<bool> {
         Mode::ConsoleLogin => handle_console_login_mode(app, key).await,
         Mode::LogTail => handle_log_tail_mode(app, key).await,
         Mode::ColumnPicker => handle_column_picker_mode(app, key),
+        Mode::Update => handle_update_mode(app, key).await,
     }
 }
 
@@ -590,6 +591,63 @@ fn handle_warning_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
         KeyCode::Enter | KeyCode::Esc | KeyCode::Char('o') | KeyCode::Char('O') => {
             app.warning_message = None;
             app.exit_mode();
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
+async fn handle_update_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
+    let Some(info) = app.update_available.clone() else {
+        app.exit_mode();
+        return Ok(false);
+    };
+
+    match key.code {
+        // Continue without updating: dismiss the prompt and carry on.
+        KeyCode::Char('c') | KeyCode::Char('C') | KeyCode::Esc => {
+            app.update_available = None;
+            app.exit_mode();
+        }
+        KeyCode::Char('u') | KeyCode::Char('U') | KeyCode::Enter => {
+            match info.method {
+                crate::version_check::InstallMethod::Cargo
+                | crate::version_check::InstallMethod::Brew => {
+                    // Package-manager installs are best left to the manager.
+                    // Opening the release page gives a download link and the
+                    // notes; the exact command is shown in the dialog.
+                    let url = format!(
+                        "https://github.com/doughlass/orbit/releases/tag/v{}",
+                        info.latest
+                    );
+                    let _ = crate::aws::sso::open_sso_browser(&url);
+                    app.status_message = Some(format!(
+                        "Update to v{} with: {}",
+                        info.latest,
+                        info.method.label()
+                    ));
+                    app.update_available = None;
+                    app.exit_mode();
+                }
+                _ => {
+                    // Raw binary: download, self-replace, and relaunch. The
+                    // download + helper spawn run here; the swap executes in a
+                    // detached helper after the loop quits, so the running
+                    // binary can be overwritten safely.
+                    match crate::version_check::self_update(&info.latest).await {
+                        Ok(()) => {
+                            let mut updated = info;
+                            updated.should_quit = true;
+                            app.update_available = Some(updated);
+                        }
+                        Err(e) => {
+                            app.error_message = Some(format!("Update failed: {}", e));
+                            app.update_available = None;
+                            app.exit_mode();
+                        }
+                    }
+                }
+            }
         }
         _ => {}
     }
@@ -1264,5 +1322,56 @@ mod tests {
             "readonly must not open an SSM session"
         );
         assert!(app.warning_message.is_some(), "user should be told why");
+    }
+
+    /// `c` in the update prompt must dismiss it and carry on: the user has
+    /// decided to keep the current version, so the prompt must not reappear.
+    #[tokio::test]
+    async fn update_prompt_continue_dismisses_and_returns_to_normal() {
+        let mut app = test_app();
+        app.mode = crate::app::Mode::Update;
+        app.update_available = Some(crate::app::UpdateInfo {
+            latest: "9.9.9".to_string(),
+            method: crate::version_check::InstallMethod::Raw,
+            in_progress: false,
+            should_quit: false,
+        });
+
+        handle_update_mode(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE),
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            app.update_available.is_none(),
+            "continue must clear the pending update"
+        );
+        assert_eq!(
+            app.mode,
+            crate::app::Mode::Normal,
+            "continue must exit Update mode"
+        );
+    }
+
+    /// Esc in the update prompt behaves like continue.
+    #[tokio::test]
+    async fn update_prompt_escape_dismisses() {
+        let mut app = test_app();
+        app.mode = crate::app::Mode::Update;
+        app.update_available = Some(crate::app::UpdateInfo {
+            latest: "9.9.9".to_string(),
+            method: crate::version_check::InstallMethod::Raw,
+            in_progress: false,
+            should_quit: false,
+        });
+
+        handle_update_mode(&mut app, KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .await
+            .unwrap();
+
+        assert!(app.update_available.is_none());
+        assert_eq!(app.mode, crate::app::Mode::Normal);
     }
 }
