@@ -5,6 +5,12 @@ All notable changes to orbit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1](https://github.com/doughlass/orbit/compare/v1.3.0...v1.3.1) - 2026-08-29
+
+### Other
+
+- S3 download with live progress bar, Route53 pagination, table/filter improvements ([#57](https://github.com/doughlass/orbit/pull/57))
+
 ## [1.3.0](https://github.com/doughlass/orbit/compare/v1.2.0...v1.3.0) - 2026-08-26
 
 ### Added
