@@ -1437,6 +1437,170 @@ fn check_abort() -> Result<bool> {
     Ok(false)
 }
 
+/// Full-screen dialog shown while an S3 object downloads. Repainted live from
+/// `app.download_progress`, which the main loop updates between chunks.
+fn render_download_standalone(f: &mut ratatui::Frame, req: &app::PendingDownload, app: &app::App) {
+    use ratatui::{
+        layout::{Alignment, Constraint, Direction, Layout},
+        style::{Color, Modifier, Style},
+        text::{Line, Span},
+        widgets::{Block, Borders, Clear, Gauge, Paragraph},
+    };
+
+    let area = f.area();
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Block::default().style(Style::default().bg(Color::Black)),
+        area,
+    );
+
+    // Centered dialog, sized to the progress bar.
+    let dialog_area = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(42),
+            Constraint::Length(9),
+            Constraint::Percentage(42),
+        ])
+        .split(area)[1];
+    let dialog_area = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(25),
+            Constraint::Percentage(50),
+            Constraint::Percentage(25),
+        ])
+        .split(dialog_area)[1];
+    f.render_widget(Clear, dialog_area);
+
+    let (downloaded, total) = app.download_progress.unwrap_or((0, None));
+
+    let pct = match total {
+        Some(total) if total > 0 => ((downloaded.min(total) as f64 / total as f64) * 100.0) as u16,
+        _ => 0,
+    };
+
+    let text = vec![
+        Line::from(Span::styled(
+            "<Downloading>",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            format!("{} → {}", req.bucket, req.key),
+            Style::default().fg(Color::White),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            match total {
+                Some(total) => format!("{} / {} bytes ({}%)", downloaded, total, pct),
+                None => format!("{} bytes", downloaded),
+            },
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    // Stack the text paragraph and the gauge in the dialog's inner area.
+    let inner = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(6), Constraint::Length(1)])
+        .split(block.inner(dialog_area));
+
+    f.render_widget(
+        Paragraph::new(text)
+            .block(block)
+            .alignment(Alignment::Center),
+        dialog_area,
+    );
+
+    let gauge = Gauge::default()
+        .block(Block::default())
+        .gauge_style(Style::default().fg(Color::Cyan))
+        .ratio(pct as f64 / 100.0);
+    f.render_widget(gauge, inner[1]);
+}
+
+/// Drive a staged S3 download to completion with a live progress bar.
+///
+/// The event loop cannot repaint while it awaits, so the fetch is spawned on a
+/// task that streams progress over a channel; this loop redraws the download
+/// dialog on every chunk and returns once the channel closes. The write-back to
+/// `app` (status/error) happens only after the loop, so there is no aliasing of
+/// the app while it is being read for rendering.
+async fn run_download<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()>
+where
+    B::Error: Send + Sync + 'static,
+{
+    let Some(req) = app.take_pending_download() else {
+        return Ok(());
+    };
+
+    let (progress_tx, mut progress_rx) =
+        tokio::sync::mpsc::unbounded_channel::<(u64, Option<u64>)>();
+
+    // Clients and the request are copied out so the fetch task owns them and
+    // never borrows `app` (the loop below holds `app` immutably for rendering).
+    let clients = app.clients.clone();
+    let bucket = req.bucket.clone();
+    let key = req.key.clone();
+    let path = req.path.clone();
+    let display_path = req.path.clone();
+
+    let task = tokio::spawn(async move {
+        let region = clients.http.get_bucket_region(&bucket).await?;
+        clients
+            .http
+            .get_s3_object_to_file(&bucket, &key, &region, &path, move |downloaded, total| {
+                let _ = progress_tx.send((downloaded, total));
+            })
+            .await
+    });
+
+    // Repaint on every progress chunk; the sender closing (None) signals done.
+    loop {
+        terminal.draw(|f| render_download_standalone(f, &req, app))?;
+
+        tokio::select! {
+            msg = progress_rx.recv() => {
+                match msg {
+                    Some((downloaded, total)) => {
+                        app.download_progress = Some((downloaded, total));
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+
+    app.download_progress = None;
+
+    match task.await {
+        Ok(Ok(bytes)) => {
+            app.status_message = Some(format!(
+                "Saved {} bytes to {}",
+                bytes,
+                display_path.display()
+            ));
+        }
+        Ok(Err(e)) => {
+            app.status_message = None;
+            app.error_message = Some(format!("Download failed: {}", e));
+        }
+        Err(e) => {
+            app.status_message = None;
+            app.error_message = Some(format!("Download task failed: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
 async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()>
 where
     B::Error: Send + Sync + 'static,
@@ -1447,6 +1611,11 @@ where
         // Handle user input
         if event::handle_events(app).await? {
             return Ok(());
+        }
+
+        // Execute a staged S3 download with a live progress bar.
+        if app.pending_download.is_some() {
+            run_download(terminal, app).await?;
         }
 
         // Handle SSM connect request (requires suspending TUI)

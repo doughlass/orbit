@@ -272,7 +272,7 @@ async fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
                                             handled = true;
                                         // Download writes locally, so it never goes through dispatch
                                         } else if action.sdk_method == "download_object" {
-                                            app.download_selected_object().await;
+                                            app.download_selected_object();
                                             handled = true;
                                         } else if action.show_result {
                                             // Action that displays result (e.g., get_secret_value)
@@ -383,12 +383,7 @@ async fn handle_filter_input(app: &mut App, key: KeyEvent) -> Result<bool> {
             app.filter_active = false;
             app.filters_autocomplete_shown = false;
         }
-        KeyCode::Tab
-            // Autocomplete "Filters:" when typing F/Fi/Filters
-            if app.should_show_filters_autocomplete() => {
-                app.filter_text = "Filters: ".to_string();
-                app.filters_autocomplete_shown = false;
-            }
+        KeyCode::Tab => app.sort_next_column(),
         KeyCode::Backspace => {
             app.filter_text.pop();
             // Update autocomplete state
@@ -413,6 +408,15 @@ async fn handle_filter_input(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.apply_filter();
             }
         }
+        // Navigation while filtering - allow arrow keys to move selection
+        KeyCode::Up => app.previous(),
+        KeyCode::Down => app.next(),
+        KeyCode::Left => app.sort_cursor_left(),
+        KeyCode::Right => app.sort_cursor_right(),
+        KeyCode::PageUp => app.page_up(10),
+        KeyCode::PageDown => app.page_down(10),
+        KeyCode::Home => app.go_to_top(),
+        KeyCode::End => app.go_to_bottom(),
         _ => {}
     }
     Ok(false)
