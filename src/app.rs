@@ -48,6 +48,19 @@ pub struct PendingAction {
     pub selected_yes: bool,
 }
 
+/// A requested S3 object download, staged by the key handler and executed by the
+/// main loop. Staging keeps the key handler non-blocking; the main loop runs the
+/// actual fetch with a live progress bar, which the event loop cannot repaint.
+#[derive(Debug, Clone)]
+pub struct PendingDownload {
+    /// Bucket owning the object
+    pub bucket: String,
+    /// Object key
+    pub key: String,
+    /// Absolute local path to write to (already resolved, non-existing)
+    pub path: PathBuf,
+}
+
 /// Parent context for hierarchical navigation
 #[derive(Debug, Clone)]
 pub struct ParentContext {
@@ -345,6 +358,13 @@ pub struct App {
     // Horizontal table scroll: index of the first visible column when the
     // table overflows the terminal width. Zero in fit mode.
     pub h_scroll: usize,
+
+    // Download progress: (bytes_downloaded, total_bytes) if a download is in progress.
+    // total_bytes is None if unknown (no Content-Length header).
+    pub download_progress: Option<(u64, Option<u64>)>,
+
+    // A requested S3 download awaiting execution by the main loop.
+    pub pending_download: Option<PendingDownload>,
 }
 
 /// SSM Connect request data
@@ -544,6 +564,8 @@ impl App {
             column_picker_toggles: Vec::new(),
             column_picker_selected: 0,
             h_scroll: 0,
+            download_progress: None,
+            pending_download: None,
         }
     }
 
@@ -2234,11 +2256,13 @@ impl App {
         }
     }
 
-    /// Download the selected S3 object to the user's Downloads directory.
+    /// Stage a download of the selected S3 object to the user's Downloads dir.
     ///
-    /// Runs on the event-loop thread, so the UI is unresponsive until it finishes.
-    /// `MAX_DOWNLOAD_BYTES` keeps that pause bounded.
-    pub async fn download_selected_object(&mut self) {
+    /// Guard checks (folder, size, bucket, filename) run here so the user gets
+    /// immediate feedback; the actual fetch is deferred to the main loop via
+    /// `pending_download`, which drives a live progress bar. This method never
+    /// blocks the event loop.
+    pub fn download_selected_object(&mut self) {
         let Some(item) = self.selected_item().cloned() else {
             return;
         };
@@ -2275,32 +2299,12 @@ impl App {
             }
         };
 
-        self.status_message = Some(format!("Downloading {}...", key));
-
-        match Self::fetch_object_to_file(&self.clients, &bucket, &key, &path).await {
-            Ok(bytes) => {
-                self.status_message = Some(format!("Saved {} bytes to {}", bytes, path.display()));
-            }
-            Err(e) => {
-                self.status_message = None;
-                self.error_message = Some(format!("Download failed: {}", e));
-            }
-        }
+        self.pending_download = Some(PendingDownload { bucket, key, path });
     }
 
-    /// Fetch an object and write it to disk, refusing to replace an existing file.
-    /// Streams directly to disk to avoid loading large objects into memory.
-    async fn fetch_object_to_file(
-        clients: &AwsClients,
-        bucket: &str,
-        key: &str,
-        path: &Path,
-    ) -> Result<usize> {
-        let region = clients.http.get_bucket_region(bucket).await?;
-        clients
-            .http
-            .get_s3_object_to_file(bucket, key, &region, path)
-            .await
+    /// Take a staged download request, if one is queued.
+    pub fn take_pending_download(&mut self) -> Option<PendingDownload> {
+        self.pending_download.take()
     }
 }
 

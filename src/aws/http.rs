@@ -6,6 +6,7 @@ use anyhow::{anyhow, Result};
 use aws_sigv4::http_request::{sign, SignableBody, SignableRequest, SigningSettings};
 use aws_sigv4::sign::v4::SigningParams;
 use aws_smithy_runtime_api::client::identity::Identity;
+use futures_util::StreamExt;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::path::Path;
@@ -370,6 +371,7 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
 }
 
 /// AWS HTTP Client
+#[derive(Clone)]
 pub struct AwsHttpClient {
     http_client: Client,
     credentials: Credentials,
@@ -866,42 +868,6 @@ impl AwsHttpClient {
 
     /// Make a signed request with explicit region override
     /// Used for S3 bucket operations where the bucket may be in a different region
-    /// Sign a request and send it, returning the raw bytes.
-    ///
-    /// Used for S3 object downloads, where the payload is not necessarily UTF-8
-    /// and so cannot go through the text-returning path.
-    async fn signed_request_bytes(
-        &self,
-        service: &ServiceDefinition,
-        method: &str,
-        url: &str,
-        region: &str,
-    ) -> Result<Vec<u8>> {
-        let request = self
-            .build_signed_request(service, method, url, "", None, region)
-            .await?;
-
-        trace!("Sending {} request to {} (region: {})", method, url, region);
-        let response = request.send().await?;
-        let status = response.status();
-        let bytes = response.bytes().await?;
-
-        debug!("Response status: {} ({} bytes)", status, bytes.len());
-
-        if !status.is_success() {
-            // Error responses are XML, so decode lossily just for the message
-            let body = String::from_utf8_lossy(&bytes);
-            warn!(
-                "AWS request failed: status={}, body={}",
-                status,
-                &body[..body.len().min(500)]
-            );
-            return Err(anyhow!("AWS request failed ({}): {}", status, body));
-        }
-
-        Ok(bytes.to_vec())
-    }
-
     async fn signed_request_with_region(
         &self,
         service: &ServiceDefinition,
@@ -1054,43 +1020,19 @@ impl AwsHttpClient {
         Ok(request)
     }
 
-    /// Download an S3 object's bytes from the bucket's own region.
-    pub async fn get_s3_object(
-        &self,
-        bucket: &str,
-        key: &str,
-        bucket_region: &str,
-    ) -> Result<Vec<u8>> {
-        let service = get_service("s3").ok_or_else(|| anyhow!("Unknown service: s3"))?;
-
-        let domain = Self::endpoint_domain(bucket_region);
-        // Each key segment is encoded separately so the '/' hierarchy survives
-        let encoded_key = key
-            .split('/')
-            .map(|segment| urlencoding::encode(segment).into_owned())
-            .collect::<Vec<_>>()
-            .join("/");
-        let url = format!(
-            "https://{}.s3.{}.{}/{}",
-            bucket, bucket_region, domain, encoded_key
-        );
-
-        self.signed_request_bytes(&service, "GET", &url, bucket_region)
-            .await
-    }
-
-    /// Stream an S3 object directly to a file, avoiding loading the entire
-    /// response into memory. This avoids memory pressure and decoding issues
-    /// with large objects (e.g., compressed responses that fail to decompress).
-    pub async fn get_s3_object_to_file(
+    /// Stream an S3 object directly to a file with progress reporting.
+    /// Requests uncompressed transfer to avoid decompression issues with large objects.
+    pub async fn get_s3_object_to_file<F>(
         &self,
         bucket: &str,
         key: &str,
         bucket_region: &str,
         path: &Path,
-    ) -> Result<usize> {
-        let service = get_service("s3").ok_or_else(|| anyhow!("Unknown service: s3"))?;
-
+        mut progress_cb: F,
+    ) -> Result<usize>
+    where
+        F: FnMut(u64, Option<u64>) + Send + 'static,
+    {
         let domain = Self::endpoint_domain(bucket_region);
         let encoded_key = key
             .split('/')
@@ -1107,6 +1049,9 @@ impl AwsHttpClient {
             .build_signed_request(&service_name, "GET", &url, "", None, bucket_region)
             .await?;
 
+        // Request uncompressed transfer to avoid decompression errors with large objects
+        let request = request.header(reqwest::header::ACCEPT_ENCODING, "identity");
+
         trace!("Streaming S3 object from {} to {:?}", url, path);
         let response = request.send().await?;
         let status = response.status();
@@ -1120,26 +1065,28 @@ impl AwsHttpClient {
             std::fs::create_dir_all(parent)?;
         }
 
+        let total_size = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok());
+
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(path)?;
 
-        // Load the full response body (up to 2GB limit) - this avoids
-        // streaming/decompression issues with large compressed objects
-        let bytes = response.bytes().await?;
+        let mut stream = response.bytes_stream();
+        let mut total_bytes = 0usize;
 
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result?;
+            std::io::Write::write_all(&mut file, &chunk)?;
+            total_bytes += chunk.len();
+            progress_cb(total_bytes as u64, total_size);
         }
 
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)?;
-        std::io::Write::write_all(&mut file, &bytes)?;
-
-        Ok(bytes.len())
+        Ok(total_bytes)
     }
 }
 

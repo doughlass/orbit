@@ -30,6 +30,7 @@ pub enum ClientResult {
 }
 
 /// Container for AWS HTTP client
+#[derive(Clone)]
 pub struct AwsClients {
     pub http: AwsHttpClient,
     pub region: String,
