@@ -10,10 +10,33 @@
       "name_field": "KeyId",
       "is_global": false,
       "columns": [
-        { "header": "KEY ID", "json_path": "KeyId", "width": 40 },
-        { "header": "KEY ARN", "json_path": "KeyArn", "width": 60 }
+        {
+          "header": "KEY ID",
+          "json_path": "KeyId",
+          "width": 40
+        },
+        {
+          "header": "KEY ARN",
+          "json_path": "KeyArn",
+          "width": 60
+        }
       ],
-      "sub_resources": [],
+      "sub_resources": [
+        {
+          "shortcut": "r",
+          "display_name": "Grants",
+          "resource_key": "kms-key-grants",
+          "parent_id_field": "KeyId",
+          "filter_param": "KeyId"
+        },
+        {
+          "shortcut": "p",
+          "display_name": "Key Policies",
+          "resource_key": "kms-key-policies",
+          "parent_id_field": "KeyId",
+          "filter_param": "KeyId"
+        }
+      ],
       "actions": [],
       "api_config": {
         "protocol": "json",
@@ -27,14 +50,189 @@
         }
       },
       "field_mappings": {
-        "KeyId": { "source": "/KeyId", "default": "-" },
-        "KeyArn": { "source": "/KeyArn", "default": "-" }
+        "KeyId": {
+          "source": "/KeyId",
+          "default": "-"
+        },
+        "KeyArn": {
+          "source": "/KeyArn",
+          "default": "-"
+        }
       },
       "describe_config": {
         "protocol": "json",
         "action": "DescribeKey",
         "body_template": "{\"KeyId\": \"{resource_id}\"}",
         "response_path": "/KeyMetadata"
+      }
+    },
+    "kms-aliases": {
+      "display_name": "KMS Aliases",
+      "service": "kms",
+      "sdk_method": "list_aliases",
+      "sdk_method_params": {},
+      "response_path": "aliases",
+      "id_field": "AliasArn",
+      "name_field": "AliasName",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "ALIAS",
+          "json_path": "AliasName",
+          "width": 34
+        },
+        {
+          "header": "TARGET KEY",
+          "json_path": "TargetKeyId",
+          "width": 38
+        },
+        {
+          "header": "UPDATED",
+          "json_path": "LastUpdatedDate",
+          "width": 24
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListAliases",
+        "response_root": "/Aliases",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/NextMarker",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "AliasName": {
+          "source": "/AliasName",
+          "default": "-"
+        },
+        "AliasArn": {
+          "source": "/AliasArn",
+          "default": "-"
+        },
+        "TargetKeyId": {
+          "source": "/TargetKeyId",
+          "default": "-"
+        },
+        "LastUpdatedDate": {
+          "source": "/LastUpdatedDate",
+          "default": "-"
+        }
+      }
+    },
+    "kms-key-grants": {
+      "display_name": "KMS Grants",
+      "service": "kms",
+      "sdk_method": "list_grants",
+      "sdk_method_params": {},
+      "response_path": "grants",
+      "id_field": "GrantId",
+      "name_field": "GranteePrincipal",
+      "requires_parent": true,
+      "is_global": false,
+      "columns": [
+        {
+          "header": "GRANTEE",
+          "json_path": "GranteePrincipal",
+          "width": 34
+        },
+        {
+          "header": "NAME",
+          "json_path": "Name",
+          "width": 24
+        },
+        {
+          "header": "OPERATIONS",
+          "json_path": "Operations",
+          "width": 28
+        },
+        {
+          "header": "GRANT ID",
+          "json_path": "GrantId",
+          "width": 30
+        },
+        {
+          "header": "CREATED",
+          "json_path": "CreationDate",
+          "width": 22
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListGrants",
+        "response_root": "/Grants",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/NextMarker",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "GrantId": {
+          "source": "/GrantId",
+          "default": "-"
+        },
+        "Name": {
+          "source": "/Name",
+          "default": "-"
+        },
+        "GranteePrincipal": {
+          "source": "/GranteePrincipal",
+          "default": "-"
+        },
+        "CreationDate": {
+          "source": "/CreationDate",
+          "default": "-"
+        },
+        "Operations": {
+          "source": "/Operations",
+          "transform": "array_to_csv",
+          "default": "-"
+        }
+      }
+    },
+    "kms-key-policies": {
+      "display_name": "KMS Key Policies",
+      "service": "kms",
+      "sdk_method": "list_key_policies",
+      "sdk_method_params": {},
+      "response_path": "key_policies",
+      "id_field": "PolicyName",
+      "name_field": "PolicyName",
+      "requires_parent": true,
+      "is_global": false,
+      "columns": [
+        {
+          "header": "POLICY NAME",
+          "json_path": "PolicyName",
+          "width": 30
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListKeyPolicies",
+        "response_root": "/PolicyNames",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/NextMarker",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "PolicyName": {
+          "source": "",
+          "default": "-"
+        }
       }
     }
   }

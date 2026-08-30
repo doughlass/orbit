@@ -1979,6 +1979,62 @@ mod tests {
         }
     }
 
+    /// KMS pages on Marker/NextMarker/Limit, a token trio distinct from the
+    /// NextToken services, so each KMS block must use it exactly. Aliases list
+    /// standalone; grants and key policies need a KeyId and can't run alone, so
+    /// they are parent-scoped sub-resources of the key. Key policies are a bare
+    /// string list, so their field reads the item itself (source ""), and
+    /// grants flatten the Operations list.
+    #[test]
+    fn kms_aliases_and_key_children_page_on_marker_and_scope_to_keyid() {
+        let aliases = get_resource("kms-aliases").expect("kms-aliases");
+        let pag = aliases
+            .api_config
+            .as_ref()
+            .expect("aliases api_config")
+            .pagination
+            .as_ref()
+            .expect("aliases paginate");
+        assert_eq!(pag.input_token.as_deref(), Some("Marker"));
+        assert_eq!(pag.output_token.as_deref(), Some("/NextMarker"));
+        assert_eq!(pag.max_results_param.as_deref(), Some("Limit"));
+        assert!(!aliases.requires_parent, "aliases list standalone");
+
+        let keys = get_resource("kms-keys").expect("kms-keys");
+        for (key, target) in [
+            ("kms-key-grants", "/Grants"),
+            ("kms-key-policies", "/PolicyNames"),
+        ] {
+            let child = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            assert!(child.requires_parent, "{key} needs a KeyId parent");
+            let api = child
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} config"));
+            assert_eq!(api.response_root.as_deref(), Some(target), "{key} root");
+            let pag = api
+                .pagination
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} pages"));
+            assert_eq!(pag.input_token.as_deref(), Some("Marker"), "{key} token");
+        }
+        let policies = get_resource("kms-key-policies").expect("kms-key-policies");
+        assert_eq!(
+            policies.field_mappings["PolicyName"].source, "",
+            "key policies are a bare string list; the field reads the item"
+        );
+        let grants = get_resource("kms-key-grants").expect("kms-key-grants");
+        assert_eq!(grants.field_mappings["Operations"].source, "/Operations");
+
+        let sub: Vec<_> = keys
+            .sub_resources
+            .iter()
+            .map(|s| s.resource_key.as_str())
+            .collect();
+        assert!(sub.contains(&"kms-key-grants"), "keys drill grants");
+        assert!(sub.contains(&"kms-key-policies"), "keys drill policies");
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()

@@ -265,7 +265,16 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       Instance profiles flatten their nested `Roles` member list to RoleName via
       `array_to_csv`. The credential report is omitted: `GetCredentialReport`
       returns one base64-encoded CSV blob, a download not a browse list.
-- [ ] KMS aliases, key policies, grants, rotation config.
+- [x] KMS aliases, key grants, key policies. KMS pages on the
+      `Marker`/`NextMarker`/`Limit` token trio, distinct from the NextToken
+      services, pinned by test. Aliases list standalone (live 200 with real
+      aliases, `alias/DefultKey` etc). Grants and key policies need a `KeyId`
+      and can't run alone, so they are parent-scoped sub-resources of the key
+      (`r` grants, `p` policies), both live 200 from a real key drill; key
+      policies are a bare string list whose field reads the item itself, and
+      grants flatten the `Operations` list via `array_to_csv`. Rotation config
+      is out: `GetKeyRotationStatus` returns one bool for one key, a per-key
+      describe not a list op.
 - [ ] SNS subscriptions, SQS DLQ/redrive.
 - [ ] Elasticache parameter groups/subnets/snapshots; Redshift parameter
       groups/reserved nodes; RDS parameter groups/event subscriptions.
