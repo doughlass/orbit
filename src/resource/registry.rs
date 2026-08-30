@@ -675,8 +675,10 @@ mod tests {
         );
         let pag = api.pagination.as_ref().expect("pagination");
         assert_eq!(pag.input_token.as_deref(), Some("Marker"));
-        assert_eq!(pag.output_token.as_deref(),
-            Some("/DescribeDBClustersResponse/DescribeDBClustersResult/Marker"));
+        assert_eq!(
+            pag.output_token.as_deref(),
+            Some("/DescribeDBClustersResponse/DescribeDBClustersResult/Marker")
+        );
         assert_eq!(pag.max_results_param.as_deref(), Some("MaxRecords"));
         let tags = resource
             .field_mappings
