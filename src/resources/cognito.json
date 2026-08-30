@@ -15,7 +15,9 @@
         { "header": "STATUS", "json_path": "Status", "width": 12, "color_map": "state" },
         { "header": "CREATED", "json_path": "CreationDate", "width": 25 }
       ],
-      "sub_resources": [],
+      "sub_resources": [
+        { "shortcut": "c", "display_name": "App Clients", "resource_key": "cognito-user-pool-clients", "parent_id_field": "Id", "filter_param": "UserPoolId" }
+      ],
       "actions": [],
       "api_config": {
         "protocol": "json",
@@ -35,6 +37,73 @@
         "Name": { "source": "/Name", "default": "-" },
         "Status": { "source": "/Status", "default": "-" },
         "CreationDate": { "source": "/CreationDate", "default": "-" }
+      }
+    },
+    "cognito-user-pool-clients": {
+      "display_name": "Cognito App Clients",
+      "service": "cognitoidentityprovider",
+      "sdk_method": "list_user_pool_clients",
+      "sdk_method_params": {},
+      "response_path": "user_pool_clients",
+      "id_field": "ClientId",
+      "name_field": "ClientName",
+      "requires_parent": true,
+      "is_global": false,
+      "columns": [
+        { "header": "CLIENT NAME", "json_path": "ClientName", "width": 30 },
+        { "header": "POOL ID", "json_path": "UserPoolId", "width": 25 },
+        { "header": "CLIENT ID", "json_path": "ClientId", "width": 30 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "service_name": "cognito-idp",
+        "action": "ListUserPoolClients",
+        "response_root": "/UserPoolClients",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken"
+        },
+        "static_params": {
+          "MaxResults": 60
+        }
+      },
+      "field_mappings": {
+        "ClientId": { "source": "/ClientId", "default": "-" },
+        "UserPoolId": { "source": "/UserPoolId", "default": "-" },
+        "ClientName": { "source": "/ClientName", "default": "-" }
+      }
+    },
+    "cognito-identity-pools": {
+      "display_name": "Cognito Identity Pools",
+      "service": "cognito-identity",
+      "sdk_method": "list_identity_pools",
+      "sdk_method_params": {},
+      "response_path": "identity_pools",
+      "id_field": "IdentityPoolId",
+      "name_field": "IdentityPoolName",
+      "is_global": false,
+      "columns": [
+        { "header": "POOL NAME", "json_path": "IdentityPoolName", "width": 35 },
+        { "header": "POOL ID", "json_path": "IdentityPoolId", "width": 25 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListIdentityPools",
+        "response_root": "/IdentityPools",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 20
+        }
+      },
+      "field_mappings": {
+        "IdentityPoolId": { "source": "/IdentityPoolId", "default": "-" },
+        "IdentityPoolName": { "source": "/IdentityPoolName", "default": "-" }
       }
     }
   }

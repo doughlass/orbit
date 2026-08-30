@@ -248,7 +248,14 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       need an `InstanceArn` parent and remain unwired; the portal `sso`
       ListAccounts needs a session access token and is not usable for resource
       browsing.
-- [ ] Cognito identity pools, user pool clients/domains.
+- [x] Cognito identity pools + user-pool app clients. Identity pools list
+      standalone via `ListIdentityPools` (200 live; the account has none —
+      request path verified). App clients are parent-scoped under a user pool
+      (`ListUserPoolClients` needs a `UserPoolId`); the drill was not
+      live-testable because the account has no user pool, but the target is the
+      same cognito-idp service already exercised by user pools and the scope is
+      pinned by test. User-pool domains need a Describe on a specific domain,
+      not a list, so they're out.
 - [ ] IAM SAML/OIDC providers, instance profiles, credential report.
 - [ ] KMS aliases, key policies, grants, rotation config.
 - [ ] SNS subscriptions, SQS DLQ/redrive.

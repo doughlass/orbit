@@ -385,6 +385,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("AWSCognitoIdentityProviderService"),
             is_global: false,
         }),
+        "cognito-identity" => Some(ServiceDefinition {
+            signing_name: "cognito-identity",
+            endpoint_prefix: "cognito-identity",
+            api_version: "2014-06-30",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSCognitoIdentityService"),
+            is_global: false,
+        }),
         "cloudtrail" => Some(ServiceDefinition {
             signing_name: "cloudtrail",
             endpoint_prefix: "cloudtrail",

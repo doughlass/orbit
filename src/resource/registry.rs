@@ -1896,6 +1896,42 @@ mod tests {
         assert_eq!(svc.target_prefix, Some("SWBExternalService"));
     }
 
+    /// Identity pools and user-pool app clients both list via the JSON protocol
+    /// but from two different services: cognito-identity (AWSCognitoIdentityService)
+    /// for pools, and the existing cognito-idp entry for app clients. The app
+    /// client list is scoped by UserPoolId and can't run standalone, so it must
+    /// be a parent-scoped sub-resource of the user pool. Pin targets, the
+    /// identity root, and the parent wiring.
+    #[test]
+    fn cognito_identity_pools_and_app_clients_keep_their_services_and_scope() {
+        let ip = get_resource("cognito-identity-pools").expect("cognito-identity-pools");
+        let api = ip.api_config.as_ref().expect("identity pools api_config");
+        assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(api.response_root.as_deref(), Some("/IdentityPools"));
+        let isvc = crate::aws::http::get_service("cognito-identity")
+            .unwrap_or_else(|| panic!("cognito-identity service must be registered"));
+        assert_eq!(isvc.signing_name, "cognito-identity");
+        assert_eq!(isvc.target_prefix, Some("AWSCognitoIdentityService"));
+
+        let up = get_resource("cognito-user-pools").expect("cognito-user-pools");
+        let sub = up
+            .sub_resources
+            .iter()
+            .find(|s| s.resource_key == "cognito-user-pool-clients")
+            .expect("user pools must drill into app clients");
+        assert_eq!(sub.shortcut, "c");
+        assert_eq!(sub.parent_id_field, "Id");
+        assert_eq!(sub.filter_param, "UserPoolId");
+
+        let clients = get_resource("cognito-user-pool-clients").expect("clients");
+        assert!(
+            clients.requires_parent,
+            "app clients need a UserPoolId and can't list standalone"
+        );
+        let capi = clients.api_config.as_ref().expect("clients api_config");
+        assert_eq!(capi.response_root.as_deref(), Some("/UserPoolClients"));
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()
