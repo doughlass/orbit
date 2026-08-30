@@ -54,7 +54,13 @@
       { "value": "SUCCEEDED", "color": [0, 255, 0] },
       { "value": "FAILED", "color": [255, 0, 0] },
       { "value": "TIMED_OUT", "color": [255, 0, 0] },
-      { "value": "ABORTED", "color": [128, 128, 128] }
+      { "value": "ABORTED", "color": [128, 128, 128] },
+      { "value": "AVAILABLE", "color": [0, 255, 0] },
+      { "value": "CREATING", "color": [255, 255, 0] },
+      { "value": "PENDING", "color": [255, 255, 0] },
+      { "value": "DELETING", "color": [255, 255, 0] },
+      { "value": "MISCONFIGURED", "color": [255, 255, 0] },
+      { "value": "DELETED", "color": [255, 0, 0] }
     ],
     "bool": [
       { "value": "true", "color": [0, 255, 255] },

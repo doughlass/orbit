@@ -58,7 +58,12 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       new `api_config.query_params` capability to the rest-json handler. Mount
       targets genuinely need it: `DescribeMountTargets` refuses to run with no
       filter at all. File systems verified live 200 (account empty).
-- [ ] **FSx** (file systems across all flavors; verify each API).
+- [x] **FSx** (file systems). Plain JSON-RPC service under target
+      `AWSSimbaAPIService_v20180301`, content-type 1.1 (orbit default, no
+      special case). Trap: `DescribeFileSystems` caps `MaxResults` at 50 — a
+      copy of a neighbour's 100 is out of bounds. FSx has no native Name field,
+      so the name column reads `Tags.Name` via `tags_to_map`. Live verified 200
+      (account empty).
 - [x] **Step Functions** (state machines, executions). Added the `states`
       service (plain `AWSStepFunctions` JSON target — **no** query-mode header,
       unlike CloudWatch). Trap: the endpoint returns an XML

@@ -345,6 +345,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        "fsx" => Some(ServiceDefinition {
+            signing_name: "fsx",
+            endpoint_prefix: "fsx",
+            api_version: "2018-03-01",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSSimbaAPIService_v20180301"),
+            is_global: false,
+        }),
         "autoscaling" => Some(ServiceDefinition {
             signing_name: "autoscaling",
             endpoint_prefix: "autoscaling",

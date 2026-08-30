@@ -33,6 +33,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/elasticache.json"),
     include_str!("../resources/elbv2.json"),
     include_str!("../resources/eventbridge.json"),
+    include_str!("../resources/fsx.json"),
     include_str!("../resources/iam.json"),
     include_str!("../resources/kms.json"),
     include_str!("../resources/lambda.json"),
@@ -888,6 +889,41 @@ mod tests {
             assert_eq!(declared.filter_param, "FileSystemId");
             assert_eq!(declared.parent_id_field, "FileSystemId");
         }
+    }
+
+    /// FSx is a plain JSON-RPC service under the AWSSimbaAPIService target.
+    /// DescribeFileSystems caps MaxResults at 50, so a neighbour's 100 would be
+    /// out of bounds; pin the cap plus the NextToken token pair here.
+    #[test]
+    fn fsx_file_systems_use_the_simba_target_and_cap_at_50() {
+        let fsx = get_resource("fsx-file-systems").expect("fsx-file-systems");
+        let api = fsx.api_config.as_ref().expect("api_config");
+        assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(api.action.as_deref(), Some("DescribeFileSystems"));
+        assert_eq!(api.response_root.as_deref(), Some("/FileSystems"));
+        let pagination = api.pagination.as_ref().expect("pagination");
+        assert_eq!(pagination.input_token.as_deref(), Some("NextToken"));
+        assert_eq!(pagination.output_token.as_deref(), Some("/NextToken"));
+        assert_eq!(
+            pagination.max_results,
+            Some(50),
+            "DescribeFileSystems rejects MaxResults above 50"
+        );
+        let service = crate::aws::http::get_service("fsx")
+            .unwrap_or_else(|| panic!("fsx service must be registered"));
+        assert_eq!(
+            service.target_prefix,
+            Some("AWSSimbaAPIService_v20180301"),
+            "fsx must target AWSSimbaAPIService_v20180301"
+        );
+        assert!(
+            fsx.field_mappings.contains_key("Tags"),
+            "FSx has no native Name field; the name must come from the tags map"
+        );
+        assert_eq!(
+            fsx.field_mappings.get("Tags").unwrap().transform.as_deref(),
+            Some("tags_to_map")
+        );
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.
