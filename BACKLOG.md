@@ -76,7 +76,13 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       expression (that is a GetSchedule describe call), so the columns are
       Name/State/Group/TargetArn/LastModificationDate. Live verified 200 (account
       empty).
-- [ ] **API Gateway v2** (HTTP/WebSocket APIs; only v1 rest-apis today).
+- [x] **API Gateway v2** (HTTP/WebSocket APIs). Shares the existing
+      `apigateway` service entry — the v2 CLI is the same REST-JSON GET with the
+      same host and signing name, and `api_version` only feeds the query
+      protocol's `Version` param. The only thing that differs is the request
+      path (`/v2/apis`), which lives in the resource JSON, not the service
+      table. `GetApis` returns `Items` + `NextToken`. Live verified 200 (account
+      empty).
 - [ ] **ECS task definitions** (clusters/services/tasks exist).
 
 ### Session 3

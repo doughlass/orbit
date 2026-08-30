@@ -14,6 +14,7 @@ use super::protocol::{ActionConfig, ApiConfig, DescribeConfig, FieldMapping};
 const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/acm.json"),
     include_str!("../resources/apigateway.json"),
+    include_str!("../resources/apigatewayv2.json"),
     include_str!("../resources/athena.json"),
     include_str!("../resources/autoscaling.json"),
     include_str!("../resources/cloudformation.json"),
@@ -954,6 +955,32 @@ mod tests {
         assert!(
             !sched.requires_parent,
             "schedules list standalone account-wide"
+        );
+    }
+
+    /// API Gateway v2 (HTTP/WebSocket APIs) reuses the existing "apigateway"
+    /// service entry: the v2 CLI is also REST-JSON GET with the same host and
+    /// signing name, and the Version param only matters for query-protocol
+    /// services. All that differs is the request path "/v2/apis", which lives
+    /// in the resource JSON, not the service table.
+    #[test]
+    fn apigatewayv2_apis_share_the_apigateway_service_entry() {
+        let api = get_resource("apigatewayv2-apis").expect("apigatewayv2-apis");
+        let cfg = api.api_config.as_ref().expect("api_config");
+        assert_eq!(
+            cfg.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson
+        );
+        assert_eq!(cfg.method.as_deref(), Some("GET"));
+        assert_eq!(cfg.path.as_deref(), Some("/v2/apis"));
+        assert_eq!(cfg.response_root.as_deref(), Some("/Items"));
+        let pagination = cfg.pagination.as_ref().expect("pagination");
+        assert_eq!(pagination.output_token.as_deref(), Some("/NextToken"));
+        let service = crate::aws::http::get_service("apigateway")
+            .unwrap_or_else(|| panic!("apigateway service must be registered"));
+        assert!(
+            service.target_prefix.is_none(),
+            "apigatewayv2 sends no X-Amz-Target; it is REST-JSON GET"
         );
     }
 
