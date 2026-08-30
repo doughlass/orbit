@@ -790,10 +790,13 @@ mod tests {
     /// body as stateMachineArn, same mechanism ECR images use.
     #[test]
     fn stepfunctions_uses_the_json_target_and_executions_are_parent_scoped() {
-        let sm = get_resource("stepfunctions-state-machines")
-            .expect("stepfunctions-state-machines");
+        let sm =
+            get_resource("stepfunctions-state-machines").expect("stepfunctions-state-machines");
         let sm_api = sm.api_config.as_ref().expect("api_config");
-        assert_eq!(sm_api.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(
+            sm_api.protocol,
+            crate::resource::protocol::ApiProtocol::Json
+        );
         assert_eq!(sm_api.action.as_deref(), Some("ListStateMachines"));
         assert_eq!(sm_api.response_root.as_deref(), Some("/stateMachines"));
         let service = crate::aws::http::get_service("states")
@@ -813,7 +816,10 @@ mod tests {
         assert_eq!(sub.filter_param, "stateMachineArn");
         assert_eq!(sub.parent_id_field, "stateMachineArn");
         assert!(ex.field_mappings.contains_key("stateMachineArn"));
-        assert_eq!(ex.api_config.as_ref().unwrap().response_root.as_deref(), Some("/executions"));
+        assert_eq!(
+            ex.api_config.as_ref().unwrap().response_root.as_deref(),
+            Some("/executions")
+        );
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.
