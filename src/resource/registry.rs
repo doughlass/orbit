@@ -1527,6 +1527,31 @@ mod tests {
         }
     }
 
+    /// A DocDB instance's describe uses the same RDS-shaped DescribeDBInstances
+    /// call filtered by DBInstanceIdentifier as its list call, so pressing d on
+    /// an instance fetches the full instance payload. It deliberately has no
+    /// describe_fields so the panel renders the raw JSON detail (all fields)
+    /// rather than a hand-picked subset.
+    #[test]
+    fn docdb_instances_describe_fetches_the_full_instance_by_identifier() {
+        let r = get_resource("docdb-instances").expect("docdb-instances");
+        let dc = r
+            .describe_config
+            .as_ref()
+            .expect("docdb-instances must have a describe_config");
+        assert_eq!(dc.protocol, crate::resource::protocol::ApiProtocol::Query);
+        assert_eq!(dc.action.as_deref(), Some("DescribeDBInstances"));
+        assert_eq!(dc.id_param.as_deref(), Some("DBInstanceIdentifier"));
+        assert_eq!(
+            dc.response_path.as_deref(),
+            Some("/DescribeDBInstancesResponse/DescribeDBInstancesResult/DBInstances/DBInstance")
+        );
+        assert!(
+            dc.describe_fields.is_empty(),
+            "docdb instances rely on the raw JSON detail dump, not a formatted field layout"
+        );
+    }
+
     /// Glue and EMR are JSON protocol services whose targets and pagination
     /// shapes differ. Glue pages every list on NextToken/MaxResults with rich
     /// summary shapes. EMR pages on a bare Marker token and, unlike most json

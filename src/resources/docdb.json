@@ -10,11 +10,32 @@
       "name_field": "DBClusterIdentifier",
       "is_global": false,
       "columns": [
-        { "header": "CLUSTER ID", "json_path": "DBClusterIdentifier", "width": 25 },
-        { "header": "STATUS", "json_path": "Status", "width": 12, "color_map": "state" },
-        { "header": "ENGINE", "json_path": "Engine", "width": 10 },
-        { "header": "ENDPOINT", "json_path": "Endpoint", "width": 34 },
-        { "header": "CREATED", "json_path": "ClusterCreateTime", "width": 20 }
+        {
+          "header": "CLUSTER ID",
+          "json_path": "DBClusterIdentifier",
+          "width": 25
+        },
+        {
+          "header": "STATUS",
+          "json_path": "Status",
+          "width": 12,
+          "color_map": "state"
+        },
+        {
+          "header": "ENGINE",
+          "json_path": "Engine",
+          "width": 10
+        },
+        {
+          "header": "ENDPOINT",
+          "json_path": "Endpoint",
+          "width": 34
+        },
+        {
+          "header": "CREATED",
+          "json_path": "ClusterCreateTime",
+          "width": 20
+        }
       ],
       "sub_resources": [],
       "actions": [],
@@ -30,14 +51,38 @@
         }
       },
       "field_mappings": {
-        "DBClusterIdentifier": { "source": "/DBClusterIdentifier", "default": "-" },
-        "Status": { "source": "/Status", "default": "-" },
-        "Engine": { "source": "/Engine", "default": "-" },
-        "Endpoint": { "source": "/Endpoint", "default": "-" },
-        "MasterUsername": { "source": "/MasterUsername", "default": "-" },
-        "Port": { "source": "/Port", "default": "-" },
-        "DBClusterArn": { "source": "/DBClusterArn", "default": "-" },
-        "ClusterCreateTime": { "source": "/ClusterCreateTime", "default": "-" }
+        "DBClusterIdentifier": {
+          "source": "/DBClusterIdentifier",
+          "default": "-"
+        },
+        "Status": {
+          "source": "/Status",
+          "default": "-"
+        },
+        "Engine": {
+          "source": "/Engine",
+          "default": "-"
+        },
+        "Endpoint": {
+          "source": "/Endpoint",
+          "default": "-"
+        },
+        "MasterUsername": {
+          "source": "/MasterUsername",
+          "default": "-"
+        },
+        "Port": {
+          "source": "/Port",
+          "default": "-"
+        },
+        "DBClusterArn": {
+          "source": "/DBClusterArn",
+          "default": "-"
+        },
+        "ClusterCreateTime": {
+          "source": "/ClusterCreateTime",
+          "default": "-"
+        }
       }
     },
     "docdb-instances": {
@@ -50,12 +95,37 @@
       "name_field": "DBInstanceIdentifier",
       "is_global": false,
       "columns": [
-        { "header": "INSTANCE ID", "json_path": "DBInstanceIdentifier", "width": 25 },
-        { "header": "STATUS", "json_path": "DBInstanceStatus", "width": 14, "color_map": "state" },
-        { "header": "CLASS", "json_path": "DBInstanceClass", "width": 22 },
-        { "header": "ENGINE", "json_path": "Engine", "width": 10 },
-        { "header": "ENDPOINT", "json_path": "Endpoint.Address", "width": 34 },
-        { "header": "CREATED", "json_path": "InstanceCreateTime", "width": 20 }
+        {
+          "header": "INSTANCE ID",
+          "json_path": "DBInstanceIdentifier",
+          "width": 25
+        },
+        {
+          "header": "STATUS",
+          "json_path": "DBInstanceStatus",
+          "width": 14,
+          "color_map": "state"
+        },
+        {
+          "header": "CLASS",
+          "json_path": "DBInstanceClass",
+          "width": 22
+        },
+        {
+          "header": "ENGINE",
+          "json_path": "Engine",
+          "width": 10
+        },
+        {
+          "header": "ENDPOINT",
+          "json_path": "Endpoint.Address",
+          "width": 34
+        },
+        {
+          "header": "CREATED",
+          "json_path": "InstanceCreateTime",
+          "width": 20
+        }
       ],
       "sub_resources": [],
       "actions": [],
@@ -71,13 +141,40 @@
         }
       },
       "field_mappings": {
-        "DBInstanceIdentifier": { "source": "/DBInstanceIdentifier", "default": "-" },
-        "DBInstanceStatus": { "source": "/DBInstanceStatus", "default": "-" },
-        "DBInstanceClass": { "source": "/DBInstanceClass", "default": "-" },
-        "Engine": { "source": "/Engine", "default": "-" },
-        "Endpoint": { "source": "/Endpoint", "default": "-" },
-        "DBClusterIdentifier": { "source": "/DBClusterIdentifier", "default": "-" },
-        "InstanceCreateTime": { "source": "/InstanceCreateTime", "default": "-" }
+        "DBInstanceIdentifier": {
+          "source": "/DBInstanceIdentifier",
+          "default": "-"
+        },
+        "DBInstanceStatus": {
+          "source": "/DBInstanceStatus",
+          "default": "-"
+        },
+        "DBInstanceClass": {
+          "source": "/DBInstanceClass",
+          "default": "-"
+        },
+        "Engine": {
+          "source": "/Engine",
+          "default": "-"
+        },
+        "Endpoint": {
+          "source": "/Endpoint",
+          "default": "-"
+        },
+        "DBClusterIdentifier": {
+          "source": "/DBClusterIdentifier",
+          "default": "-"
+        },
+        "InstanceCreateTime": {
+          "source": "/InstanceCreateTime",
+          "default": "-"
+        }
+      },
+      "describe_config": {
+        "protocol": "query",
+        "action": "DescribeDBInstances",
+        "id_param": "DBInstanceIdentifier",
+        "response_path": "/DescribeDBInstancesResponse/DescribeDBInstancesResult/DBInstances/DBInstance"
       }
     }
   }
