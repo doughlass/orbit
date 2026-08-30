@@ -755,6 +755,11 @@ fn resolve_enrich_token(
             .ok_or_else(|| anyhow!("describe response carries no value at {}", token));
     }
 
+    if let Some(offset) = token.strip_prefix("epoch_now") {
+        let at = now - parse_enrich_offset(offset, token)?;
+        return Ok(at.timestamp().to_string());
+    }
+
     if let Some(offset) = token.strip_prefix("now") {
         let at = now - parse_enrich_offset(offset, token)?;
         return Ok(at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
@@ -859,12 +864,13 @@ fn resolve_enrich_body(
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Value> {
     match body {
-        Value::String(s) => Ok(Value::String(resolve_enrich_template(
-            s,
-            resource_id,
-            primary,
-            now,
-        )?)),
+        Value::String(s) => {
+            let resolved = resolve_enrich_template(s, resource_id, primary, now)?;
+            match resolved.parse::<i64>() {
+                Ok(seconds) if is_lone_epoch_token(s) => Ok(Value::Number(seconds.into())),
+                _ => Ok(Value::String(resolved)),
+            }
+        }
         Value::Array(items) => items
             .iter()
             .map(|item| resolve_enrich_body(item, resource_id, primary, now))
@@ -879,6 +885,14 @@ fn resolve_enrich_body(
             .map(Value::Object),
         other => Ok(other.clone()),
     }
+}
+
+/// True when the leaf is nothing but one `{epoch_now...}` token, so the epoch
+/// seconds are the whole value and can be sent as a JSON number.
+fn is_lone_epoch_token(raw: &str) -> bool {
+    raw.strip_prefix('{')
+        .and_then(|rest| rest.strip_suffix('}'))
+        .is_some_and(|token| token.starts_with("epoch_now") && !token.contains('}'))
 }
 
 fn enrich_filter_values(primary: &Value, source: &str) -> Vec<String> {
@@ -1520,6 +1534,30 @@ mod tests {
                 "Statistics": ["Average"],
             })
         );
+    }
+
+    /// CloudWatch, reached in query-mode json, rejects an ISO8601 *string* where
+    /// it wants a Date ("STRING_VALUE cannot be converted to Date") and takes
+    /// epoch seconds as a number instead. A leaf that is exactly one
+    /// {epoch_now...} token therefore resolves to a number; the same token
+    /// mixed into surrounding text stays a string, since that can only be
+    /// destined for a text field.
+    #[test]
+    fn enrich_json_bodies_render_a_lone_epoch_token_as_a_number() {
+        use serde_json::json;
+
+        let body = json!({
+            "StartTime": "{epoch_now-15m}",
+            "EndTime": "{epoch_now}",
+            "Label": "sampled at {epoch_now}",
+        });
+
+        let resolved = resolve_enrich_body(&body, "prod-docdb-1", &json!({}), fixed_now()).unwrap();
+
+        let end = fixed_now().timestamp();
+        assert_eq!(resolved["EndTime"], json!(end));
+        assert_eq!(resolved["StartTime"], json!(end - 900));
+        assert_eq!(resolved["Label"], json!(format!("sampled at {end}")));
     }
 
     fn fixed_now() -> chrono::DateTime<chrono::Utc> {
