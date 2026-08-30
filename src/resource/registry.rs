@@ -1706,6 +1706,90 @@ mod tests {
         );
     }
 
+    /// A subnet's detail view pulls five things the row does not carry -- its
+    /// flow logs, route table, network ACL and both CIDR reservation lists --
+    /// each an extra EC2 call. Every one must be scoped to this subnet: the
+    /// resource-driven calls filter on `resource-id`, the association ones on
+    /// `association.subnet-id`, and the reservations call takes the scalar
+    /// SubnetId, because GetSubnetCidrReservations has no filter form for
+    /// subnet-id beyond the bare parameter. An unscoped route table lookup
+    /// returns every table in the account and presents it as this subnet's.
+    #[test]
+    fn subnet_detail_pulls_related_resources_scoped_to_the_subnet() {
+        let dc = get_resource("subnets")
+            .expect("subnets")
+            .describe_config
+            .as_ref()
+            .expect("subnets describe_config");
+        assert_eq!(dc.action.as_deref(), Some("DescribeSubnets"));
+        assert_eq!(dc.id_param.as_deref(), Some("SubnetId.1"));
+        assert_eq!(
+            dc.response_path.as_deref(),
+            Some("/DescribeSubnetsResponse/subnetSet/item")
+        );
+
+        let flow = dc
+            .enrich_calls
+            .iter()
+            .find(|e| e.result_field == "FlowLogs")
+            .expect("flow logs enrichment");
+        assert_eq!(flow.action.as_deref(), Some("DescribeFlowLogs"));
+        assert_eq!(flow.filters[0].name, "resource-id");
+        assert_eq!(flow.filters[0].values_source, "/subnetId");
+
+        for (field, filter) in [
+            ("RouteTable", "DescribeRouteTables"),
+            ("NetworkAcl", "DescribeNetworkAcls"),
+        ] {
+            let enrich = dc
+                .enrich_calls
+                .iter()
+                .find(|e| e.result_field == field)
+                .unwrap_or_else(|| panic!("missing {field} enrichment"));
+            assert_eq!(enrich.action.as_deref(), Some(filter), "{field} action");
+            assert_eq!(
+                enrich.filters[0].name, "association.subnet-id",
+                "{field} must filter on the subnet association"
+            );
+            assert_eq!(enrich.filters[0].values_source, "/subnetId");
+        }
+
+        for (field, extract) in [
+            (
+                "CidrReservationsV4",
+                "/GetSubnetCidrReservationsResponse/subnetIpv4CidrReservationSet/item",
+            ),
+            (
+                "CidrReservationsV6",
+                "/GetSubnetCidrReservationsResponse/subnetIpv6CidrReservationSet/item",
+            ),
+        ] {
+            let enrich = dc
+                .enrich_calls
+                .iter()
+                .find(|e| e.result_field == field)
+                .unwrap_or_else(|| panic!("missing {field} enrichment"));
+            assert_eq!(enrich.action.as_deref(), Some("GetSubnetCidrReservations"));
+            assert_eq!(enrich.extract_path.as_deref(), Some(extract));
+            assert_eq!(
+                enrich.params.get("SubnetId").map(String::as_str),
+                Some("{resource_id}"),
+                "GetSubnetCidrReservations has no filter for subnet-id; it needs the bare param"
+            );
+        }
+        for enrich in &dc.enrich_calls {
+            assert!(
+                enrich
+                    .extract_path
+                    .as_deref()
+                    .unwrap_or("")
+                    .ends_with("/item"),
+                "subnets enrich {} must read the item list root under its response wrapper",
+                enrich.result_field
+            );
+        }
+    }
+
     /// An enrichment costs an extra API call per describe, so one whose result
     /// no describe field reads is pure latency the user pays for nothing -- and
     /// a typo between the two (Tags vs TagList) shows as a silently blank row,
