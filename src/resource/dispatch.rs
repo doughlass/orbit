@@ -17,7 +17,7 @@ use crate::aws::http::xml_to_json;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use tracing::debug;
+use tracing::{debug, warn};
 
 // =============================================================================
 // Helper Functions
@@ -661,14 +661,18 @@ async fn invoke_describe(
         }
     };
 
-    // Handle enrich calls (additional API calls to add more data)
+    // Handle enrich calls (additional API calls to add more data). Each one is
+    // templated against the primary response, so it sees the describe as it
+    // arrived and never a field an earlier enrich call added.
+    let primary = result.clone();
     for enrich in &describe_config.enrich_calls {
         let enrich_result = execute_enrich_call(
             clients,
             service,
             resource_id,
+            &primary,
             enrich,
-            &describe_config.protocol,
+            describe_config.protocol,
         )
         .await;
         match enrich_result {
@@ -677,7 +681,13 @@ async fn invoke_describe(
                     map.insert(enrich.result_field.clone(), value);
                 }
             }
-            Err(_) => {
+            Err(err) => {
+                // A swallowed enrich failure renders as an empty row that looks
+                // like "AWS says there are none of these". Say so in the log.
+                warn!(
+                    "Describe enrichment {} for {} failed: {}",
+                    enrich.result_field, resource_id, err
+                );
                 if let Some(ref default) = enrich.default_value {
                     if let Value::Object(ref mut map) = result {
                         map.insert(enrich.result_field.clone(), json!(default));
@@ -690,33 +700,277 @@ async fn invoke_describe(
     Ok(result)
 }
 
+/// Resolve one enrich param or body template.
+///
+/// `{resource_id}` is the row's id. `{/Json/Pointer}` reads the describe
+/// response that has already been fetched, which is the only place the ids these
+/// calls need appear: ListTagsForResource wants an ARN, EC2 wants the attached
+/// security group ids, and the row carries neither. `{now}` and `{now-15m}` are
+/// ISO8601 UTC, for CloudWatch windows.
+///
+/// An unresolvable token is an error, not an empty string: sending a literal
+/// `{/DBInstanceArn}` to AWS earns a rejection that reads like the resource's
+/// fault.
+fn resolve_enrich_template(
+    template: &str,
+    resource_id: &str,
+    primary: &Value,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<String> {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+
+    while let Some(start) = rest.find('{') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let end = after
+            .find('}')
+            .ok_or_else(|| anyhow!("unterminated template token in {:?}", template))?;
+        out.push_str(&resolve_enrich_token(
+            &after[..end],
+            resource_id,
+            primary,
+            now,
+        )?);
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+
+    Ok(out)
+}
+
+fn resolve_enrich_token(
+    token: &str,
+    resource_id: &str,
+    primary: &Value,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<String> {
+    if token == "resource_id" {
+        return Ok(resource_id.to_string());
+    }
+
+    if token.starts_with('/') {
+        let value = super::path_extractor::extract_by_path(primary, token);
+        return enrich_scalar(&value)
+            .ok_or_else(|| anyhow!("describe response carries no value at {}", token));
+    }
+
+    if let Some(offset) = token.strip_prefix("now") {
+        let at = now - parse_enrich_offset(offset, token)?;
+        return Ok(at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+    }
+
+    Err(anyhow!("unknown enrich template token {{{}}}", token))
+}
+
+/// `""` is now; `-15m`, `-2h`, `-1d`, `-30s` are offsets back from it.
+fn parse_enrich_offset(offset: &str, token: &str) -> Result<chrono::Duration> {
+    if offset.is_empty() {
+        return Ok(chrono::Duration::zero());
+    }
+
+    let spec = offset.strip_prefix('-').ok_or_else(|| {
+        anyhow!(
+            "enrich template token {{{}}} must offset backwards, e.g. {{now-15m}}",
+            token
+        )
+    })?;
+    let (digits, unit) =
+        spec.split_at(spec.find(|c: char| !c.is_ascii_digit()).ok_or_else(|| {
+            anyhow!(
+                "enrich template token {{{}}} needs a unit: s, m, h or d",
+                token
+            )
+        })?);
+    let amount: i64 = digits
+        .parse()
+        .map_err(|_| anyhow!("enrich template token {{{}}} has no leading number", token))?;
+
+    match unit {
+        "s" => Ok(chrono::Duration::seconds(amount)),
+        "m" => Ok(chrono::Duration::minutes(amount)),
+        "h" => Ok(chrono::Duration::hours(amount)),
+        "d" => Ok(chrono::Duration::days(amount)),
+        other => Err(anyhow!(
+            "enrich template token {{{}}} has unknown unit {:?}, expected s, m, h or d",
+            token,
+            other
+        )),
+    }
+}
+
+/// A single param value out of an extracted path. XML→JSON collapses a
+/// one-element list to a bare object, so an array here means the path genuinely
+/// matched several items and the first is the one a scalar param can carry.
+fn enrich_scalar(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Array(items) => items.iter().find_map(enrich_scalar),
+        Value::Object(_) | Value::Null => None,
+    }
+}
+
+/// Query params for an enrich call: templated params first, then any filters in
+/// EC2's `Filter.N.Name` / `Filter.N.Value.M` form.
+fn build_enrich_query_params(
+    enrich: &super::protocol::EnrichCall,
+    resource_id: &str,
+    primary: &Value,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<Vec<(String, String)>> {
+    let mut params: Vec<(String, String)> = Vec::new();
+
+    for (key, template) in &enrich.params {
+        params.push((
+            key.clone(),
+            resolve_enrich_template(template, resource_id, primary, now)?,
+        ));
+    }
+
+    for (index, filter) in enrich.filters.iter().enumerate() {
+        let values = enrich_filter_values(primary, &filter.values_source);
+        // Dropping an empty filter would widen the call to the whole account and
+        // present the result as this resource's own.
+        if values.is_empty() {
+            return Err(anyhow!(
+                "filter {} has no values at {} in the describe response",
+                filter.name,
+                filter.values_source
+            ));
+        }
+
+        let n = index + 1;
+        params.push((format!("Filter.{}.Name", n), filter.name.clone()));
+        for (i, value) in values.iter().enumerate() {
+            params.push((format!("Filter.{}.Value.{}", n, i + 1), value.clone()));
+        }
+    }
+
+    Ok(params)
+}
+
+fn enrich_filter_values(primary: &Value, source: &str) -> Vec<String> {
+    match super::path_extractor::extract_by_path(primary, source) {
+        Value::Array(items) => items.iter().filter_map(enrich_scalar).collect(),
+        other => enrich_scalar(&other).into_iter().collect(),
+    }
+}
+
 /// Execute an enrichment call for describe
 async fn execute_enrich_call(
     clients: &AwsClients,
-    service: &str,
+    default_service: &str,
     resource_id: &str,
+    primary: &Value,
     enrich: &super::protocol::EnrichCall,
-    _protocol: &ApiProtocol,
+    default_protocol: ApiProtocol,
 ) -> Result<Value> {
-    // For now, support REST-XML S3 style enrich calls
-    if let Some(ref path) = enrich.path {
-        let path = path.replace("{resource_id}", resource_id);
-        let method = enrich.method.as_deref().unwrap_or("GET");
+    let service = enrich.service.as_deref().unwrap_or(default_service);
+    let protocol = enrich.protocol.unwrap_or(default_protocol);
+    let now = chrono::Utc::now();
 
-        let xml = clients
-            .http
-            .rest_xml_request(service, method, &path, None)
-            .await?;
-        let json = xml_to_json(&xml)?;
+    match protocol {
+        ApiProtocol::Query => {
+            let action = enrich.action.as_deref().ok_or_else(|| {
+                anyhow!(
+                    "query enrich call {} requires 'action'",
+                    enrich.result_field
+                )
+            })?;
+            let params = build_enrich_query_params(enrich, resource_id, primary, now)?;
+            let param_refs: Vec<(&str, &str)> = params
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect();
 
-        if let Some(ref extract) = enrich.extract_path {
-            Ok(json.pointer(extract).cloned().unwrap_or(Value::Null))
-        } else {
-            Ok(json)
+            let xml = clients
+                .http
+                .query_request(service, action, &param_refs)
+                .await?;
+            let json = xml_to_json(&xml)?;
+
+            // extract_by_path, not pointer: XML lists collapse to a bare object
+            // when they hold one item, and pointer indexing cannot see through
+            // that.
+            extract_enrich_result(
+                super::path_extractor::extract_by_path(
+                    &json,
+                    enrich.extract_path.as_deref().unwrap_or("/"),
+                ),
+                enrich,
+            )
         }
-    } else {
-        Err(anyhow!("Enrich call requires path"))
+
+        ApiProtocol::Json => {
+            let action = enrich.action.as_deref().ok_or_else(|| {
+                anyhow!("json enrich call {} requires 'action'", enrich.result_field)
+            })?;
+            let template = enrich.body_template.as_deref().ok_or_else(|| {
+                anyhow!(
+                    "json enrich call {} requires 'body_template'",
+                    enrich.result_field
+                )
+            })?;
+            let body = resolve_enrich_template(template, resource_id, primary, now)?;
+
+            let response = clients.http.json_request(service, action, &body).await?;
+            let json: Value = serde_json::from_str(&response)?;
+
+            extract_enrich_result(
+                pointer_or_whole(&json, enrich.extract_path.as_deref()),
+                enrich,
+            )
+        }
+
+        ApiProtocol::RestJson | ApiProtocol::RestXml => {
+            let path_template = enrich.path.as_ref().ok_or_else(|| {
+                anyhow!("REST enrich call {} requires 'path'", enrich.result_field)
+            })?;
+            let path = resolve_enrich_template(path_template, resource_id, primary, now)?;
+            let method = enrich.method.as_deref().unwrap_or("GET");
+
+            let json = if protocol == ApiProtocol::RestJson {
+                let response = clients
+                    .http
+                    .rest_json_request(service, method, &path, None)
+                    .await?;
+                serde_json::from_str(&response)?
+            } else {
+                let xml = clients
+                    .http
+                    .rest_xml_request(service, method, &path, None)
+                    .await?;
+                xml_to_json(&xml)?
+            };
+
+            extract_enrich_result(
+                pointer_or_whole(&json, enrich.extract_path.as_deref()),
+                enrich,
+            )
+        }
     }
+}
+
+fn pointer_or_whole(json: &Value, extract_path: Option<&str>) -> Value {
+    match extract_path {
+        Some(path) => json.pointer(path).cloned().unwrap_or(Value::Null),
+        None => json.clone(),
+    }
+}
+
+/// A missing enrichment is an error so the caller can fall back to
+/// `default_value` and log, rather than storing a null that renders as blank.
+fn extract_enrich_result(value: Value, enrich: &super::protocol::EnrichCall) -> Result<Value> {
+    if value.is_null() {
+        return Err(anyhow!(
+            "response carries nothing at {:?} for {}",
+            enrich.extract_path.as_deref().unwrap_or("/"),
+            enrich.result_field
+        ));
+    }
+    Ok(value)
 }
 
 /// Extract a single item from a response that may be array or object
@@ -909,6 +1163,7 @@ async fn describe_s3_bucket(clients: &AwsClients, bucket_name: &str) -> Result<V
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resource::protocol::{EnrichCall, EnrichFilter};
 
     #[test]
     fn test_unknown_resource_has_no_api_config() {
@@ -1002,6 +1257,217 @@ mod tests {
                 id
             );
         }
+    }
+
+    /// An enrich call's params are templated against the describe response that
+    /// was *already* fetched, because the ids those calls need (an ARN for
+    /// ListTagsForResource, the parent cluster id, the attached security groups)
+    /// only appear in that response, not in the row's id.
+    #[test]
+    fn enrich_templates_read_the_row_id_and_the_primary_describe_response() {
+        use serde_json::json;
+
+        let primary = json!({
+            "DBInstanceIdentifier": "prod-docdb-1",
+            "DBInstanceArn": "arn:aws:rds:eu-west-1:123456789012:db:prod-docdb-1",
+            "DBClusterIdentifier": "prod-docdb",
+            "Endpoint": { "Port": 27017 },
+        });
+        let now = fixed_now();
+
+        assert_eq!(
+            resolve_enrich_template("{resource_id}", "prod-docdb-1", &primary, now).unwrap(),
+            "prod-docdb-1"
+        );
+        assert_eq!(
+            resolve_enrich_template("{/DBInstanceArn}", "prod-docdb-1", &primary, now).unwrap(),
+            "arn:aws:rds:eu-west-1:123456789012:db:prod-docdb-1"
+        );
+        assert_eq!(
+            resolve_enrich_template("{/Endpoint/Port}", "prod-docdb-1", &primary, now).unwrap(),
+            "27017"
+        );
+        assert_eq!(
+            resolve_enrich_template(
+                "cluster={/DBClusterIdentifier};id={resource_id}",
+                "prod-docdb-1",
+                &primary,
+                now
+            )
+            .unwrap(),
+            "cluster=prod-docdb;id=prod-docdb-1"
+        );
+    }
+
+    /// CloudWatch's GetMetricStatistics needs a window, and a window has to be
+    /// relative to now or the panel would show a frozen point in the past.
+    #[test]
+    fn enrich_templates_render_a_relative_utc_clock_for_metric_windows() {
+        use serde_json::json;
+
+        let primary = json!({});
+        let now = fixed_now();
+
+        assert_eq!(
+            resolve_enrich_template("{now}", "irrelevant", &primary, now).unwrap(),
+            "2026-08-30T20:15:00Z"
+        );
+        assert_eq!(
+            resolve_enrich_template("{now-15m}", "irrelevant", &primary, now).unwrap(),
+            "2026-08-30T20:00:00Z"
+        );
+        assert_eq!(
+            resolve_enrich_template("{now-2h}", "irrelevant", &primary, now).unwrap(),
+            "2026-08-30T18:15:00Z"
+        );
+        assert_eq!(
+            resolve_enrich_template("{now-1d}", "irrelevant", &primary, now).unwrap(),
+            "2026-08-29T20:15:00Z"
+        );
+        assert_eq!(
+            resolve_enrich_template("{now-30s}", "irrelevant", &primary, now).unwrap(),
+            "2026-08-30T20:14:30Z"
+        );
+    }
+
+    /// Sending a literal "{/DBInstanceArn}" to AWS earns a rejection that reads
+    /// like the resource's fault. Refuse here, naming the path that was missing.
+    #[test]
+    fn enrich_templates_refuse_a_path_the_describe_response_does_not_carry() {
+        use serde_json::json;
+
+        let primary = json!({ "DBInstanceIdentifier": "prod-docdb-1" });
+
+        for template in ["{/DBInstanceArn}", "{/Endpoint/Address}", "{unknown_token}"] {
+            let err = resolve_enrich_template(template, "prod-docdb-1", &primary, fixed_now())
+                .expect_err("should refuse to send an unresolved template");
+            let message = err.to_string();
+            assert!(
+                template.contains(message.split_whitespace().last().unwrap_or("?"))
+                    || message.contains(template.trim_matches(['{', '}'])),
+                "error {:?} should name the token from {:?}",
+                message,
+                template
+            );
+        }
+    }
+
+    /// EC2's DescribeSecurityGroupRules only filters by group-id, and an instance
+    /// can sit in several groups, so the values come out of the describe response
+    /// as a list and have to expand into Filter.1.Value.1..N.
+    #[test]
+    fn enrich_filters_expand_into_the_ec2_filter_form() {
+        use serde_json::json;
+
+        let primary = json!({
+            "VpcSecurityGroups": {
+                "VpcSecurityGroupMembership": [
+                    { "VpcSecurityGroupId": "sg-0f83a0604e72e34c1", "Status": "active" },
+                    { "VpcSecurityGroupId": "sg-0fe51082fe28f1fe4", "Status": "active" },
+                ]
+            }
+        });
+
+        let enrich = EnrichCall {
+            action: Some("DescribeSecurityGroupRules".to_string()),
+            result_field: "SecurityGroupRules".to_string(),
+            filters: vec![EnrichFilter {
+                name: "group-id".to_string(),
+                values_source: "/VpcSecurityGroups/VpcSecurityGroupMembership/VpcSecurityGroupId"
+                    .to_string(),
+            }],
+            ..Default::default()
+        };
+
+        let params =
+            build_enrich_query_params(&enrich, "prod-docdb-1", &primary, fixed_now()).unwrap();
+
+        assert_eq!(
+            params,
+            vec![
+                ("Filter.1.Name".to_string(), "group-id".to_string()),
+                (
+                    "Filter.1.Value.1".to_string(),
+                    "sg-0f83a0604e72e34c1".to_string()
+                ),
+                (
+                    "Filter.1.Value.2".to_string(),
+                    "sg-0fe51082fe28f1fe4".to_string()
+                ),
+            ]
+        );
+    }
+
+    /// XML→JSON collapses a one-element list to a bare object, so the same filter
+    /// config must still produce one value instead of silently producing none.
+    #[test]
+    fn enrich_filters_survive_a_single_element_xml_list_collapsing() {
+        use serde_json::json;
+
+        let primary = json!({
+            "VpcSecurityGroups": {
+                "VpcSecurityGroupMembership": {
+                    "VpcSecurityGroupId": "sg-0f83a0604e72e34c1", "Status": "active"
+                }
+            }
+        });
+
+        let enrich = EnrichCall {
+            result_field: "SecurityGroupRules".to_string(),
+            filters: vec![EnrichFilter {
+                name: "group-id".to_string(),
+                values_source: "/VpcSecurityGroups/VpcSecurityGroupMembership/VpcSecurityGroupId"
+                    .to_string(),
+            }],
+            ..Default::default()
+        };
+
+        let params =
+            build_enrich_query_params(&enrich, "prod-docdb-1", &primary, fixed_now()).unwrap();
+
+        assert_eq!(
+            params,
+            vec![
+                ("Filter.1.Name".to_string(), "group-id".to_string()),
+                (
+                    "Filter.1.Value.1".to_string(),
+                    "sg-0f83a0604e72e34c1".to_string()
+                ),
+            ]
+        );
+    }
+
+    /// A filter with nothing behind it would ask EC2 for every rule in the
+    /// account, which reads as "these are this instance's rules". Refuse instead.
+    #[test]
+    fn enrich_filters_refuse_to_run_unfiltered_when_the_source_is_empty() {
+        use serde_json::json;
+
+        let enrich = EnrichCall {
+            result_field: "SecurityGroupRules".to_string(),
+            filters: vec![EnrichFilter {
+                name: "group-id".to_string(),
+                values_source: "/VpcSecurityGroups/VpcSecurityGroupMembership/VpcSecurityGroupId"
+                    .to_string(),
+            }],
+            ..Default::default()
+        };
+
+        let err = build_enrich_query_params(&enrich, "prod-docdb-1", &json!({}), fixed_now())
+            .expect_err("an unfilterable filter must not become a full-account query");
+        assert!(
+            err.to_string().contains("group-id"),
+            "error {:?} should name the filter",
+            err.to_string()
+        );
+    }
+
+    fn fixed_now() -> chrono::DateTime<chrono::Utc> {
+        use chrono::TimeZone;
+        chrono::Utc
+            .with_ymd_and_hms(2026, 8, 30, 20, 15, 0)
+            .single()
+            .expect("valid test timestamp")
     }
 
     #[test]

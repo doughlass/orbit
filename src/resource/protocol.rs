@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// AWS API protocol types
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -303,7 +303,7 @@ pub struct DescribeConfig {
 }
 
 /// Additional API call to enrich describe response
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct EnrichCall {
     /// API action or path
     pub action: Option<String>,
@@ -316,6 +316,44 @@ pub struct EnrichCall {
     /// Default value if call fails
     #[serde(default)]
     pub default_value: Option<String>,
+
+    /// Protocol for this call. Defaults to the describe's own protocol, which is
+    /// wrong whenever the enrichment lives in another service: an RDS-shaped
+    /// describe (query) pulling CloudWatch metrics needs `json`.
+    #[serde(default)]
+    pub protocol: Option<ApiProtocol>,
+
+    /// Service-table key when the enrichment is a different service to the
+    /// resource. A DocDB instance's security group *rules* are EC2's, and its
+    /// CPU is CloudWatch's; neither is reachable on the rds endpoint.
+    #[serde(default)]
+    pub service: Option<String>,
+
+    /// Query params. Values are templated: `{resource_id}`, `{/Json/Pointer}`
+    /// into the describe response already fetched, and `{now}` / `{now-15m}`.
+    /// BTreeMap, not HashMap, so the signed query string is reproducible.
+    #[serde(default)]
+    pub params: BTreeMap<String, String>,
+
+    /// EC2 `Filter.N.Name` / `Filter.N.Value.M` pairs, with the values read out
+    /// of the describe response rather than hardcoded.
+    #[serde(default)]
+    pub filters: Vec<EnrichFilter>,
+
+    /// JSON body template for `json`-protocol enrichment. Same template tokens
+    /// as `params`.
+    #[serde(default)]
+    pub body_template: Option<String>,
+}
+
+/// One AWS filter on an enrich call, whose values come from the describe
+/// response (an instance's security group ids, for example).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct EnrichFilter {
+    /// AWS filter name, e.g. "group-id"
+    pub name: String,
+    /// Path into the describe response holding the value(s) to filter on
+    pub values_source: String,
 }
 
 #[cfg(test)]
