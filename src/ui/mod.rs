@@ -654,8 +654,24 @@ fn render_formatted_describe(
     data: &Value,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line> = vec![Line::from("")];
+    let mut current_section: Option<&str> = None;
 
     for field in fields {
+        if let Some(section) = field.section.as_deref() {
+            if current_section != Some(section) {
+                if current_section.is_some() {
+                    lines.push(Line::from(""));
+                }
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", section),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )));
+                current_section = Some(section);
+            }
+        }
+
         let value = crate::resource::path_extractor::extract_by_path(data, &field.source);
 
         let value = if let Some(ref transform) = field.transform {
@@ -663,6 +679,11 @@ fn render_formatted_describe(
         } else {
             value
         };
+
+        if field.list {
+            lines.extend(describe_list_lines(field, &value));
+            continue;
+        }
 
         let display = value_to_describe_string(&value);
 
@@ -677,6 +698,76 @@ fn render_formatted_describe(
 
     lines.push(Line::from(""));
     lines
+}
+
+/// A list field: its label, then one line per item. An empty list still prints
+/// the label and a dash, so "there are none" cannot be mistaken for "orbit does
+/// not show this".
+fn describe_list_lines(
+    field: &crate::resource::protocol::DescribeField,
+    value: &Value,
+) -> Vec<Line<'static>> {
+    // XML→JSON collapses a one-element list to a bare object.
+    let items: Vec<&Value> = match value {
+        Value::Array(items) => items.iter().collect(),
+        Value::Null => vec![],
+        other => vec![other],
+    };
+
+    let label = Line::from(Span::styled(
+        format!("  {:<20}", field.label),
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    if items.is_empty() {
+        return vec![Line::from(vec![
+            Span::styled(
+                format!("  {:<20}", field.label),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled("-", Style::default().fg(Color::White)),
+        ])];
+    }
+
+    let mut lines = vec![label];
+    for item in items {
+        let text = match field.item_template.as_deref() {
+            Some(template) => render_describe_item(template, item),
+            None => value_to_describe_string(item),
+        };
+        lines.push(Line::from(Span::styled(
+            format!("    {}", text.trim()),
+            Style::default().fg(Color::White),
+        )));
+    }
+    lines
+}
+
+/// Fill `{key}` / `{nested/key}` from one list item. A key the item lacks
+/// renders empty: EC2 rules carry `cidrIpv4` or `referencedGroupInfo`, never
+/// both, and a "-" in the gap would read as a real value.
+fn render_describe_item(template: &str, item: &Value) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+
+    while let Some(start) = rest.find('{') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('}') else {
+            out.push('{');
+            rest = after;
+            continue;
+        };
+        let key = &after[..end];
+        let value = crate::resource::path_extractor::extract_by_path(item, key);
+        if !value.is_null() {
+            out.push_str(&value_to_describe_string(&value));
+        }
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+
+    out
 }
 
 fn value_to_describe_string(value: &Value) -> String {
@@ -1125,6 +1216,181 @@ mod tests {
     use ratatui::layout::Rect;
     use ratatui::widgets::{Cell, Row, Table};
     use ratatui::Terminal;
+
+    /// Flattened text of a rendered describe line, for asserting on content
+    /// without caring how it was split into spans.
+    fn describe_lines(
+        fields: &[crate::resource::protocol::DescribeField],
+        data: &serde_json::Value,
+    ) -> Vec<String> {
+        super::render_formatted_describe(fields, data)
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    fn describe_field(
+        label: &str,
+        source: &str,
+        section: Option<&str>,
+    ) -> crate::resource::protocol::DescribeField {
+        crate::resource::protocol::DescribeField {
+            label: label.to_string(),
+            source: source.to_string(),
+            transform: None,
+            section: section.map(|s| s.to_string()),
+            list: false,
+            item_template: None,
+        }
+    }
+
+    /// The console groups an instance's fields under headings, and a flat
+    /// 30-field list is unreadable without them. A heading is emitted once, when
+    /// the section changes, not per field.
+    #[test]
+    fn describe_sections_are_emitted_once_above_their_fields() {
+        use serde_json::json;
+
+        let fields = vec![
+            describe_field("Status", "/DBInstanceStatus", Some("Summary")),
+            describe_field("Class", "/DBInstanceClass", Some("Summary")),
+            describe_field("VPC", "/DBSubnetGroup/VpcId", Some("Connectivity")),
+        ];
+        let data = json!({
+            "DBInstanceStatus": "available",
+            "DBInstanceClass": "db.r6g.large",
+            "DBSubnetGroup": { "VpcId": "vpc-0a1b2c3d" },
+        });
+
+        let rendered = describe_lines(&fields, &data);
+        let headings: Vec<&String> = rendered
+            .iter()
+            .filter(|l| l.contains("Summary") || l.contains("Connectivity"))
+            .collect();
+
+        assert_eq!(
+            headings.len(),
+            2,
+            "expected one heading per section, got {:?}",
+            rendered
+        );
+        let summary = rendered.iter().position(|l| l.contains("Summary")).unwrap();
+        let status = rendered
+            .iter()
+            .position(|l| l.contains("available"))
+            .unwrap();
+        let connectivity = rendered
+            .iter()
+            .position(|l| l.contains("Connectivity"))
+            .unwrap();
+        assert!(
+            summary < status && status < connectivity,
+            "heading should precede its own fields: {:?}",
+            rendered
+        );
+    }
+
+    /// Security group rules, cluster members and subnets are tables in the
+    /// console. Joined onto one line they wrap into mush, so a list field gets
+    /// one line per item, shaped by its template.
+    #[test]
+    fn describe_list_fields_render_one_templated_line_per_item() {
+        use serde_json::json;
+
+        let mut field = describe_field("Security Group Rules", "/SecurityGroupRules/item", None);
+        field.list = true;
+        field.item_template = Some(
+            "{isEgress} {ipProtocol} {fromPort}-{toPort} {cidrIpv4}{referencedGroupInfo/groupId}"
+                .to_string(),
+        );
+
+        let data = json!({
+            "SecurityGroupRules": { "item": [
+                { "isEgress": "false", "ipProtocol": "tcp", "fromPort": "27017",
+                  "toPort": "27017", "cidrIpv4": "10.64.80.0/21" },
+                { "isEgress": "false", "ipProtocol": "tcp", "fromPort": "27017",
+                  "toPort": "27017", "referencedGroupInfo": { "groupId": "sg-0fe51082fe28f1fe4" } },
+            ]}
+        });
+
+        let rendered = describe_lines(&field_list(field), &data);
+
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("tcp 27017-27017 10.64.80.0/21")),
+            "expected a CIDR rule line in {:?}",
+            rendered
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("tcp 27017-27017 sg-0fe51082fe28f1fe4")),
+            "expected a referenced-group rule line in {:?}",
+            rendered
+        );
+    }
+
+    /// XML→JSON collapses a one-element list to a bare object. A list field must
+    /// still show that single item rather than nothing at all.
+    #[test]
+    fn describe_list_fields_survive_a_single_element_xml_list_collapsing() {
+        use serde_json::json;
+
+        let mut field = describe_field("Members", "/DBClusterMembers/DBClusterMember", None);
+        field.list = true;
+        field.item_template = Some("{DBInstanceIdentifier} writer={IsClusterWriter}".to_string());
+
+        let data = json!({
+            "DBClusterMembers": { "DBClusterMember": {
+                "DBInstanceIdentifier": "prod-docdb-1", "IsClusterWriter": "true"
+            }}
+        });
+
+        let rendered = describe_lines(&field_list(field), &data);
+
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("prod-docdb-1 writer=true")),
+            "a collapsed single-item list vanished: {:?}",
+            rendered
+        );
+    }
+
+    /// A list with nothing in it must still print its label and a dash. Dropping
+    /// the whole field reads as "orbit does not show this", not "there are none".
+    #[test]
+    fn describe_list_fields_show_a_dash_when_empty() {
+        use serde_json::json;
+
+        let mut field = describe_field("Members", "/DBClusterMembers/DBClusterMember", None);
+        field.list = true;
+        field.item_template = Some("{DBInstanceIdentifier}".to_string());
+
+        let rendered = describe_lines(&field_list(field), &json!({}));
+
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("Members") && l.contains('-')),
+            "expected a labelled dash for an empty list: {:?}",
+            rendered
+        );
+    }
+
+    fn field_list(
+        field: crate::resource::protocol::DescribeField,
+    ) -> Vec<crate::resource::protocol::DescribeField> {
+        vec![field]
+    }
 
     /// The clamp must leave the trailing columns reachable: scrolling right
     /// pins the last columns at the right edge instead of scrolling them all

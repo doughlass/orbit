@@ -256,6 +256,25 @@ pub struct DescribeField {
     /// Optional transform to apply, same names as field_mappings transforms
     #[serde(default)]
     pub transform: Option<String>,
+
+    /// Heading this field sits under. The console groups an instance's ~30
+    /// fields; a flat list that long is unreadable. Emitted once, when the
+    /// section changes, so fields sharing a section must be adjacent.
+    #[serde(default)]
+    pub section: Option<String>,
+
+    /// Render one line per array item instead of a comma-joined line. Security
+    /// group rules, cluster members and subnets are tables in the console and
+    /// wrap into mush when joined.
+    #[serde(default)]
+    pub list: bool,
+
+    /// Per-item line format for a `list` field, e.g.
+    /// `"{ipProtocol} {fromPort}-{toPort} {cidrIpv4}"`. Keys are paths into the
+    /// item. A key the item does not carry renders empty, not "-", because EC2
+    /// rules carry `cidrIpv4` *or* `referencedGroupInfo` and never both.
+    #[serde(default)]
+    pub item_template: Option<String>,
 }
 
 /// Configuration for describe operation (single resource details)
