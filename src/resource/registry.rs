@@ -2069,6 +2069,40 @@ mod tests {
             Some([0, 255, 0]),
             "closed must read green"
         );
+
+        // DescribeEventDetails keys off the ARN, not the event type code, and
+        // takes the ARNs in a list -- the same list-in-body shape ECS clusters
+        // use for DescribeClusters. The id field therefore has to be the ARN
+        // or d describes an empty string.
+        assert_eq!(h.id_field, "arn", "health-events id field drives describe");
+        let dc = h
+            .describe_config
+            .as_ref()
+            .expect("health-events describe_config");
+        assert_eq!(dc.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(dc.action.as_deref(), Some("DescribeEventDetails"));
+        assert_eq!(
+            dc.body_template.as_deref(),
+            Some(r#"{"eventArns": ["{resource_id}"]}"#),
+            "eventArns is a list even for a single event"
+        );
+        assert_eq!(dc.response_path.as_deref(), Some("/successfulSet/0"));
+        let description = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.label == "Description")
+            .expect("describe must show the event description");
+        assert_eq!(
+            description.source, "/eventDescription/latestDescription",
+            "the readable prose lives in latestDescription, not in the summary event"
+        );
+        assert!(
+            dc.describe_fields
+                .iter()
+                .any(|f| f.source == "/event/startTime"
+                    && f.transform.as_deref() == Some("format_epoch_seconds")),
+            "describe timestamps need the same epoch formatting as the START column"
+        );
     }
 
     /// Config rules and the two new SSM lists all live behind the JSON protocol
