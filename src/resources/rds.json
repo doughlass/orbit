@@ -132,6 +132,51 @@
           "id_param": "DBSnapshotIdentifier"
         }
       }
+    },
+    "rds-aurora-clusters": {
+      "display_name": "Aurora Clusters",
+      "service": "rds",
+      "sdk_method": "describe_db_clusters",
+      "sdk_method_params": {},
+      "response_path": "db_clusters",
+      "id_field": "DBClusterIdentifier",
+      "name_field": "DBClusterIdentifier",
+      "is_global": false,
+      "columns": [
+        { "header": "CLUSTER ID", "json_path": "DBClusterIdentifier", "width": 25 },
+        { "header": "STATUS", "json_path": "Status", "width": 12, "color_map": "state" },
+        { "header": "ENGINE", "json_path": "Engine", "width": 12 },
+        { "header": "MODE", "json_path": "EngineMode", "width": 10 },
+        { "header": "ENDPOINT", "json_path": "Endpoint", "width": 30 },
+        { "header": "CREATED", "json_path": "ClusterCreateTime", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeDBClusters",
+        "response_root": "/DescribeDBClustersResponse/DescribeDBClustersResult/DBClusters",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeDBClustersResponse/DescribeDBClustersResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "DBClusterIdentifier": { "source": "/DBClusterIdentifier", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "Engine": { "source": "/Engine", "default": "-" },
+        "EngineMode": { "source": "/EngineMode", "default": "provisioned" },
+        "EngineVersion": { "source": "/EngineVersion", "default": "-" },
+        "Endpoint": { "source": "/Endpoint", "default": "-" },
+        "ReaderEndpoint": { "source": "/ReaderEndpoint", "default": "-" },
+        "MasterUsername": { "source": "/MasterUsername", "default": "-" },
+        "Port": { "source": "/Port", "default": "-" },
+        "DBClusterArn": { "source": "/DBClusterArn", "default": "-" },
+        "ClusterCreateTime": { "source": "/ClusterCreateTime", "default": "-" },
+        "Tags": { "source": "/TagList", "transform": "tags_to_map", "default": "-" }
+      }
     }
   }
 }

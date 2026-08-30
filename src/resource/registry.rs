@@ -657,6 +657,38 @@ mod tests {
         );
     }
 
+    /// Aurora clusters use the DescribeDBClustersResult wrapper that RDS wraps
+    /// list elements in (unlike a bare single-level Set), and tag on TagList.
+    #[test]
+    fn aurora_clusters_hit_the_dbclusters_wrapper_and_paginate_on_marker() {
+        let resource = get_resource("rds-aurora-clusters").expect("rds-aurora-clusters");
+        let api = resource.api_config.as_ref().expect("api_config");
+        assert_eq!(api.action.as_deref(), Some("DescribeDBClusters"));
+        assert_eq!(
+            api.response_root.as_deref(),
+            Some("/DescribeDBClustersResponse/DescribeDBClustersResult/DBClusters"),
+            "Aurora clusters must read from the DescribeDBClustersResult wrapper"
+        );
+        assert_eq!(
+            resource.id_field, "DBClusterIdentifier",
+            "Aurora id field must be DBClusterIdentifier"
+        );
+        let pag = api.pagination.as_ref().expect("pagination");
+        assert_eq!(pag.input_token.as_deref(), Some("Marker"));
+        assert_eq!(pag.output_token.as_deref(),
+            Some("/DescribeDBClustersResponse/DescribeDBClustersResult/Marker"));
+        assert_eq!(pag.max_results_param.as_deref(), Some("MaxRecords"));
+        let tags = resource
+            .field_mappings
+            .get("Tags")
+            .expect("Tags mapping on Aurora clusters");
+        assert_eq!(
+            tags.transform.as_deref(),
+            Some("tags_to_map"),
+            "Aurora clusters tag on TagList, must be mapped to a map"
+        );
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()

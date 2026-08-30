@@ -30,8 +30,11 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       `<UnknownOperationException/>`. Verified live (404 without, 200 with).
 - [x] **CloudWatch Dashboards** (`ListDashboards`). Reuses the monitoring
       query-mode target; `DashboardEntries` is the list element.
-- [ ] **RDS Aurora clusters** (`DescribeDBClusters`). AGENTS.md: only
-      `DescribeDBInstances` is wired today.
+- [x] **RDS Aurora clusters** (`DescribeDBClusters`). AGENTS.md: only
+      `DescribeDBInstances` was wired today. Wire confirmed
+      `DescribeDBClustersResult/DBClusters` wrapper; tags on `TagList`. Live
+      account has zero clusters (verified `<DBClusters/>` empty) but the
+      request returns 200.
 - [ ] **CloudTrail LookupEvents** (event-history search, not just trails).
 - [ ] **Lambda layers / aliases / versions** (functions only today).
 - [ ] **S3 bucket policies / lifecycle / replication** (buckets + objects only).
