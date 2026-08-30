@@ -401,6 +401,22 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("Firehose_20150804"),
             is_global: false,
         }),
+        "appsync" => Some(ServiceDefinition {
+            signing_name: "appsync",
+            endpoint_prefix: "appsync",
+            api_version: "2017-07-25",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "mq" => Some(ServiceDefinition {
+            signing_name: "mq",
+            endpoint_prefix: "mq",
+            api_version: "2017-11-27",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
         "scheduler" => Some(ServiceDefinition {
             signing_name: "scheduler",
             endpoint_prefix: "scheduler",

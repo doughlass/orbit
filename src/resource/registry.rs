@@ -15,6 +15,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/acm.json"),
     include_str!("../resources/apigateway.json"),
     include_str!("../resources/apigatewayv2.json"),
+    include_str!("../resources/appsync.json"),
     include_str!("../resources/athena.json"),
     include_str!("../resources/autoscaling.json"),
     include_str!("../resources/cloudformation.json"),
@@ -44,6 +45,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/kms.json"),
     include_str!("../resources/lambda.json"),
     include_str!("../resources/macie2.json"),
+    include_str!("../resources/mq.json"),
     include_str!("../resources/msk.json"),
     include_str!("../resources/rds.json"),
     include_str!("../resources/redshift.json"),
@@ -1410,6 +1412,43 @@ mod tests {
         let service = crate::aws::http::get_service("firehose")
             .unwrap_or_else(|| panic!("firehose service must be registered"));
         assert_eq!(service.target_prefix, Some("Firehose_20150804"));
+    }
+
+    /// AppSync and Amazon MQ are both rest-json GETs with a JSON response root.
+    /// Pin the methods, paths, roots and the output-token param casing — AppSync
+    /// pages camelCase (nextToken/maxResults), MQ pages PascalCase
+    /// (NextToken/MaxResults), and a swapped case silently never pages.
+    #[test]
+    fn appsync_and_mq_list_api_lists_via_rest_json_get() {
+        let a = get_resource("appsync-apis").expect("appsync-apis");
+        let api = a.api_config.as_ref().expect("appsync-apis api_config");
+        assert_eq!(
+            api.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson
+        );
+        assert_eq!(api.method.as_deref(), Some("GET"));
+        assert_eq!(api.path.as_deref(), Some("/v1/apis"));
+        assert_eq!(api.response_root.as_deref(), Some("/graphqlApis"));
+        let pag = api.pagination.as_ref().expect("appsync paginates");
+        assert_eq!(pag.input_token.as_deref(), Some("nextToken"));
+        assert_eq!(pag.max_results_param.as_deref(), Some("maxResults"));
+        crate::aws::http::get_service("appsync")
+            .unwrap_or_else(|| panic!("appsync service must be registered"));
+
+        let m = get_resource("mq-brokers").expect("mq-brokers");
+        let api = m.api_config.as_ref().expect("mq-brokers api_config");
+        assert_eq!(
+            api.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson
+        );
+        assert_eq!(api.method.as_deref(), Some("GET"));
+        assert_eq!(api.path.as_deref(), Some("/v1/brokers"));
+        assert_eq!(api.response_root.as_deref(), Some("/BrokerSummaries"));
+        let pag = api.pagination.as_ref().expect("mq paginates");
+        assert_eq!(pag.input_token.as_deref(), Some("NextToken"));
+        assert_eq!(pag.max_results_param.as_deref(), Some("MaxResults"));
+        crate::aws::http::get_service("mq")
+            .unwrap_or_else(|| panic!("mq service must be registered"));
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

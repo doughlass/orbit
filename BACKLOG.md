@@ -159,7 +159,13 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       name) cannot be derived by a path extractor, so it sends `Limit=100`
       with no token loop — a page-max-only pagination block. Live verified 200
       (kinesis empty, firehose has three real streams).
-- [ ] AppSync, MQ, Timestream, QLDB, DocumentDB, Neptune.
+- [x] AppSync + Amazon MQ. Both rest-json GETs with JSON list roots
+      (`/v1/apis` → `/graphqlApis`, `/v1/brokers` → `/BrokerSummaries`). Trap:
+      the two page on opposite token casing — AppSync camelCase
+      (`nextToken`/`maxResults`), MQ PascalCase (`NextToken`/`MaxResults`) —
+      pinned by test since a swapped case silently never pages. Live verified
+      200 (both accounts empty of these resources).
+- [ ] Timestream, QLDB, DocumentDB, Neptune.
 - [ ] Glue, EMR, DataSync, Transfer Family.
 - [ ] Global Accelerator, App Mesh, Cloud Map, VPC Lattice, Route53 Resolver.
 - [ ] Backup (vaults/plans), Resource Groups, Service Quotas.

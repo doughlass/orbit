@@ -1,0 +1,44 @@
+{
+  "resources": {
+    "appsync-apis": {
+      "display_name": "AppSync APIs",
+      "service": "appsync",
+      "sdk_method": "list_graphql_apis",
+      "sdk_method_params": {},
+      "response_path": "appsync_apis",
+      "id_field": "apiId",
+      "name_field": "name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "name", "width": 30 },
+        { "header": "API ID", "json_path": "apiId", "width": 24 },
+        { "header": "AUTH", "json_path": "authenticationType", "width": 22 },
+        { "header": "TYPE", "json_path": "apiType", "width": 12 },
+        { "header": "VISIBILITY", "json_path": "visibility", "width": 12 },
+        { "header": "XRAY", "json_path": "xrayEnabled", "width": 8, "color_map": "bool" }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/v1/apis",
+        "response_root": "/graphqlApis",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 25
+        }
+      },
+      "field_mappings": {
+        "name": { "source": "/name", "default": "-" },
+        "apiId": { "source": "/apiId", "default": "-" },
+        "authenticationType": { "source": "/authenticationType", "default": "-" },
+        "apiType": { "source": "/apiType", "default": "-" },
+        "visibility": { "source": "/visibility", "default": "-" },
+        "xrayEnabled": { "source": "/xrayEnabled", "default": "false" }
+      }
+    }
+  }
+}
