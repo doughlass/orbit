@@ -1932,6 +1932,53 @@ mod tests {
         assert_eq!(capi.response_root.as_deref(), Some("/UserPoolClients"));
     }
 
+    /// The three extra IAM lists are query-protocol `member` lists off the
+    /// global iam endpoint. Only ListInstanceProfiles paginates (Marker) —
+    /// ListSAMLProviders and ListOpenIDConnectProviders have no paginator and
+    /// reject a Marker block, so they carry none (the DescribeAddresses trap).
+    /// Instances profiles also parse their Roles member list down to RoleName,
+    /// exercising the array_to_csv path over a nested member.
+    #[test]
+    fn iam_provider_and_instance_profile_lists_use_global_member_roots() {
+        let profiles = get_resource("iam-instance-profiles").expect("iam-instance-profiles");
+        assert!(profiles.is_global, "iam is global");
+        let pup = profiles.api_config.as_ref().expect("profiles api_config");
+        assert_eq!(pup.protocol, crate::resource::protocol::ApiProtocol::Query);
+        assert_eq!(
+            pup.response_root.as_deref(),
+            Some(
+                "/ListInstanceProfilesResponse/ListInstanceProfilesResult/InstanceProfiles/member"
+            )
+        );
+        let pag = pup.pagination.as_ref().expect("instance profiles page");
+        assert_eq!(pag.input_token.as_deref(), Some("Marker"));
+        assert_eq!(
+            profiles.field_mappings["Roles"].source,
+            "/Roles/member/RoleName"
+        );
+
+        for (key, action) in [
+            ("iam-saml-providers", "ListSAMLProviders"),
+            ("iam-oidc-providers", "ListOpenIDConnectProviders"),
+        ] {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            assert!(r.is_global, "{key} is global");
+            let api = r
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} config"));
+            assert_eq!(
+                api.protocol,
+                crate::resource::protocol::ApiProtocol::Query,
+                "{key}"
+            );
+            assert!(
+                api.pagination.is_none(),
+                "{action} has no paginator and must not carry a Marker block"
+            );
+        }
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()

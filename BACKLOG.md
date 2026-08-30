@@ -256,7 +256,15 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       same cognito-idp service already exercised by user pools and the scope is
       pinned by test. User-pool domains need a Describe on a specific domain,
       not a list, so they're out.
-- [ ] IAM SAML/OIDC providers, instance profiles, credential report.
+- [x] IAM SAML/OIDC providers + instance profiles. All three are query-protocol
+      `member` lists off the global `iam.amazonaws.com` host (verified live with
+      real data: Okta/gsuite SAML, CircleCI/EKS OIDC, `assume_role_iom_prod`
+      instance profile). `ListInstanceProfiles` is the only one that paginates
+      (Marker/MaxItems); `ListSAMLProviders` and `ListOpenIDConnectProviders`
+      have no paginator and must not carry a Marker block, pinned by test.
+      Instance profiles flatten their nested `Roles` member list to RoleName via
+      `array_to_csv`. The credential report is omitted: `GetCredentialReport`
+      returns one base64-encoded CSV blob, a download not a browse list.
 - [ ] KMS aliases, key policies, grants, rotation config.
 - [ ] SNS subscriptions, SQS DLQ/redrive.
 - [ ] Elasticache parameter groups/subnets/snapshots; Redshift parameter

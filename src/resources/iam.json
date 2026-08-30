@@ -10,15 +10,49 @@
       "name_field": "UserName",
       "is_global": true,
       "columns": [
-        { "header": "USER NAME", "json_path": "UserName", "width": 22 },
-        { "header": "USER ID", "json_path": "UserId", "width": 24 },
-        { "header": "ARN", "json_path": "Arn", "width": 34 },
-        { "header": "CREATED", "json_path": "CreateDate", "width": 20 }
+        {
+          "header": "USER NAME",
+          "json_path": "UserName",
+          "width": 22
+        },
+        {
+          "header": "USER ID",
+          "json_path": "UserId",
+          "width": 24
+        },
+        {
+          "header": "ARN",
+          "json_path": "Arn",
+          "width": 34
+        },
+        {
+          "header": "CREATED",
+          "json_path": "CreateDate",
+          "width": 20
+        }
       ],
       "sub_resources": [
-        { "shortcut": "p", "display_name": "Attached Policies", "resource_key": "iam-user-policies", "parent_id_field": "UserName", "filter_param": "user_name" },
-        { "shortcut": "g", "display_name": "Groups", "resource_key": "iam-user-groups", "parent_id_field": "UserName", "filter_param": "user_name" },
-        { "shortcut": "a", "display_name": "Access Keys", "resource_key": "iam-access-keys", "parent_id_field": "UserName", "filter_param": "user_name" }
+        {
+          "shortcut": "p",
+          "display_name": "Attached Policies",
+          "resource_key": "iam-user-policies",
+          "parent_id_field": "UserName",
+          "filter_param": "user_name"
+        },
+        {
+          "shortcut": "g",
+          "display_name": "Groups",
+          "resource_key": "iam-user-groups",
+          "parent_id_field": "UserName",
+          "filter_param": "user_name"
+        },
+        {
+          "shortcut": "a",
+          "display_name": "Access Keys",
+          "resource_key": "iam-access-keys",
+          "parent_id_field": "UserName",
+          "filter_param": "user_name"
+        }
       ],
       "actions": [],
       "api_config": {
@@ -33,11 +67,26 @@
         }
       },
       "field_mappings": {
-        "UserId": { "source": "/UserId", "default": "-" },
-        "UserName": { "source": "/UserName", "default": "-" },
-        "Arn": { "source": "/Arn", "default": "-" },
-        "Path": { "source": "/Path", "default": "/" },
-        "CreateDate": { "source": "/CreateDate", "default": "-" }
+        "UserId": {
+          "source": "/UserId",
+          "default": "-"
+        },
+        "UserName": {
+          "source": "/UserName",
+          "default": "-"
+        },
+        "Arn": {
+          "source": "/Arn",
+          "default": "-"
+        },
+        "Path": {
+          "source": "/Path",
+          "default": "/"
+        },
+        "CreateDate": {
+          "source": "/CreateDate",
+          "default": "-"
+        }
       },
       "describe_config": {
         "protocol": "query",
@@ -57,8 +106,16 @@
       "is_global": true,
       "requires_parent": true,
       "columns": [
-        { "header": "POLICY NAME", "json_path": "PolicyName", "width": 28 },
-        { "header": "ARN", "json_path": "PolicyArn", "width": 34 }
+        {
+          "header": "POLICY NAME",
+          "json_path": "PolicyName",
+          "width": 28
+        },
+        {
+          "header": "ARN",
+          "json_path": "PolicyArn",
+          "width": 34
+        }
       ],
       "sub_resources": [],
       "actions": [],
@@ -77,8 +134,14 @@
         }
       },
       "field_mappings": {
-        "PolicyName": { "source": "/PolicyName", "default": "-" },
-        "PolicyArn": { "source": "/PolicyArn", "default": "-" }
+        "PolicyName": {
+          "source": "/PolicyName",
+          "default": "-"
+        },
+        "PolicyArn": {
+          "source": "/PolicyArn",
+          "default": "-"
+        }
       }
     },
     "iam-user-groups": {
@@ -92,9 +155,21 @@
       "is_global": true,
       "requires_parent": true,
       "columns": [
-        { "header": "GROUP NAME", "json_path": "GroupName", "width": 25 },
-        { "header": "GROUP ID", "json_path": "GroupId", "width": 24 },
-        { "header": "ARN", "json_path": "Arn", "width": 34 }
+        {
+          "header": "GROUP NAME",
+          "json_path": "GroupName",
+          "width": 25
+        },
+        {
+          "header": "GROUP ID",
+          "json_path": "GroupId",
+          "width": 24
+        },
+        {
+          "header": "ARN",
+          "json_path": "Arn",
+          "width": 34
+        }
       ],
       "sub_resources": [],
       "actions": [],
@@ -113,9 +188,18 @@
         }
       },
       "field_mappings": {
-        "GroupId": { "source": "/GroupId", "default": "-" },
-        "GroupName": { "source": "/GroupName", "default": "-" },
-        "Arn": { "source": "/Arn", "default": "-" }
+        "GroupId": {
+          "source": "/GroupId",
+          "default": "-"
+        },
+        "GroupName": {
+          "source": "/GroupName",
+          "default": "-"
+        },
+        "Arn": {
+          "source": "/Arn",
+          "default": "-"
+        }
       }
     },
     "iam-access-keys": {
@@ -129,9 +213,22 @@
       "is_global": true,
       "requires_parent": true,
       "columns": [
-        { "header": "ACCESS KEY ID", "json_path": "AccessKeyId", "width": 25 },
-        { "header": "STATUS", "json_path": "Status", "width": 10, "color_map": "state" },
-        { "header": "CREATED", "json_path": "CreateDate", "width": 20 }
+        {
+          "header": "ACCESS KEY ID",
+          "json_path": "AccessKeyId",
+          "width": 25
+        },
+        {
+          "header": "STATUS",
+          "json_path": "Status",
+          "width": 10,
+          "color_map": "state"
+        },
+        {
+          "header": "CREATED",
+          "json_path": "CreateDate",
+          "width": 20
+        }
       ],
       "sub_resources": [],
       "actions": [],
@@ -150,9 +247,18 @@
         }
       },
       "field_mappings": {
-        "AccessKeyId": { "source": "/AccessKeyId", "default": "-" },
-        "Status": { "source": "/Status", "default": "-" },
-        "CreateDate": { "source": "/CreateDate", "default": "-" }
+        "AccessKeyId": {
+          "source": "/AccessKeyId",
+          "default": "-"
+        },
+        "Status": {
+          "source": "/Status",
+          "default": "-"
+        },
+        "CreateDate": {
+          "source": "/CreateDate",
+          "default": "-"
+        }
       }
     },
     "iam-roles": {
@@ -165,13 +271,35 @@
       "name_field": "RoleName",
       "is_global": true,
       "columns": [
-        { "header": "ROLE NAME", "json_path": "RoleName", "width": 25 },
-        { "header": "ROLE ID", "json_path": "RoleId", "width": 24 },
-        { "header": "ARN", "json_path": "Arn", "width": 34 },
-        { "header": "CREATED", "json_path": "CreateDate", "width": 17 }
+        {
+          "header": "ROLE NAME",
+          "json_path": "RoleName",
+          "width": 25
+        },
+        {
+          "header": "ROLE ID",
+          "json_path": "RoleId",
+          "width": 24
+        },
+        {
+          "header": "ARN",
+          "json_path": "Arn",
+          "width": 34
+        },
+        {
+          "header": "CREATED",
+          "json_path": "CreateDate",
+          "width": 17
+        }
       ],
       "sub_resources": [
-        { "shortcut": "p", "display_name": "Attached Policies", "resource_key": "iam-role-policies", "parent_id_field": "RoleName", "filter_param": "role_name" }
+        {
+          "shortcut": "p",
+          "display_name": "Attached Policies",
+          "resource_key": "iam-role-policies",
+          "parent_id_field": "RoleName",
+          "filter_param": "role_name"
+        }
       ],
       "actions": [],
       "api_config": {
@@ -186,12 +314,30 @@
         }
       },
       "field_mappings": {
-        "RoleId": { "source": "/RoleId", "default": "-" },
-        "RoleName": { "source": "/RoleName", "default": "-" },
-        "Arn": { "source": "/Arn", "default": "-" },
-        "Path": { "source": "/Path", "default": "/" },
-        "CreateDate": { "source": "/CreateDate", "default": "-" },
-        "Description": { "source": "/Description", "default": "-" }
+        "RoleId": {
+          "source": "/RoleId",
+          "default": "-"
+        },
+        "RoleName": {
+          "source": "/RoleName",
+          "default": "-"
+        },
+        "Arn": {
+          "source": "/Arn",
+          "default": "-"
+        },
+        "Path": {
+          "source": "/Path",
+          "default": "/"
+        },
+        "CreateDate": {
+          "source": "/CreateDate",
+          "default": "-"
+        },
+        "Description": {
+          "source": "/Description",
+          "default": "-"
+        }
       },
       "describe_config": {
         "protocol": "query",
@@ -211,8 +357,16 @@
       "is_global": true,
       "requires_parent": true,
       "columns": [
-        { "header": "POLICY NAME", "json_path": "PolicyName", "width": 28 },
-        { "header": "ARN", "json_path": "PolicyArn", "width": 34 }
+        {
+          "header": "POLICY NAME",
+          "json_path": "PolicyName",
+          "width": 28
+        },
+        {
+          "header": "ARN",
+          "json_path": "PolicyArn",
+          "width": 34
+        }
       ],
       "sub_resources": [],
       "actions": [],
@@ -231,8 +385,14 @@
         }
       },
       "field_mappings": {
-        "PolicyName": { "source": "/PolicyName", "default": "-" },
-        "PolicyArn": { "source": "/PolicyArn", "default": "-" }
+        "PolicyName": {
+          "source": "/PolicyName",
+          "default": "-"
+        },
+        "PolicyArn": {
+          "source": "/PolicyArn",
+          "default": "-"
+        }
       }
     },
     "iam-policies": {
@@ -247,11 +407,32 @@
       "name_field": "PolicyName",
       "is_global": true,
       "columns": [
-        { "header": "POLICY NAME", "json_path": "PolicyName", "width": 28 },
-        { "header": "POLICY ID", "json_path": "PolicyId", "width": 24 },
-        { "header": "ATTACHMENTS", "json_path": "AttachmentCount", "width": 14 },
-        { "header": "ATTACHABLE", "json_path": "IsAttachable", "width": 12, "color_map": "bool" },
-        { "header": "CREATED", "json_path": "CreateDate", "width": 17 }
+        {
+          "header": "POLICY NAME",
+          "json_path": "PolicyName",
+          "width": 28
+        },
+        {
+          "header": "POLICY ID",
+          "json_path": "PolicyId",
+          "width": 24
+        },
+        {
+          "header": "ATTACHMENTS",
+          "json_path": "AttachmentCount",
+          "width": 14
+        },
+        {
+          "header": "ATTACHABLE",
+          "json_path": "IsAttachable",
+          "width": 12,
+          "color_map": "bool"
+        },
+        {
+          "header": "CREATED",
+          "json_path": "CreateDate",
+          "width": 17
+        }
       ],
       "sub_resources": [],
       "actions": [],
@@ -270,13 +451,34 @@
         }
       },
       "field_mappings": {
-        "PolicyId": { "source": "/PolicyId", "default": "-" },
-        "PolicyName": { "source": "/PolicyName", "default": "-" },
-        "Arn": { "source": "/Arn", "default": "-" },
-        "Path": { "source": "/Path", "default": "/" },
-        "CreateDate": { "source": "/CreateDate", "default": "-" },
-        "AttachmentCount": { "source": "/AttachmentCount", "default": "0" },
-        "IsAttachable": { "source": "/IsAttachable", "transform": "bool_to_yes_no" }
+        "PolicyId": {
+          "source": "/PolicyId",
+          "default": "-"
+        },
+        "PolicyName": {
+          "source": "/PolicyName",
+          "default": "-"
+        },
+        "Arn": {
+          "source": "/Arn",
+          "default": "-"
+        },
+        "Path": {
+          "source": "/Path",
+          "default": "/"
+        },
+        "CreateDate": {
+          "source": "/CreateDate",
+          "default": "-"
+        },
+        "AttachmentCount": {
+          "source": "/AttachmentCount",
+          "default": "0"
+        },
+        "IsAttachable": {
+          "source": "/IsAttachable",
+          "transform": "bool_to_yes_no"
+        }
       }
     },
     "iam-groups": {
@@ -289,13 +491,35 @@
       "name_field": "GroupName",
       "is_global": true,
       "columns": [
-        { "header": "GROUP NAME", "json_path": "GroupName", "width": 25 },
-        { "header": "GROUP ID", "json_path": "GroupId", "width": 24 },
-        { "header": "ARN", "json_path": "Arn", "width": 34 },
-        { "header": "CREATED", "json_path": "CreateDate", "width": 17 }
+        {
+          "header": "GROUP NAME",
+          "json_path": "GroupName",
+          "width": 25
+        },
+        {
+          "header": "GROUP ID",
+          "json_path": "GroupId",
+          "width": 24
+        },
+        {
+          "header": "ARN",
+          "json_path": "Arn",
+          "width": 34
+        },
+        {
+          "header": "CREATED",
+          "json_path": "CreateDate",
+          "width": 17
+        }
       ],
       "sub_resources": [
-        { "shortcut": "u", "display_name": "Users in Group", "resource_key": "iam-group-users", "parent_id_field": "GroupName", "filter_param": "group_name" }
+        {
+          "shortcut": "u",
+          "display_name": "Users in Group",
+          "resource_key": "iam-group-users",
+          "parent_id_field": "GroupName",
+          "filter_param": "group_name"
+        }
       ],
       "actions": [],
       "api_config": {
@@ -310,11 +534,26 @@
         }
       },
       "field_mappings": {
-        "GroupId": { "source": "/GroupId", "default": "-" },
-        "GroupName": { "source": "/GroupName", "default": "-" },
-        "Arn": { "source": "/Arn", "default": "-" },
-        "Path": { "source": "/Path", "default": "/" },
-        "CreateDate": { "source": "/CreateDate", "default": "-" }
+        "GroupId": {
+          "source": "/GroupId",
+          "default": "-"
+        },
+        "GroupName": {
+          "source": "/GroupName",
+          "default": "-"
+        },
+        "Arn": {
+          "source": "/Arn",
+          "default": "-"
+        },
+        "Path": {
+          "source": "/Path",
+          "default": "/"
+        },
+        "CreateDate": {
+          "source": "/CreateDate",
+          "default": "-"
+        }
       }
     },
     "iam-group-users": {
@@ -328,9 +567,21 @@
       "is_global": true,
       "requires_parent": true,
       "columns": [
-        { "header": "USER NAME", "json_path": "UserName", "width": 22 },
-        { "header": "USER ID", "json_path": "UserId", "width": 24 },
-        { "header": "ARN", "json_path": "Arn", "width": 34 }
+        {
+          "header": "USER NAME",
+          "json_path": "UserName",
+          "width": 22
+        },
+        {
+          "header": "USER ID",
+          "json_path": "UserId",
+          "width": 24
+        },
+        {
+          "header": "ARN",
+          "json_path": "Arn",
+          "width": 34
+        }
       ],
       "sub_resources": [],
       "actions": [],
@@ -349,9 +600,169 @@
         }
       },
       "field_mappings": {
-        "UserId": { "source": "/UserId", "default": "-" },
-        "UserName": { "source": "/UserName", "default": "-" },
-        "Arn": { "source": "/Arn", "default": "-" }
+        "UserId": {
+          "source": "/UserId",
+          "default": "-"
+        },
+        "UserName": {
+          "source": "/UserName",
+          "default": "-"
+        },
+        "Arn": {
+          "source": "/Arn",
+          "default": "-"
+        }
+      }
+    },
+    "iam-instance-profiles": {
+      "display_name": "IAM Instance Profiles",
+      "service": "iam",
+      "sdk_method": "list_instance_profiles",
+      "sdk_method_params": {},
+      "response_path": "instance_profiles",
+      "id_field": "InstanceProfileId",
+      "name_field": "InstanceProfileName",
+      "is_global": true,
+      "columns": [
+        {
+          "header": "PROFILE NAME",
+          "json_path": "InstanceProfileName",
+          "width": 26
+        },
+        {
+          "header": "PROFILE ID",
+          "json_path": "InstanceProfileId",
+          "width": 26
+        },
+        {
+          "header": "ROLES",
+          "json_path": "Roles",
+          "width": 30
+        },
+        {
+          "header": "ARN",
+          "json_path": "Arn",
+          "width": 34
+        },
+        {
+          "header": "CREATED",
+          "json_path": "CreateDate",
+          "width": 22
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "ListInstanceProfiles",
+        "response_root": "/ListInstanceProfilesResponse/ListInstanceProfilesResult/InstanceProfiles/member",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/ListInstanceProfilesResponse/ListInstanceProfilesResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "InstanceProfileName": {
+          "source": "/InstanceProfileName",
+          "default": "-"
+        },
+        "InstanceProfileId": {
+          "source": "/InstanceProfileId",
+          "default": "-"
+        },
+        "Arn": {
+          "source": "/Arn",
+          "default": "-"
+        },
+        "CreateDate": {
+          "source": "/CreateDate",
+          "default": "-"
+        },
+        "Roles": {
+          "source": "/Roles/member/RoleName",
+          "transform": "array_to_csv",
+          "default": "-"
+        }
+      }
+    },
+    "iam-saml-providers": {
+      "display_name": "IAM SAML Providers",
+      "service": "iam",
+      "sdk_method": "list_saml_providers",
+      "sdk_method_params": {},
+      "response_path": "saml_providers",
+      "id_field": "Arn",
+      "name_field": "Arn",
+      "is_global": true,
+      "columns": [
+        {
+          "header": "PROVIDER ARN",
+          "json_path": "Arn",
+          "width": 48
+        },
+        {
+          "header": "VALID UNTIL",
+          "json_path": "ValidUntil",
+          "width": 22
+        },
+        {
+          "header": "CREATED",
+          "json_path": "CreateDate",
+          "width": 22
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "ListSAMLProviders",
+        "response_root": "/ListSAMLProvidersResponse/ListSAMLProvidersResult/SAMLProviderList/member"
+      },
+      "field_mappings": {
+        "Arn": {
+          "source": "/Arn",
+          "default": "-"
+        },
+        "ValidUntil": {
+          "source": "/ValidUntil",
+          "default": "-"
+        },
+        "CreateDate": {
+          "source": "/CreateDate",
+          "default": "-"
+        }
+      }
+    },
+    "iam-oidc-providers": {
+      "display_name": "IAM OIDC Providers",
+      "service": "iam",
+      "sdk_method": "list_open_id_connect_providers",
+      "sdk_method_params": {},
+      "response_path": "oidc_providers",
+      "id_field": "Arn",
+      "name_field": "Arn",
+      "is_global": true,
+      "columns": [
+        {
+          "header": "PROVIDER ARN",
+          "json_path": "Arn",
+          "width": 60
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "ListOpenIDConnectProviders",
+        "response_root": "/ListOpenIDConnectProvidersResponse/ListOpenIDConnectProvidersResult/OpenIDConnectProviderList/member"
+      },
+      "field_mappings": {
+        "Arn": {
+          "source": "/Arn",
+          "default": "-"
+        }
       }
     }
   }
