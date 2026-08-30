@@ -1,0 +1,34 @@
+{
+  "resources": {
+    "guardduty-detectors": {
+      "display_name": "GuardDuty Detectors",
+      "service": "guardduty",
+      "sdk_method": "list_detectors",
+      "sdk_method_params": {},
+      "response_path": "detector_ids",
+      "id_field": "DetectorId",
+      "name_field": "DetectorId",
+      "is_global": false,
+      "columns": [
+        { "header": "DETECTOR ID", "json_path": "DetectorId", "width": 50 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/detector",
+        "response_root": "/DetectorIds",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 50
+        }
+      },
+      "field_mappings": {
+        "DetectorId": { "source": "/" }
+      }
+    }
+  }
+}

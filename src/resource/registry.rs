@@ -36,6 +36,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/elbv2.json"),
     include_str!("../resources/eventbridge.json"),
     include_str!("../resources/fsx.json"),
+    include_str!("../resources/guardduty.json"),
     include_str!("../resources/iam.json"),
     include_str!("../resources/kms.json"),
     include_str!("../resources/lambda.json"),
@@ -1027,6 +1028,44 @@ mod tests {
             service.target_prefix,
             Some("AmazonEC2ContainerServiceV20141113")
         );
+    }
+
+    /// GuardDuty detectors is another bare-ID list (the API returns DetectorIds
+    /// only), so it lists via GET /detector but has no describe -- a bare-string
+    /// id cannot be extracted for the {resource_id} path, the same reason the
+    /// ECS task-definition resource lists IDs with no describe. It is real
+    /// rest-json (no X-Amz-Target). Pin the scalar-string mapping and service.
+    #[test]
+    fn guardduty_detectors_list_bare_ids_without_describe() {
+        let det = get_resource("guardduty-detectors").expect("guardduty-detectors");
+        assert!(
+            det.describe_config.is_none(),
+            "bare-string ids cannot describe; no describe_config expected"
+        );
+        let cfg = det.api_config.as_ref().expect("api_config");
+        assert_eq!(
+            cfg.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson
+        );
+        assert_eq!(cfg.method.as_deref(), Some("GET"));
+        assert_eq!(cfg.path.as_deref(), Some("/detector"));
+        assert_eq!(cfg.response_root.as_deref(), Some("/DetectorIds"));
+        let mapped = det
+            .field_mappings
+            .get("DetectorId")
+            .expect("guardduty-detectors must map DetectorId");
+        assert!(
+            mapped.source.is_empty() || mapped.source == "/",
+            "bare-id items map through an empty (or /) source, got {:?}",
+            mapped.source
+        );
+        let service = crate::aws::http::get_service("guardduty")
+            .unwrap_or_else(|| panic!("guardduty service must be registered"));
+        assert!(
+            service.target_prefix.is_none(),
+            "guardduty sends no X-Amz-Target; it is REST-JSON"
+        );
+        assert_eq!(service.api_version, "2017-11-28");
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

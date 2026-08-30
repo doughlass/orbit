@@ -94,7 +94,16 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
 
 ### Session 3
 
-- [ ] **GuardDuty** (detectors, findings).
+- [x] **GuardDuty** (detectors; findings deferred). Detectors are a bare-ID
+      list (`GET /detector` → `DetectorIds`), so it maps like the ECS
+      task-definition scalar list. Because a bare-string id cannot be extracted
+      for the `{resource_id}` describe path, detectors have no describe (same
+      limit as the ECS task-definition resource). **Findings deferred:** it is
+      a POST whose body must exclude the parent `DetectorId` (consumed by the
+      `/{DetectorId}` path placeholder) and carry `MaxResults`/`NextToken` in
+      the body — the rest-json handler only paginates GETs and leaks
+      non-underscore params into POST bodies. Needs a handler capability, not
+      JSON. Live verified 200 against the one real detector.
 - [ ] **Security Hub** (findings, standards).
 - [ ] **Macie**, **Inspector**.
 - [ ] **Shield**, **WAF classic (v1)**.

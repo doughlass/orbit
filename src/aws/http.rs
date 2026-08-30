@@ -145,6 +145,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("AmazonEC2ContainerServiceV20141113"),
             is_global: false,
         }),
+        "guardduty" => Some(ServiceDefinition {
+            signing_name: "guardduty",
+            endpoint_prefix: "guardduty",
+            api_version: "2017-11-28",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
         "eks" => Some(ServiceDefinition {
             signing_name: "eks",
             endpoint_prefix: "eks",
