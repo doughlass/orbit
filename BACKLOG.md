@@ -193,7 +193,18 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       Enter) via a `ServerId` parent filter — live driven through the drill and
       both hops returned 200. DataSync live 200 (empty), Transfer found a real
       ONLINE server.
-- [ ] Global Accelerator, App Mesh, Cloud Map, VPC Lattice, Route53 Resolver.
+- [x] App Mesh, Cloud Map, VPC Lattice, Route53 Resolver. The four group by
+      wire protocol: App Mesh and VPC Lattice are rest-json GETs with lowercase
+      camelCase roots and tokens (`/meshes`, `/items`, `nextToken`); Cloud Map
+      (servicediscovery) and Route53 Resolver are JSON protocol with their own
+      `X-Amz-Target` prefixes (`Route53AutoNaming_v20170314`,
+      `Route53Resolver`) and PascalCase roots. Live verified 200 on all seven —
+      real Cloud Map services/namespaces and Route53 Resolver rules
+      (autodefined Internet Resolver) rendered.
+- [ ] Global Accelerator — **blocked**: `ListAccelerators` is explicitly denied
+      by an IAM identity policy on the target account, so the response body and
+      `response_root` cannot be verified; implement only once a live response
+      is obtainable.
 - [ ] Backup (vaults/plans), Resource Groups, Service Quotas.
 - [ ] Cost Explorer, Budgets, Trusted Advisor, Health.
 - [ ] Config rules/compliance, X-Ray, Systems Manager fleet ops (Run Command /

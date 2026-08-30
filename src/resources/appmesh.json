@@ -1,0 +1,42 @@
+{
+  "resources": {
+    "appmesh-meshes": {
+      "display_name": "App Mesh Meshes",
+      "service": "appmesh",
+      "sdk_method": "list_meshes",
+      "sdk_method_params": {},
+      "response_path": "appmesh_meshes",
+      "id_field": "meshName",
+      "name_field": "meshName",
+      "is_global": false,
+      "columns": [
+        { "header": "MESH NAME", "json_path": "meshName", "width": 28 },
+        { "header": "OWNER", "json_path": "meshOwner", "width": 24 },
+        { "header": "VERSION", "json_path": "version", "width": 8 },
+        { "header": "CREATED", "json_path": "createdAt", "width": 22 },
+        { "header": "UPDATED", "json_path": "lastUpdatedAt", "width": 22 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/v20190125/meshes",
+        "response_root": "/meshes",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "meshName": { "source": "/meshName", "default": "-" },
+        "meshOwner": { "source": "/meshOwner", "default": "-" },
+        "version": { "source": "/version", "default": "-" },
+        "createdAt": { "source": "/createdAt", "default": "-" },
+        "lastUpdatedAt": { "source": "/lastUpdatedAt", "default": "-" }
+      }
+    }
+  }
+}

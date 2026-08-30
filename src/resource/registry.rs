@@ -13,6 +13,7 @@ use super::protocol::{ActionConfig, ApiConfig, DescribeConfig, FieldMapping};
 /// Embedded resource JSON files (compiled into the binary)
 const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/acm.json"),
+    include_str!("../resources/appmesh.json"),
     include_str!("../resources/apigateway.json"),
     include_str!("../resources/apigatewayv2.json"),
     include_str!("../resources/appsync.json"),
@@ -55,10 +56,13 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/rds.json"),
     include_str!("../resources/redshift.json"),
     include_str!("../resources/route53.json"),
+    include_str!("../resources/route53resolver.json"),
     include_str!("../resources/s3.json"),
     include_str!("../resources/scheduler.json"),
+    include_str!("../resources/servicediscovery.json"),
     include_str!("../resources/secretsmanager.json"),
     include_str!("../resources/transfer.json"),
+    include_str!("../resources/vpc-lattice.json"),
     include_str!("../resources/securityhub.json"),
     include_str!("../resources/shield.json"),
     include_str!("../resources/sns.json"),
@@ -1652,6 +1656,77 @@ mod tests {
             Some("transfer-users"),
             "Enter drills into users"
         );
+    }
+
+    /// Mesh/networking lists: App Mesh and VPC Lattice are rest-json GETs with
+    /// lowercase camelCase roots and tokens (/meshes, /items); Cloud Map and
+    /// Route53 Resolver are JSON protocol with their own X-Amz-Target prefixes
+    /// and PascalCase roots. Pin each so a misspelled root or a wrong
+    /// protocol silently lists empty.
+    #[test]
+    fn mesh_cloud_map_lattice_and_resolver_lists_keep_their_wire_shapes() {
+        for (key, target, root, pag_in) in [
+            ("appmesh-meshes", None, "/meshes", Some("nextToken")),
+            (
+                "cloudmap-services",
+                Some("Route53AutoNaming_v20170314"),
+                "/Services",
+                Some("NextToken"),
+            ),
+            (
+                "cloudmap-namespaces",
+                Some("Route53AutoNaming_v20170314"),
+                "/Namespaces",
+                Some("NextToken"),
+            ),
+            ("vpclattice-services", None, "/items", Some("nextToken")),
+            (
+                "r53resolver-endpoints",
+                Some("Route53Resolver"),
+                "/ResolverEndpoints",
+                Some("NextToken"),
+            ),
+            (
+                "r53resolver-rules",
+                Some("Route53Resolver"),
+                "/ResolverRules",
+                Some("NextToken"),
+            ),
+            (
+                "r53resolver-rule-associations",
+                Some("Route53Resolver"),
+                "/ResolverRuleAssociations",
+                Some("NextToken"),
+            ),
+        ] {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            let api = r
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} needs api_config"));
+            assert_eq!(api.response_root.as_deref(), Some(root), "{key} root");
+            let pag = api
+                .pagination
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} paginates"));
+            assert_eq!(pag.input_token.as_deref(), pag_in, "{key} input token");
+            let svc_key = match key {
+                "appmesh-meshes" => "appmesh",
+                "cloudmap-services" | "cloudmap-namespaces" => "servicediscovery",
+                "vpclattice-services" => "vpc-lattice",
+                _ => "route53resolver",
+            };
+            let service = crate::aws::http::get_service(svc_key)
+                .unwrap_or_else(|| panic!("{svc_key} service must be registered"));
+            assert_eq!(service.target_prefix, target, "{key} target prefix");
+            let expected_protocol = if key.starts_with("appmesh-") || key.starts_with("vpclattice-")
+            {
+                crate::resource::protocol::ApiProtocol::RestJson
+            } else {
+                crate::resource::protocol::ApiProtocol::Json
+            };
+            assert_eq!(api.protocol, expected_protocol, "{key} protocol");
+        }
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.
