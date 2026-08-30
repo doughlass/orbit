@@ -10,11 +10,32 @@
       "name_field": "CacheClusterId",
       "is_global": false,
       "columns": [
-        { "header": "CLUSTER ID", "json_path": "CacheClusterId", "width": 30 },
-        { "header": "STATUS", "json_path": "CacheClusterStatus", "width": 15, "color_map": "state" },
-        { "header": "ENGINE", "json_path": "Engine", "width": 12 },
-        { "header": "NODE TYPE", "json_path": "CacheNodeType", "width": 18 },
-        { "header": "NODES", "json_path": "NumCacheNodes", "width": 8 }
+        {
+          "header": "CLUSTER ID",
+          "json_path": "CacheClusterId",
+          "width": 30
+        },
+        {
+          "header": "STATUS",
+          "json_path": "CacheClusterStatus",
+          "width": 15,
+          "color_map": "state"
+        },
+        {
+          "header": "ENGINE",
+          "json_path": "Engine",
+          "width": 12
+        },
+        {
+          "header": "NODE TYPE",
+          "json_path": "CacheNodeType",
+          "width": 18
+        },
+        {
+          "header": "NODES",
+          "json_path": "NumCacheNodes",
+          "width": 8
+        }
       ],
       "sub_resources": [],
       "actions": [],
@@ -30,11 +51,278 @@
         }
       },
       "field_mappings": {
-        "CacheClusterId": { "source": "/CacheClusterId", "default": "-" },
-        "CacheClusterStatus": { "source": "/CacheClusterStatus", "default": "-" },
-        "Engine": { "source": "/Engine", "default": "-" },
-        "CacheNodeType": { "source": "/CacheNodeType", "default": "-" },
-        "NumCacheNodes": { "source": "/NumCacheNodes", "default": "0" }
+        "CacheClusterId": {
+          "source": "/CacheClusterId",
+          "default": "-"
+        },
+        "CacheClusterStatus": {
+          "source": "/CacheClusterStatus",
+          "default": "-"
+        },
+        "Engine": {
+          "source": "/Engine",
+          "default": "-"
+        },
+        "CacheNodeType": {
+          "source": "/CacheNodeType",
+          "default": "-"
+        },
+        "NumCacheNodes": {
+          "source": "/NumCacheNodes",
+          "default": "0"
+        }
+      }
+    },
+    "elasticache-parameter-groups": {
+      "display_name": "Elasticache Parameter Groups",
+      "service": "elasticache",
+      "sdk_method": "describe_cache_parameter_groups",
+      "sdk_method_params": {},
+      "response_path": "pgroups",
+      "id_field": "CacheParameterGroupName",
+      "name_field": "CacheParameterGroupName",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "NAME",
+          "json_path": "CacheParameterGroupName",
+          "width": 34
+        },
+        {
+          "header": "FAMILY",
+          "json_path": "CacheParameterGroupFamily",
+          "width": 18
+        },
+        {
+          "header": "DESCRIPTION",
+          "json_path": "Description",
+          "width": 40
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeCacheParameterGroups",
+        "response_root": "/DescribeCacheParameterGroupsResponse/DescribeCacheParameterGroupsResult/CacheParameterGroups/CacheParameterGroup",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeCacheParameterGroupsResponse/DescribeCacheParameterGroupsResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "CacheParameterGroupName": {
+          "source": "/CacheParameterGroupName",
+          "default": "-"
+        },
+        "CacheParameterGroupFamily": {
+          "source": "/CacheParameterGroupFamily",
+          "default": "-"
+        },
+        "Description": {
+          "source": "/Description",
+          "default": "-"
+        }
+      }
+    },
+    "elasticache-reserved-nodes": {
+      "display_name": "Elasticache Reserved Nodes",
+      "service": "elasticache",
+      "sdk_method": "describe_reserved_cache_nodes",
+      "sdk_method_params": {},
+      "response_path": "reserved",
+      "id_field": "ReservedCacheNodeId",
+      "name_field": "ReservedCacheNodeId",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "NODE ID",
+          "json_path": "ReservedCacheNodeId",
+          "width": 20
+        },
+        {
+          "header": "TYPE",
+          "json_path": "CacheNodeType",
+          "width": 20
+        },
+        {
+          "header": "OFFERING",
+          "json_path": "OfferingType",
+          "width": 16
+        },
+        {
+          "header": "STATE",
+          "json_path": "State",
+          "width": 12
+        },
+        {
+          "header": "COUNT",
+          "json_path": "CacheNodeCount",
+          "width": 8
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeReservedCacheNodes",
+        "response_root": "/DescribeReservedCacheNodesResponse/DescribeReservedCacheNodesResult/ReservedCacheNodes/ReservedCacheNode",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeReservedCacheNodesResponse/DescribeReservedCacheNodesResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "ReservedCacheNodeId": {
+          "source": "/ReservedCacheNodeId",
+          "default": "-"
+        },
+        "CacheNodeType": {
+          "source": "/CacheNodeType",
+          "default": "-"
+        },
+        "OfferingType": {
+          "source": "/OfferingType",
+          "default": "-"
+        },
+        "State": {
+          "source": "/State",
+          "default": "-"
+        },
+        "CacheNodeCount": {
+          "source": "/CacheNodeCount",
+          "default": "-"
+        }
+      }
+    },
+    "elasticache-events": {
+      "display_name": "Elasticache Events",
+      "service": "elasticache",
+      "sdk_method": "describe_events",
+      "sdk_method_params": {},
+      "response_path": "events",
+      "id_field": "SourceIdentifier",
+      "name_field": "SourceType",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "SOURCE",
+          "json_path": "SourceIdentifier",
+          "width": 26
+        },
+        {
+          "header": "TYPE",
+          "json_path": "SourceType",
+          "width": 18
+        },
+        {
+          "header": "MESSAGE",
+          "json_path": "Message",
+          "width": 40
+        },
+        {
+          "header": "DATE",
+          "json_path": "Date",
+          "width": 22
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeEvents",
+        "response_root": "/DescribeEventsResponse/DescribeEventsResult/Events/Event",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeEventsResponse/DescribeEventsResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "SourceIdentifier": {
+          "source": "/SourceIdentifier",
+          "default": "-"
+        },
+        "SourceType": {
+          "source": "/SourceType",
+          "default": "-"
+        },
+        "Message": {
+          "source": "/Message",
+          "default": "-"
+        },
+        "Date": {
+          "source": "/Date",
+          "default": "-"
+        }
+      }
+    },
+    "elasticache-snapshots": {
+      "display_name": "Elasticache Snapshots",
+      "service": "elasticache",
+      "sdk_method": "describe_snapshots",
+      "sdk_method_params": {},
+      "response_path": "snapshots",
+      "id_field": "SnapshotName",
+      "name_field": "SnapshotName",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "NAME",
+          "json_path": "SnapshotName",
+          "width": 36
+        },
+        {
+          "header": "ENGINE",
+          "json_path": "Engine",
+          "width": 12
+        },
+        {
+          "header": "STATUS",
+          "json_path": "SnapshotStatus",
+          "width": 12
+        },
+        {
+          "header": "CLUSTER",
+          "json_path": "CacheClusterId",
+          "width": 26
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeSnapshots",
+        "response_root": "/DescribeSnapshotsResponse/DescribeSnapshotsResult/Snapshots/Snapshot",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeSnapshotsResponse/DescribeSnapshotsResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 50
+        }
+      },
+      "field_mappings": {
+        "SnapshotName": {
+          "source": "/SnapshotName",
+          "default": "-"
+        },
+        "Engine": {
+          "source": "/Engine",
+          "default": "-"
+        },
+        "SnapshotStatus": {
+          "source": "/SnapshotStatus",
+          "default": "-"
+        },
+        "CacheClusterId": {
+          "source": "/CacheClusterId",
+          "default": "-"
+        }
       }
     }
   }

@@ -2100,6 +2100,90 @@ mod tests {
         }
     }
 
+    /// The Elasticache/Redshift/RDS parameter groups, reserved nodes, and
+    /// events are all query-protocol lists that page on Marker/MaxRecords (not
+    /// NextToken) and answer from a `<action>Result/<List>/<member>` root. Pin
+    /// every one of the ten with its exact root, plus the shared paging trio.
+    #[test]
+    fn database_family_parameter_groups_reserved_nodes_and_events_follow_the_query_pattern() {
+        let data: &[(&str, &str, &str)] = &[
+            ("elasticache-parameter-groups", "DescribeCacheParameterGroups",
+             "/DescribeCacheParameterGroupsResponse/DescribeCacheParameterGroupsResult/CacheParameterGroups/CacheParameterGroup"),
+            ("elasticache-reserved-nodes", "DescribeReservedCacheNodes",
+             "/DescribeReservedCacheNodesResponse/DescribeReservedCacheNodesResult/ReservedCacheNodes/ReservedCacheNode"),
+            ("elasticache-events", "DescribeEvents",
+             "/DescribeEventsResponse/DescribeEventsResult/Events/Event"),
+            ("elasticache-snapshots", "DescribeSnapshots",
+             "/DescribeSnapshotsResponse/DescribeSnapshotsResult/Snapshots/Snapshot"),
+            ("redshift-parameter-groups", "DescribeClusterParameterGroups",
+             "/DescribeClusterParameterGroupsResponse/DescribeClusterParameterGroupsResult/ParameterGroups/ClusterParameterGroup"),
+            ("redshift-reserved-nodes", "DescribeReservedNodes",
+             "/DescribeReservedNodesResponse/DescribeReservedNodesResult/ReservedNodes/ReservedNode"),
+            ("redshift-events", "DescribeEvents",
+             "/DescribeEventsResponse/DescribeEventsResult/Events/Event"),
+            ("rds-parameter-groups", "DescribeDBParameterGroups",
+             "/DescribeDBParameterGroupsResponse/DescribeDBParameterGroupsResult/DBParameterGroups/DBParameterGroup"),
+            ("rds-reserved-instances", "DescribeReservedDBInstances",
+             "/DescribeReservedDBInstancesResponse/DescribeReservedDBInstancesResult/ReservedDBInstances/ReservedDBInstance"),
+            ("rds-events", "DescribeEvents",
+             "/DescribeEventsResponse/DescribeEventsResult/Events/Event"),
+        ];
+        for (key, action, root) in data {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            let api = r
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} api_config"));
+            assert_eq!(
+                api.protocol,
+                crate::resource::protocol::ApiProtocol::Query,
+                "{key} is query protocol"
+            );
+            assert_eq!(api.action.as_deref(), Some(*action), "{key} action");
+            assert_eq!(api.response_root.as_deref(), Some(*root), "{key} root");
+            let pag = api
+                .pagination
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} pages on Marker"));
+            assert_eq!(
+                pag.input_token.as_deref(),
+                Some("Marker"),
+                "{key} input token"
+            );
+            assert_eq!(
+                pag.max_results_param.as_deref(),
+                Some("MaxRecords"),
+                "{key} max"
+            );
+            let expected_marker = format!("/{action}Response/{action}Result/Marker");
+            assert_eq!(
+                pag.output_token.as_deref(),
+                Some(expected_marker.as_str()),
+                "{key} output token"
+            );
+            for column in &r.columns {
+                let map_root = column.json_path.split('.').next().unwrap();
+                assert!(
+                    r.field_mappings.contains_key(map_root),
+                    "{key} column {map_root} must be mapped"
+                );
+            }
+        }
+        let snap = get_resource("elasticache-snapshots").expect("elasticache-snapshots");
+        let snap_pag = snap
+            .api_config
+            .as_ref()
+            .expect("snapshots pagination")
+            .pagination
+            .as_ref()
+            .expect("snapshots page");
+        assert_eq!(
+            snap_pag.max_results,
+            Some(50),
+            "DescribeSnapshots caps MaxRecords at 50; 100 draws InvalidParameterValue"
+        );
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()

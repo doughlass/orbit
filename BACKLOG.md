@@ -289,8 +289,17 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       DLQ/redrive is deliberately skipped (per decision): `GetQueueAttributes`
       returns a map the list model renders as a single row, a per-queue describe
       not a browseable list.
-- [ ] Elasticache parameter groups/subnets/snapshots; Redshift parameter
-      groups/reserved nodes; RDS parameter groups/event subscriptions.
+- [x] Elasticache / Redshift / RDS parameter groups, reserved nodes, and
+      events, plus Elasticache snapshots (Redshift + RDS snapshots already
+      existed). All ten follow the query-protocol `<action>Result/<List>/<member>`
+      shape and page on `Marker`/`MaxRecords` (not NextToken), pinned by one
+      family test with exact roots. All live-verified 200; Redshift + RDS
+      reserved nodes were empty but the request fired. One cap trap caught
+      live: `DescribeSnapshots` (Elasticache) rejects `MaxRecords` > 50 with
+      `InvalidParameterValue`, so that resource uses 50, pinned by test — the
+      same cap as SSM `ListDocuments`. Not added: Elasticache subnet groups and
+      RDS event subscriptions (the SNS-topic-subscription flavour, distinct from
+      the browsable event stream).
 
 ## Known structural blockers
 
