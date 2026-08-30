@@ -329,6 +329,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("com.amazonaws.cloudtrail.v20131101.CloudTrail_20131101"),
             is_global: false,
         }),
+        "states" => Some(ServiceDefinition {
+            signing_name: "states",
+            endpoint_prefix: "states",
+            api_version: "2016-11-23",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSStepFunctions"),
+            is_global: false,
+        }),
         "autoscaling" => Some(ServiceDefinition {
             signing_name: "autoscaling",
             endpoint_prefix: "autoscaling",
@@ -570,17 +578,19 @@ impl AwsHttpClient {
         let mut headers = HashMap::new();
         headers.insert("X-Amz-Target".to_string(), target_header);
 
-        // CloudWatch ("monitoring") migrated to the "Granite" JSON endpoint,
-        // which only answers JSON requests bearing the `x-amzn-query-mode: true`
-        // header and a `application/x-amz-json-1.0` content type. Without the
-        // header it returns an XML `<UnknownOperationException/>` regardless of
-        // the otherwise-correct target. Verified against the live API. Other
-        // JSON services (DynamoDB, Logs, ECR, ...) ignore the query-mode header,
-        // so gating on this one service keeps their behavior unchanged.
+        // The plain JSON-RPC services (DynamoDB, Logs, ECR, ...) all answer
+        // application/x-amz-json-1.1. Two services need the older 1.0 content
+        // type instead:
+        //  - "monitoring" (CloudWatch): also needs the x-amzn-query-mode header
+        //    (Granite endpoint), see below.
+        //  - "states" (Step Functions): a standard awsJson1.0 service whose
+        //    endpoint returns an XML <UnknownOperationException/> when the
+        //    request arrives as 1.1. Verified against the live API.
         let query_mode = service_name == "monitoring";
+        let json10 = query_mode || service_name == "states";
         headers.insert(
             "Content-Type".to_string(),
-            if query_mode {
+            if json10 {
                 "application/x-amz-json-1.0"
             } else {
                 "application/x-amz-json-1.1"

@@ -44,6 +44,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/sns.json"),
     include_str!("../resources/sqs.json"),
     include_str!("../resources/ssm.json"),
+    include_str!("../resources/stepfunctions.json"),
     include_str!("../resources/sts.json"),
     include_str!("../resources/vpc.json"),
     include_str!("../resources/vpc-networking.json"),
@@ -781,6 +782,38 @@ mod tests {
             "/LatestMatchingVersion/Version",
             "layers Version comes from the nested latest-matching-version object"
         );
+    }
+
+    /// Step Functions is a clean JSON-RPC service (X-Amz-Target AWSStepFunctions,
+    /// unlike CloudWatch's query-mode quirk), so it needs no special header.
+    /// Executions are a parent-scoped JSON child whose parent id flows into the
+    /// body as stateMachineArn, same mechanism ECR images use.
+    #[test]
+    fn stepfunctions_uses_the_json_target_and_executions_are_parent_scoped() {
+        let sm = get_resource("stepfunctions-state-machines")
+            .expect("stepfunctions-state-machines");
+        let sm_api = sm.api_config.as_ref().expect("api_config");
+        assert_eq!(sm_api.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(sm_api.action.as_deref(), Some("ListStateMachines"));
+        assert_eq!(sm_api.response_root.as_deref(), Some("/stateMachines"));
+        let service = crate::aws::http::get_service("states")
+            .unwrap_or_else(|| panic!("states service must be registered"));
+        assert_eq!(
+            service.target_prefix,
+            Some("AWSStepFunctions"),
+            "states must target AWSStepFunctions"
+        );
+        let ex = get_resource("stepfunctions-executions").expect("stepfunctions-executions");
+        assert!(ex.requires_parent, "executions need a parent state machine");
+        let sub = sm
+            .sub_resources
+            .iter()
+            .find(|s| s.resource_key == "stepfunctions-executions")
+            .expect("state machines declare executions");
+        assert_eq!(sub.filter_param, "stateMachineArn");
+        assert_eq!(sub.parent_id_field, "stateMachineArn");
+        assert!(ex.field_mappings.contains_key("stateMachineArn"));
+        assert_eq!(ex.api_config.as_ref().unwrap().response_root.as_deref(), Some("/executions"));
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

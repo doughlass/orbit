@@ -53,7 +53,12 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
 
 - [ ] **EFS** (file systems, access points, mount targets).
 - [ ] **FSx** (file systems across all flavors; verify each API).
-- [ ] **Step Functions** (state machines, executions).
+- [x] **Step Functions** (state machines, executions). Added the `states`
+      service (plain `AWSStepFunctions` JSON target — **no** query-mode header,
+      unlike CloudWatch). Trap: the endpoint returns an XML
+      `UnknownOperationException` unless the request arrives as
+      `application/x-amz-json-1.0` (not 1.1). Executions are a parent-scoped
+      JSON child passing `stateMachineArn` in the body. Live verified 200.
 - [ ] **EventBridge Scheduler** (schedules).
 - [ ] **API Gateway v2** (HTTP/WebSocket APIs; only v1 rest-apis today).
 - [ ] **ECS task definitions** (clusters/services/tasks exist).

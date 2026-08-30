@@ -49,7 +49,12 @@
       { "value": "UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS", "color": [255, 255, 0] },
       { "value": "IMPORT_IN_PROGRESS", "color": [255, 255, 0] },
       { "value": "IMPORT_ROLLBACK_IN_PROGRESS", "color": [255, 255, 0] },
-      { "value": "REVIEW_IN_PROGRESS", "color": [255, 255, 0] }
+      { "value": "REVIEW_IN_PROGRESS", "color": [255, 255, 0] },
+      { "value": "RUNNING", "color": [255, 255, 0] },
+      { "value": "SUCCEEDED", "color": [0, 255, 0] },
+      { "value": "FAILED", "color": [255, 0, 0] },
+      { "value": "TIMED_OUT", "color": [255, 0, 0] },
+      { "value": "ABORTED", "color": [128, 128, 128] }
     ],
     "bool": [
       { "value": "true", "color": [0, 255, 255] },
