@@ -48,6 +48,39 @@
         "AlarmDescription": { "source": "/AlarmDescription", "default": "-" }
       }
     },
+    "cloudwatch-dashboards": {
+      "display_name": "CloudWatch Dashboards",
+      "service": "monitoring",
+      "sdk_method": "list_dashboards",
+      "sdk_method_params": {},
+      "response_path": "dashboards",
+      "id_field": "DashboardName",
+      "name_field": "DashboardName",
+      "is_global": false,
+      "columns": [
+        { "header": "DASHBOARD NAME", "json_path": "DashboardName", "width": 50 },
+        { "header": "SIZE (B)", "json_path": "Size", "width": 12 },
+        { "header": "LAST MODIFIED", "json_path": "LastModified", "width": 22 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "service_name": "monitoring",
+        "action": "ListDashboards",
+        "response_root": "/DashboardEntries",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken"
+        }
+      },
+      "field_mappings": {
+        "DashboardName": { "source": "/DashboardName", "default": "-" },
+        "DashboardArn": { "source": "/DashboardArn", "default": "-" },
+        "Size": { "source": "/Size", "default": "0" },
+        "LastModified": { "source": "/LastModified", "transform": "format_epoch_millis", "default": "-" }
+      }
+    },
     "cloudwatch-log-groups": {
       "display_name": "CloudWatch Log Groups",
       "service": "cloudwatchlogs",

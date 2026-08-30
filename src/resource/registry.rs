@@ -628,6 +628,35 @@ mod tests {
         }
     }
 
+    /// Dashboards share the monitoring (query-mode) JSON target and must resolve
+    /// the same service entry as alarms, and their list element is
+    /// `DashboardEntries`.
+    #[test]
+    fn cloudwatch_dashboards_use_the_monitoring_query_mode_target() {
+        let resource = get_resource("cloudwatch-dashboards").expect("cloudwatch-dashboards");
+        let api = resource.api_config.as_ref().expect("api_config");
+        assert_eq!(
+            api.protocol,
+            crate::resource::protocol::ApiProtocol::Json,
+            "cloudwatch-dashboards must speak the JSON target protocol"
+        );
+        let service_name = api.service_name.as_deref().unwrap_or(&resource.service);
+        let service = crate::aws::http::get_service(service_name)
+            .unwrap_or_else(|| panic!("uses unknown service {service_name}"));
+        assert_eq!(
+            service.target_prefix,
+            Some("GraniteServiceVersion20100801"),
+            "dashboards must hit the same Granite JSON endpoint as alarms"
+        );
+        assert_eq!(api.action.as_deref(), Some("ListDashboards"));
+        assert_eq!(api.response_root.as_deref(), Some("/DashboardEntries"));
+        assert_eq!(resource.id_field, "DashboardName");
+        assert!(
+            resource.field_mappings.contains_key("DashboardName"),
+            "id field DashboardName must be mapped"
+        );
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()

@@ -21,10 +21,15 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
 
 ### Session 1 (high value, on deck)
 
-- [ ] `monitoring` service entry + **CloudWatch Alarms** (`DescribeAlarms`).
-      AGENTS.md already flags this as missing. Note the service entry name
-      (`monitoring`) differs from the resource service key; both needed.
-- [ ] **CloudWatch Dashboards** (`ListDashboards` / `GetDashboard`).
+- [x] `monitoring` service entry + **CloudWatch Alarms** (`DescribeAlarms`).
+      AGENTS.md already flagged this as missing. The service entry name
+      (`monitoring`) differs from the resource service key; both were added.
+      **Needed a Rust change:** CloudWatch's "Granite" JSON endpoint only
+      answers requests carrying `x-amzn-query-mode: true` +
+      `application/x-amz-json-1.0`; without it the endpoint returns an XML
+      `<UnknownOperationException/>`. Verified live (404 without, 200 with).
+- [x] **CloudWatch Dashboards** (`ListDashboards`). Reuses the monitoring
+      query-mode target; `DashboardEntries` is the list element.
 - [ ] **RDS Aurora clusters** (`DescribeDBClusters`). AGENTS.md: only
       `DescribeDBInstances` is wired today.
 - [ ] **CloudTrail LookupEvents** (event-history search, not just trails).
