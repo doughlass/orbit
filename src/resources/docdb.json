@@ -178,95 +178,384 @@
         "describe_fields": [
           {
             "label": "Instance ID",
-            "source": "/DBInstanceIdentifier"
+            "source": "/DBInstanceIdentifier",
+            "section": "Summary"
           },
           {
             "label": "Status",
-            "source": "/DBInstanceStatus"
+            "source": "/DBInstanceStatus",
+            "section": "Summary"
           },
           {
-            "label": "ARN",
-            "source": "/DBInstanceArn"
-          },
-          {
-            "label": "Instance Class",
-            "source": "/DBInstanceClass"
+            "label": "Class",
+            "source": "/DBInstanceClass",
+            "section": "Summary"
           },
           {
             "label": "Engine",
-            "source": "/Engine"
+            "source": "/Engine",
+            "section": "Summary"
           },
           {
             "label": "Engine Version",
-            "source": "/EngineVersion"
+            "source": "/EngineVersion",
+            "section": "Summary"
           },
           {
-            "label": "Endpoint",
-            "source": "/Endpoint/Address"
+            "label": "CPU",
+            "source": "/CpuDatapoints",
+            "transform": "cloudwatch_latest",
+            "section": "Summary"
           },
           {
-            "label": "Port",
-            "source": "/Endpoint/Port"
+            "label": "Connections",
+            "source": "/ConnectionDatapoints",
+            "transform": "cloudwatch_latest",
+            "section": "Summary"
           },
           {
-            "label": "Availability Zone",
-            "source": "/AvailabilityZone"
+            "label": "Freeable Memory",
+            "source": "/MemoryDatapoints",
+            "transform": "cloudwatch_latest",
+            "section": "Summary"
           },
           {
-            "label": "VPC",
-            "source": "/DBSubnetGroup/VpcId"
-          },
-          {
-            "label": "Subnet Group",
-            "source": "/DBSubnetGroup/DBSubnetGroupName"
-          },
-          {
-            "label": "Security Groups",
-            "source": "/VpcSecurityGroups"
-          },
-          {
-            "label": "Publicly Accessible",
-            "source": "/PubliclyAccessible"
-          },
-          {
-            "label": "Storage Encrypted",
-            "source": "/StorageEncrypted"
-          },
-          {
-            "label": "Backup Retention",
-            "source": "/BackupRetentionPeriod"
-          },
-          {
-            "label": "Backup Window",
-            "source": "/PreferredBackupWindow"
-          },
-          {
-            "label": "Restorable Time",
-            "source": "/LatestRestorableTime"
-          },
-          {
-            "label": "Maintenance Window",
-            "source": "/PreferredMaintenanceWindow"
-          },
-          {
-            "label": "CA Certificate",
-            "source": "/CACertificateIdentifier"
-          },
-          {
-            "label": "Auto Minor Upgrade",
-            "source": "/AutoMinorVersionUpgrade"
-          },
-          {
-            "label": "Perf Insights",
-            "source": "/PerformanceInsightsEnabled"
-          },
-          {
-            "label": "CloudWatch Logs",
-            "source": "/EnabledCloudwatchLogsExports"
+            "label": "Region & AZ",
+            "source": "/AvailabilityZone",
+            "section": "Summary"
           },
           {
             "label": "Created",
-            "source": "/InstanceCreateTime"
+            "source": "/InstanceCreateTime",
+            "section": "Summary"
+          },
+          {
+            "label": "Endpoint",
+            "source": "/Endpoint/Address",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "Port",
+            "source": "/Endpoint/Port",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "Hosted Zone",
+            "source": "/Endpoint/HostedZoneId",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "VPC",
+            "source": "/DBSubnetGroup/VpcId",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "Subnet Group",
+            "source": "/DBSubnetGroup/DBSubnetGroupName",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "Subnet Group State",
+            "source": "/DBSubnetGroup/SubnetGroupStatus",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "Subnets",
+            "source": "/DBSubnetGroup/Subnets/Subnet",
+            "section": "Connectivity & security",
+            "list": true,
+            "item_template": "{SubnetIdentifier}  {SubnetAvailabilityZone/Name}  {SubnetStatus}"
+          },
+          {
+            "label": "Security Groups",
+            "source": "/VpcSecurityGroups/VpcSecurityGroupMembership",
+            "section": "Connectivity & security",
+            "list": true,
+            "item_template": "{VpcSecurityGroupId}  {Status}"
+          },
+          {
+            "label": "Publicly Accessible",
+            "source": "/PubliclyAccessible",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "Storage Encrypted",
+            "source": "/StorageEncrypted",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "KMS Key",
+            "source": "/KmsKeyId",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "CA Certificate",
+            "source": "/CACertificateIdentifier",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "Certificate Expiry",
+            "source": "/CertificateDetails/ValidTill",
+            "section": "Connectivity & security"
+          },
+          {
+            "label": "Rules",
+            "source": "/SecurityGroupRules",
+            "section": "Security group rules",
+            "list": true,
+            "item_template": "{groupId}  egress={isEgress}  {ipProtocol}  {fromPort}-{toPort}  {cidrIpv4}{cidrIpv6}{referencedGroupInfo/groupId}{prefixListId}  {description}"
+          },
+          {
+            "label": "Cluster",
+            "source": "/DBClusterIdentifier",
+            "section": "Configuration"
+          },
+          {
+            "label": "Resource ID",
+            "source": "/DbiResourceId",
+            "section": "Configuration"
+          },
+          {
+            "label": "ARN",
+            "source": "/DBInstanceArn",
+            "section": "Configuration"
+          },
+          {
+            "label": "Promotion Tier",
+            "source": "/PromotionTier",
+            "section": "Configuration"
+          },
+          {
+            "label": "Auto Minor Upgrade",
+            "source": "/AutoMinorVersionUpgrade",
+            "section": "Configuration"
+          },
+          {
+            "label": "Perf Insights",
+            "source": "/PerformanceInsightsEnabled",
+            "section": "Configuration"
+          },
+          {
+            "label": "CloudWatch Logs",
+            "source": "/EnabledCloudwatchLogsExports/member",
+            "transform": "array_to_csv",
+            "section": "Configuration"
+          },
+          {
+            "label": "Copy Tags To Snapshot",
+            "source": "/CopyTagsToSnapshot",
+            "section": "Configuration"
+          },
+          {
+            "label": "Pending Class",
+            "source": "/PendingModifiedValues/DBInstanceClass",
+            "section": "Configuration"
+          },
+          {
+            "label": "Pending Engine",
+            "source": "/PendingModifiedValues/EngineVersion",
+            "section": "Configuration"
+          },
+          {
+            "label": "Pending Certificate",
+            "source": "/PendingModifiedValues/CACertificateIdentifier",
+            "section": "Configuration"
+          },
+          {
+            "label": "Status Detail",
+            "source": "/StatusInfos/DBInstanceStatusInfo",
+            "section": "Configuration",
+            "list": true,
+            "item_template": "{StatusType}  {Status}  normal={Normal}  {Message}"
+          },
+          {
+            "label": "Backup Retention",
+            "source": "/BackupRetentionPeriod",
+            "section": "Maintenance & backups"
+          },
+          {
+            "label": "Backup Window",
+            "source": "/PreferredBackupWindow",
+            "section": "Maintenance & backups"
+          },
+          {
+            "label": "Maintenance Window",
+            "source": "/PreferredMaintenanceWindow",
+            "section": "Maintenance & backups"
+          },
+          {
+            "label": "Restorable Time",
+            "source": "/LatestRestorableTime",
+            "section": "Maintenance & backups"
+          },
+          {
+            "label": "Cluster Status",
+            "source": "/Cluster/Status",
+            "section": "Replication"
+          },
+          {
+            "label": "Master Username",
+            "source": "/Cluster/MasterUsername",
+            "section": "Replication"
+          },
+          {
+            "label": "Cluster Endpoint",
+            "source": "/Cluster/Endpoint",
+            "section": "Replication"
+          },
+          {
+            "label": "Reader Endpoint",
+            "source": "/Cluster/ReaderEndpoint",
+            "section": "Replication"
+          },
+          {
+            "label": "Multi-AZ",
+            "source": "/Cluster/MultiAZ",
+            "section": "Replication"
+          },
+          {
+            "label": "Cluster Param Group",
+            "source": "/Cluster/DBClusterParameterGroup",
+            "section": "Replication"
+          },
+          {
+            "label": "Deletion Protection",
+            "source": "/Cluster/DeletionProtection",
+            "section": "Replication"
+          },
+          {
+            "label": "Members",
+            "source": "/Cluster/DBClusterMembers/DBClusterMember",
+            "section": "Replication",
+            "list": true,
+            "item_template": "{DBInstanceIdentifier}  writer={IsClusterWriter}  tier={PromotionTier}"
+          },
+          {
+            "label": "Tags",
+            "source": "/Tags",
+            "section": "Tags",
+            "list": true,
+            "item_template": "{Key}={Value}"
+          },
+          {
+            "label": "Events",
+            "source": "/RecentEvents",
+            "section": "Events (7 days)",
+            "list": true,
+            "item_template": "{Date}  {Message}"
+          }
+        ],
+        "enrich_calls": [
+          {
+            "result_field": "Tags",
+            "action": "ListTagsForResource",
+            "params": {
+              "ResourceName": "{/DBInstanceArn}"
+            },
+            "extract_path": "/ListTagsForResourceResponse/ListTagsForResourceResult/TagList/Tag"
+          },
+          {
+            "result_field": "Cluster",
+            "action": "DescribeDBClusters",
+            "params": {
+              "DBClusterIdentifier": "{/DBClusterIdentifier}"
+            },
+            "extract_path": "/DescribeDBClustersResponse/DescribeDBClustersResult/DBClusters/DBCluster"
+          },
+          {
+            "result_field": "RecentEvents",
+            "action": "DescribeEvents",
+            "params": {
+              "SourceIdentifier": "{resource_id}",
+              "SourceType": "db-instance",
+              "Duration": "10080",
+              "MaxRecords": "20"
+            },
+            "extract_path": "/DescribeEventsResponse/DescribeEventsResult/Events/Event"
+          },
+          {
+            "result_field": "SecurityGroupRules",
+            "service": "ec2",
+            "action": "DescribeSecurityGroupRules",
+            "params": {
+              "MaxResults": "100"
+            },
+            "filters": [
+              {
+                "name": "group-id",
+                "values_source": "/VpcSecurityGroups/VpcSecurityGroupMembership/VpcSecurityGroupId"
+              }
+            ],
+            "extract_path": "/DescribeSecurityGroupRulesResponse/securityGroupRuleSet/item"
+          },
+          {
+            "result_field": "CpuDatapoints",
+            "protocol": "json",
+            "service": "monitoring",
+            "action": "GetMetricStatistics",
+            "body": {
+              "Namespace": "AWS/DocDB",
+              "MetricName": "CPUUtilization",
+              "Dimensions": [
+                {
+                  "Name": "DBInstanceIdentifier",
+                  "Value": "{resource_id}"
+                }
+              ],
+              "StartTime": "{epoch_now-15m}",
+              "EndTime": "{epoch_now}",
+              "Period": 300,
+              "Statistics": [
+                "Average"
+              ]
+            },
+            "extract_path": "/Datapoints"
+          },
+          {
+            "result_field": "ConnectionDatapoints",
+            "protocol": "json",
+            "service": "monitoring",
+            "action": "GetMetricStatistics",
+            "body": {
+              "Namespace": "AWS/DocDB",
+              "MetricName": "DatabaseConnections",
+              "Dimensions": [
+                {
+                  "Name": "DBInstanceIdentifier",
+                  "Value": "{resource_id}"
+                }
+              ],
+              "StartTime": "{epoch_now-15m}",
+              "EndTime": "{epoch_now}",
+              "Period": 300,
+              "Statistics": [
+                "Average"
+              ]
+            },
+            "extract_path": "/Datapoints"
+          },
+          {
+            "result_field": "MemoryDatapoints",
+            "protocol": "json",
+            "service": "monitoring",
+            "action": "GetMetricStatistics",
+            "body": {
+              "Namespace": "AWS/DocDB",
+              "MetricName": "FreeableMemory",
+              "Dimensions": [
+                {
+                  "Name": "DBInstanceIdentifier",
+                  "Value": "{resource_id}"
+                }
+              ],
+              "StartTime": "{epoch_now-15m}",
+              "EndTime": "{epoch_now}",
+              "Period": 300,
+              "Statistics": [
+                "Average"
+              ]
+            },
+            "extract_path": "/Datapoints"
           }
         ]
       }

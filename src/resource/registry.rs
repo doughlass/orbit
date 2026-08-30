@@ -1556,12 +1556,12 @@ mod tests {
         for expected in [
             "Instance ID",
             "Status",
-            "Instance Class",
+            "Class",
             "Engine",
             "Engine Version",
             "Endpoint",
             "Port",
-            "Availability Zone",
+            "Region & AZ",
             "VPC",
             "Security Groups",
             "Storage Encrypted",
@@ -1580,6 +1580,157 @@ mod tests {
             .find(|f| f.source == "/Endpoint/Port")
             .expect("port is nested under Endpoint");
         assert_eq!(endpoint.label, "Port");
+    }
+
+    /// The instance detail mirrors the console's tabs, and a section heading is
+    /// emitted only when the section *changes*, so a field filed under a section
+    /// its neighbours do not share reprints that heading further down the panel.
+    /// Pin that every section's fields are contiguous, that the console's tabs
+    /// are all covered, and that the live metrics carry the transform that turns
+    /// a CloudWatch datapoint array into one reading (without it the panel shows
+    /// a raw JSON array).
+    #[test]
+    fn docdb_instance_detail_groups_the_console_sections_contiguously() {
+        let r = get_resource("docdb-instances").expect("docdb-instances");
+        let dc = r.describe_config.as_ref().expect("describe_config");
+
+        let mut order: Vec<&str> = Vec::new();
+        for field in &dc.describe_fields {
+            let section = field
+                .section
+                .as_deref()
+                .unwrap_or_else(|| panic!("describe field {} needs a section", field.label));
+            if order.last() != Some(&section) {
+                assert!(
+                    !order.contains(&section),
+                    "section {section} is split apart; its heading would print twice"
+                );
+                order.push(section);
+            }
+        }
+        for expected in [
+            "Summary",
+            "Connectivity & security",
+            "Security group rules",
+            "Configuration",
+            "Maintenance & backups",
+            "Replication",
+            "Tags",
+            "Events (7 days)",
+        ] {
+            assert!(order.contains(&expected), "missing section {expected}");
+        }
+
+        for (source, metric) in [
+            ("/CpuDatapoints", "CPUUtilization"),
+            ("/ConnectionDatapoints", "DatabaseConnections"),
+            ("/MemoryDatapoints", "FreeableMemory"),
+        ] {
+            let field = dc
+                .describe_fields
+                .iter()
+                .find(|f| f.source == source)
+                .unwrap_or_else(|| panic!("{metric} needs a describe field"));
+            assert_eq!(
+                field.transform.as_deref(),
+                Some("cloudwatch_latest"),
+                "{metric} is a datapoint array, not a scalar"
+            );
+        }
+    }
+
+    /// A DocDB instance's rules and metrics live in other services, so its
+    /// enrich calls override service and protocol. Every override must resolve
+    /// in the service table (an unknown key only fails at request time, in the
+    /// user's face) and carry the params its protocol needs: query/json need an
+    /// action, json needs a body, rest needs a path. Also assert the EC2 rule
+    /// lookup stays filtered -- unfiltered it would return every rule in the
+    /// account.
+    #[test]
+    fn enrich_calls_declare_a_reachable_service_and_their_protocols_params() {
+        use crate::resource::protocol::ApiProtocol;
+        let mut checked = 0;
+        for key in get_all_resource_keys() {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            let Some(dc) = r.describe_config.as_ref() else {
+                continue;
+            };
+            for enrich in &dc.enrich_calls {
+                checked += 1;
+                let what = format!("{key} enrich {}", enrich.result_field);
+                if let Some(service) = enrich.service.as_deref() {
+                    assert!(
+                        crate::aws::http::get_service(service).is_some(),
+                        "{what} targets unregistered service {service}"
+                    );
+                }
+                match enrich.protocol.unwrap_or(dc.protocol) {
+                    ApiProtocol::Query => {
+                        assert!(enrich.action.is_some(), "{what} needs an action")
+                    }
+                    ApiProtocol::Json => {
+                        assert!(enrich.action.is_some(), "{what} needs an action");
+                        assert!(enrich.body.is_some(), "{what} needs a json body");
+                    }
+                    ApiProtocol::RestJson | ApiProtocol::RestXml => {
+                        assert!(enrich.path.is_some(), "{what} needs a path")
+                    }
+                }
+                for filter in &enrich.filters {
+                    assert!(
+                        filter.values_source.starts_with('/'),
+                        "{what} filter {} must read the describe response",
+                        filter.name
+                    );
+                }
+            }
+        }
+        assert!(checked > 0, "no enrich calls found -- the sweep is vacuous");
+
+        let dc = get_resource("docdb-instances")
+            .expect("docdb-instances")
+            .describe_config
+            .clone()
+            .expect("describe_config");
+        let rules = dc
+            .enrich_calls
+            .iter()
+            .find(|e| e.result_field == "SecurityGroupRules")
+            .expect("security group rules enrichment");
+        assert_eq!(rules.service.as_deref(), Some("ec2"));
+        assert_eq!(rules.action.as_deref(), Some("DescribeSecurityGroupRules"));
+        assert_eq!(
+            rules.filters.first().map(|f| f.name.as_str()),
+            Some("group-id"),
+            "an unfiltered rule lookup returns the whole account"
+        );
+    }
+
+    /// An enrichment costs an extra API call per describe, so one whose result
+    /// no describe field reads is pure latency the user pays for nothing -- and
+    /// a typo between the two (Tags vs TagList) shows as a silently blank row,
+    /// orbit's worst failure mode. Pin that every result_field is displayed.
+    #[test]
+    fn every_enrich_result_is_read_by_a_describe_field() {
+        for key in get_all_resource_keys() {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            let Some(dc) = r.describe_config.as_ref() else {
+                continue;
+            };
+            if dc.describe_fields.is_empty() {
+                continue; // raw JSON dump shows every enrichment by definition
+            }
+            for enrich in &dc.enrich_calls {
+                let prefix = format!("/{}", enrich.result_field);
+                assert!(
+                    dc.describe_fields
+                        .iter()
+                        .any(|f| f.source == prefix || f.source.starts_with(&format!("{prefix}/"))),
+                    "{key} fetches {} but no describe field shows it",
+                    enrich.result_field
+                );
+            }
+        }
     }
 
     /// Glue and EMR are JSON protocol services whose targets and pagination
