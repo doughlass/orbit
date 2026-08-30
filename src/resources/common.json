@@ -70,6 +70,11 @@
       { "value": "false", "color": [128, 128, 128] },
       { "value": "No", "color": [128, 128, 128] }
     ],
+    "health_status": [
+      { "value": "upcoming", "color": [255, 128, 0] },
+      { "value": "open", "color": [255, 0, 0] },
+      { "value": "closed", "color": [0, 255, 0] }
+    ],
     "severity": [
       { "value": "CRITICAL", "color": [255, 0, 0] },
       { "value": "HIGH", "color": [255, 128, 0] },

@@ -2042,6 +2042,33 @@ mod tests {
             "health events ship startTime as thread epoch seconds on the json wire; \
              formatting it is what makes the START column readable"
         );
+
+        let status_col = h
+            .columns
+            .iter()
+            .find(|c| c.json_path == "statusCode")
+            .expect("health-events STATUS column");
+        assert_eq!(
+            status_col.color_map.as_deref(),
+            Some("health_status"),
+            "the STATUS column needs its own map because the shared state map does \
+             not know open/closed/upcoming"
+        );
+        assert_eq!(
+            get_color_for_value("health_status", "upcoming"),
+            Some([255, 128, 0]),
+            "upcoming must read orange"
+        );
+        assert_eq!(
+            get_color_for_value("health_status", "open"),
+            Some([255, 0, 0]),
+            "open must read red"
+        );
+        assert_eq!(
+            get_color_for_value("health_status", "closed"),
+            Some([0, 255, 0]),
+            "closed must read green"
+        );
     }
 
     /// Config rules and the two new SSM lists all live behind the JSON protocol

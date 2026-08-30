@@ -14,7 +14,7 @@
         { "header": "EVENT TYPE", "json_path": "eventTypeCode", "width": 44 },
         { "header": "CATEGORY", "json_path": "eventTypeCategory", "width": 18 },
         { "header": "REGION", "json_path": "region", "width": 14 },
-        { "header": "STATUS", "json_path": "statusCode", "width": 14, "color_map": "state" },
+        { "header": "STATUS", "json_path": "statusCode", "width": 14, "color_map": "health_status" },
         { "header": "START", "json_path": "startTime", "width": 22 },
         { "header": "ARN", "json_path": "arn", "width": 50, "visible": false }
       ],
