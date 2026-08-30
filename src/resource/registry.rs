@@ -42,6 +42,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/redshift.json"),
     include_str!("../resources/route53.json"),
     include_str!("../resources/s3.json"),
+    include_str!("../resources/scheduler.json"),
     include_str!("../resources/secretsmanager.json"),
     include_str!("../resources/sns.json"),
     include_str!("../resources/sqs.json"),
@@ -923,6 +924,36 @@ mod tests {
         assert_eq!(
             fsx.field_mappings.get("Tags").unwrap().transform.as_deref(),
             Some("tags_to_map")
+        );
+    }
+
+    /// EventBridge Scheduler is a REST-JSON GET service (GET /schedules, no
+    /// X-Amz-Target), not the JSON-RPC style of the old "events" service. Pin
+    /// that so nobody mistakes it for a sibling that needs a target prefix.
+    #[test]
+    fn scheduler_schedules_are_a_rest_json_get() {
+        let sched = get_resource("scheduler-schedules").expect("scheduler-schedules");
+        let api = sched.api_config.as_ref().expect("api_config");
+        assert_eq!(
+            api.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson
+        );
+        assert_eq!(api.method.as_deref(), Some("GET"));
+        assert_eq!(api.path.as_deref(), Some("/schedules"));
+        assert_eq!(api.response_root.as_deref(), Some("/Schedules"));
+        let service = crate::aws::http::get_service("scheduler")
+            .unwrap_or_else(|| panic!("scheduler service must be registered"));
+        assert!(
+            service.target_prefix.is_none(),
+            "scheduler sends no X-Amz-Target; it is REST-JSON GET"
+        );
+        let pagination = api.pagination.as_ref().expect("pagination");
+        assert_eq!(pagination.input_token.as_deref(), Some("NextToken"));
+        assert_eq!(pagination.output_token.as_deref(), Some("/NextToken"));
+        assert_eq!(pagination.max_results_param.as_deref(), Some("MaxResults"));
+        assert!(
+            !sched.requires_parent,
+            "schedules list standalone account-wide"
         );
     }
 

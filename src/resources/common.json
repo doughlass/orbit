@@ -60,7 +60,9 @@
       { "value": "PENDING", "color": [255, 255, 0] },
       { "value": "DELETING", "color": [255, 255, 0] },
       { "value": "MISCONFIGURED", "color": [255, 255, 0] },
-      { "value": "DELETED", "color": [255, 0, 0] }
+      { "value": "DELETED", "color": [255, 0, 0] },
+      { "value": "ENABLED", "color": [0, 255, 0] },
+      { "value": "DISABLED", "color": [128, 128, 128] }
     ],
     "bool": [
       { "value": "true", "color": [0, 255, 255] },

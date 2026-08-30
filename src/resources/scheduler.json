@@ -1,0 +1,42 @@
+{
+  "resources": {
+    "scheduler-schedules": {
+      "display_name": "EventBridge Schedules",
+      "service": "scheduler",
+      "sdk_method": "list_schedules",
+      "sdk_method_params": {},
+      "response_path": "schedules",
+      "id_field": "Name",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "STATE", "json_path": "State", "width": 10, "color_map": "state" },
+        { "header": "GROUP", "json_path": "GroupName", "width": 24 },
+        { "header": "TARGET", "json_path": "Target.Arn", "width": 50 },
+        { "header": "MODIFIED", "json_path": "LastModificationDate", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/schedules",
+        "response_root": "/Schedules",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "State": { "source": "/State", "default": "-" },
+        "GroupName": { "source": "/GroupName", "default": "-" },
+        "LastModificationDate": { "source": "/LastModificationDate", "default": "-" },
+        "Target": { "source": "/Target", "default": "-" }
+      }
+    }
+  }
+}

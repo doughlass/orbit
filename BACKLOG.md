@@ -70,7 +70,12 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       `UnknownOperationException` unless the request arrives as
       `application/x-amz-json-1.0` (not 1.1). Executions are a parent-scoped
       JSON child passing `stateMachineArn` in the body. Live verified 200.
-- [ ] **EventBridge Scheduler** (schedules).
+- [x] **EventBridge Scheduler** (schedules). Plain REST-JSON GET service
+      (`GET /schedules`, no `X-Amz-Target` — unlike the old `events` JSON-RPC
+      service). Schedules list account-wide; the summary shape carries no cron
+      expression (that is a GetSchedule describe call), so the columns are
+      Name/State/Group/TargetArn/LastModificationDate. Live verified 200 (account
+      empty).
 - [ ] **API Gateway v2** (HTTP/WebSocket APIs; only v1 rest-apis today).
 - [ ] **ECS task definitions** (clusters/services/tasks exist).
 
