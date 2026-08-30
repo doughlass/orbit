@@ -1,0 +1,35 @@
+{
+  "resources": {
+    "service-quotas": {
+      "display_name": "Service Quotas",
+      "service": "servicequotas",
+      "sdk_method": "list_services",
+      "sdk_method_params": {},
+      "response_path": "service_quotas",
+      "id_field": "ServiceCode",
+      "name_field": "ServiceName",
+      "is_global": false,
+      "columns": [
+        { "header": "SERVICE", "json_path": "ServiceName", "width": 44 },
+        { "header": "CODE", "json_path": "ServiceCode", "width": 30 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListServices",
+        "response_root": "/Services",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "ServiceName": { "source": "/ServiceName", "default": "-" },
+        "ServiceCode": { "source": "/ServiceCode", "default": "-" }
+      }
+    }
+  }
+}

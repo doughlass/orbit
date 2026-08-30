@@ -205,7 +205,15 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       by an IAM identity policy on the target account, so the response body and
       `response_root` cannot be verified; implement only once a live response
       is obtainable.
-- [ ] Backup (vaults/plans), Resource Groups, Service Quotas.
+- [x] Backup vaults/plans, Resource Groups, Service Quotas. Backup vaults and
+      plans are rest-json GETs with full query-string pagination; Service
+      Quotas is plain JSON (`ServiceQuotasV20190624`). **Resource Groups is the
+      quirk:** `ListGroups` is a *POST* whose `MaxResults`/`NextToken` live in
+      the query string, which the rest-json handler cannot express (it pages
+      POST bodies), so the resource deliberately omits pagination rather than
+      send params AWS would silently ignore — it falls back to AWS's default
+      one page. Pinned by test. Live verified 200 on all four; Backup returned
+      a real Default vault, quotas returned the full service list.
 - [ ] Cost Explorer, Budgets, Trusted Advisor, Health.
 - [ ] Config rules/compliance, X-Ray, Systems Manager fleet ops (Run Command /
       Patch / State Manager / Sessions).

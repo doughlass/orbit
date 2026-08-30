@@ -1,0 +1,86 @@
+{
+  "resources": {
+    "backup-vaults": {
+      "display_name": "Backup Vaults",
+      "service": "backup",
+      "sdk_method": "list_backup_vaults",
+      "sdk_method_params": {},
+      "response_path": "backup_vaults",
+      "id_field": "BackupVaultName",
+      "name_field": "BackupVaultName",
+      "is_global": false,
+      "columns": [
+        { "header": "VAULT", "json_path": "BackupVaultName", "width": 28 },
+        { "header": "STATE", "json_path": "VaultState", "width": 18, "color_map": "state" },
+        { "header": "TYPE", "json_path": "VaultType", "width": 14 },
+        { "header": "POINTS", "json_path": "NumberOfRecoveryPoints", "width": 7 },
+        { "header": "LOCKED", "json_path": "Locked", "width": 7, "color_map": "bool" },
+        { "header": "CREATED", "json_path": "CreationDate", "width": 22 },
+        { "header": "ARN", "json_path": "BackupVaultArn", "width": 50, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/backup-vaults/",
+        "response_root": "/BackupVaultList",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "BackupVaultName": { "source": "/BackupVaultName", "default": "-" },
+        "BackupVaultArn": { "source": "/BackupVaultArn", "default": "-" },
+        "VaultState": { "source": "/VaultState", "default": "-" },
+        "VaultType": { "source": "/VaultType", "default": "-" },
+        "NumberOfRecoveryPoints": { "source": "/NumberOfRecoveryPoints", "default": "0" },
+        "Locked": { "source": "/Locked", "default": "false" },
+        "CreationDate": { "source": "/CreationDate", "default": "-" }
+      }
+    },
+    "backup-plans": {
+      "display_name": "Backup Plans",
+      "service": "backup",
+      "sdk_method": "list_backup_plans",
+      "sdk_method_params": {},
+      "response_path": "backup_plans",
+      "id_field": "BackupPlanName",
+      "name_field": "BackupPlanName",
+      "is_global": false,
+      "columns": [
+        { "header": "PLAN", "json_path": "BackupPlanName", "width": 30 },
+        { "header": "PLAN ID", "json_path": "BackupPlanId", "width": 14 },
+        { "header": "VERSION", "json_path": "VersionId", "width": 10 },
+        { "header": "CREATED", "json_path": "CreationDate", "width": 22 },
+        { "header": "LAST RUN", "json_path": "LastExecutionDate", "width": 22 },
+        { "header": "ARN", "json_path": "BackupPlanArn", "width": 50, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/backup/plans/",
+        "response_root": "/BackupPlansList",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "BackupPlanName": { "source": "/BackupPlanName", "default": "-" },
+        "BackupPlanId": { "source": "/BackupPlanId", "default": "-" },
+        "VersionId": { "source": "/VersionId", "default": "-" },
+        "CreationDate": { "source": "/CreationDate", "default": "-" },
+        "LastExecutionDate": { "source": "/LastExecutionDate", "default": "-" },
+        "BackupPlanArn": { "source": "/BackupPlanArn", "default": "-" }
+      }
+    }
+  }
+}

@@ -19,6 +19,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/appsync.json"),
     include_str!("../resources/athena.json"),
     include_str!("../resources/autoscaling.json"),
+    include_str!("../resources/backup.json"),
     include_str!("../resources/cloudformation.json"),
     include_str!("../resources/cloudfront.json"),
     include_str!("../resources/cloudtrail.json"),
@@ -55,6 +56,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/neptune.json"),
     include_str!("../resources/rds.json"),
     include_str!("../resources/redshift.json"),
+    include_str!("../resources/resource-groups.json"),
     include_str!("../resources/route53.json"),
     include_str!("../resources/route53resolver.json"),
     include_str!("../resources/s3.json"),
@@ -64,6 +66,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/transfer.json"),
     include_str!("../resources/vpc-lattice.json"),
     include_str!("../resources/securityhub.json"),
+    include_str!("../resources/service-quotas.json"),
     include_str!("../resources/shield.json"),
     include_str!("../resources/sns.json"),
     include_str!("../resources/sqs.json"),
@@ -1727,6 +1730,63 @@ mod tests {
             };
             assert_eq!(api.protocol, expected_protocol, "{key} protocol");
         }
+    }
+
+    /// Backup and Resource Groups are rest-json; Service Quotas is plain JSON.
+    /// The interesting bit is Resource Groups' list-call quirk: ListGroups is
+    /// a POST whose MaxResults/NextToken live in the *query string*, which the
+    /// rest-json handler cannot express (it pages POSTs in the body), so the
+    /// resource deliberately omits pagination rather than send params AWS
+    /// would silently ignore -- it falls back to AWS's default one page.
+    /// Pin the three roots and the no-pagination choice for resource-groups.
+    #[test]
+    fn backup_resource_groups_and_quotas_keep_their_endpoint_protocols() {
+        for (key, root, protocol, has_paging) in [
+            (
+                "backup-vaults",
+                "/BackupVaultList",
+                crate::resource::protocol::ApiProtocol::RestJson,
+                true,
+            ),
+            (
+                "backup-plans",
+                "/BackupPlansList",
+                crate::resource::protocol::ApiProtocol::RestJson,
+                true,
+            ),
+            (
+                "resource-groups",
+                "/GroupIdentifiers",
+                crate::resource::protocol::ApiProtocol::RestJson,
+                false,
+            ),
+            (
+                "service-quotas",
+                "/Services",
+                crate::resource::protocol::ApiProtocol::Json,
+                true,
+            ),
+        ] {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            let api = r
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} needs api_config"));
+            assert_eq!(api.protocol, protocol, "{key} protocol");
+            assert_eq!(api.response_root.as_deref(), Some(root), "{key} root");
+            assert_eq!(
+                api.pagination.is_some(),
+                has_paging,
+                "{key} pagination state"
+            );
+        }
+        let svc = crate::aws::http::get_service("servicequotas")
+            .unwrap_or_else(|| panic!("servicequotas service must be registered"));
+        assert_eq!(svc.target_prefix, Some("ServiceQuotasV20190624"));
+        crate::aws::http::get_service("backup")
+            .unwrap_or_else(|| panic!("backup service must be registered"));
+        crate::aws::http::get_service("resource-groups")
+            .unwrap_or_else(|| panic!("resource-groups service must be registered"));
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.
