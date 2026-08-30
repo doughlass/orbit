@@ -1235,6 +1235,67 @@ mod tests {
         }
     }
 
+    /// DescribeKeyPairs and DescribePlacementGroups take no NextToken/MaxResults
+    /// at all (like DescribeAddresses) -- copying a neighbour's pagination block
+    /// makes EC2 answer InvalidParameterCombination and the list renders empty.
+    /// Pin that both omit pagination, and that their wire wrappers stay Set-style.
+    #[test]
+    fn ec2_key_pairs_and_placement_groups_do_not_paginate() {
+        for (key, root) in [
+            ("ec2-key-pairs", "/DescribeKeyPairsResponse/keySet/item"),
+            (
+                "ec2-placement-groups",
+                "/DescribePlacementGroupsResponse/placementGroupSet/item",
+            ),
+        ] {
+            let s = get_resource(key).unwrap_or_else(|| panic!("{}", key));
+            let api = s
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} has api_config"));
+            assert!(
+                api.pagination.is_none(),
+                "{key} must not paginate: DescribeKeyPairs/DescribePlacementGroups reject MaxResults/NextToken"
+            );
+            assert_eq!(api.response_root.as_deref(), Some(root));
+        }
+    }
+
+    /// DescribeLaunchTemplates answers with a `<launchTemplates>` wrapper, not the
+    /// usual `<xxxSet>` -- and unlike key pairs / placement groups it does
+    /// paginate. DescribeHosts uses the standard hostSet wrapper. Pin both
+    /// response roots against the wire so the non-Set one cannot be "fixed" back
+    /// into a Set by an over-literal AGENTS.md reader.
+    #[test]
+    fn ec2_launch_templates_and_hosts_paginate_and_keep_their_wire_wrappers() {
+        for (key, root, output_token) in [
+            (
+                "ec2-launch-templates",
+                "/DescribeLaunchTemplatesResponse/launchTemplates/item",
+                "/DescribeLaunchTemplatesResponse/nextToken",
+            ),
+            (
+                "ec2-hosts",
+                "/DescribeHostsResponse/hostSet/item",
+                "/DescribeHostsResponse/nextToken",
+            ),
+        ] {
+            let s = get_resource(key).unwrap_or_else(|| panic!("{}", key));
+            let api = s
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} has api_config"));
+            assert_eq!(api.response_root.as_deref(), Some(root));
+            let pag = api
+                .pagination
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} paginates"));
+            assert_eq!(pag.input_token.as_deref(), Some("NextToken"));
+            assert_eq!(pag.output_token.as_deref(), Some(output_token));
+            assert_eq!(pag.max_results_param.as_deref(), Some("MaxResults"));
+        }
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()

@@ -127,7 +127,16 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       `input_token` in the codebase that is not `NextToken` — and offers
       **web ACLs**, **rules**, and **IP sets**. Live verified 200 on all five
       resources; protections and web ACLs have real rows.
-- [ ] **Key pairs, launch templates, placement groups, dedicated hosts** (EC2).
+- [x] **Key pairs, launch templates, placement groups, dedicated hosts** (EC2).
+      Four more blocks in `ec2.json`, all with the same query protocol. Two wire
+      facts pin them: `DescribeLaunchTemplates` returns a `<launchTemplates>`
+      wrapper (no `<...Set>`), while the other three keep Set-style roots — and
+      key pairs + placement groups take **no** `NextToken`/`MaxResults` at all
+      (the `DescribeAddresses` trap, so they deliberately omit the pagination
+      block), while launch templates + hosts do paginate. Host `InstanceType`
+      is nested at `/hostProperties/instanceType`. Layout: launch templates and
+      placement groups verified against real rows; key pairs real; hosts empty
+      (account has none) but the request returns 200.
 
 ### Later sessions (long tail)
 
