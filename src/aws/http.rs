@@ -393,6 +393,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        "shield" => Some(ServiceDefinition {
+            signing_name: "shield",
+            endpoint_prefix: "shield",
+            api_version: "2016-06-02",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSShield_20160616"),
+            is_global: false,
+        }),
         "autoscaling" => Some(ServiceDefinition {
             signing_name: "autoscaling",
             endpoint_prefix: "autoscaling",
@@ -436,6 +444,16 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             protocol: Protocol::Json,
             target_prefix: Some("AWSWAF_20190729"),
             is_global: false,
+        }),
+        "waf" => Some(ServiceDefinition {
+            signing_name: "waf",
+            endpoint_prefix: "waf",
+            api_version: "2015-08-24",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSWAF_20150824"),
+            // Classic WAF is served only from waf.amazonaws.com (us-east-1,
+            // region never in the host) -- the same global shape as IAM.
+            is_global: true,
         }),
         "wafv2-global" => Some(ServiceDefinition {
             signing_name: "wafv2",

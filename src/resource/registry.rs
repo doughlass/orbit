@@ -50,6 +50,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/scheduler.json"),
     include_str!("../resources/secretsmanager.json"),
     include_str!("../resources/securityhub.json"),
+    include_str!("../resources/shield.json"),
     include_str!("../resources/sns.json"),
     include_str!("../resources/sqs.json"),
     include_str!("../resources/ssm.json"),
@@ -57,6 +58,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/sts.json"),
     include_str!("../resources/vpc.json"),
     include_str!("../resources/vpc-networking.json"),
+    include_str!("../resources/waf.json"),
     include_str!("../resources/wafv2.json"),
 ];
 
@@ -1162,6 +1164,75 @@ mod tests {
             .find(|c| c.json_path == "severity")
             .expect("inspector2-findings must show a severity column");
         assert_eq!(severity.color_map.as_deref(), Some("severity"));
+    }
+
+    /// Shield is classic AWS JSON-RPC: X-Amz-Target = AWSShield_20160616.<Action>,
+    /// POST /, served from a regional host. Pin the target prefix (the json handler
+    /// builds the header from it) and the NextToken body pagination both lists use.
+    #[test]
+    fn shield_lists_use_the_aws_shield_json_target() {
+        let service = crate::aws::http::get_service("shield")
+            .unwrap_or_else(|| panic!("shield service must be registered"));
+        assert_eq!(service.target_prefix, Some("AWSShield_20160616"));
+        assert_eq!(service.api_version, "2016-06-02");
+        assert!(
+            !service.is_global,
+            "shield answers from shield.<region>.<domain>, not a region-less host"
+        );
+        for (key, expected_root) in [
+            ("shield-protections", "/Protections"),
+            ("shield-protection-groups", "/ProtectionGroups"),
+        ] {
+            let s = get_resource(key).unwrap_or_else(|| panic!("{}", key));
+            let api = s
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} has api_config"));
+            assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Json);
+            assert_eq!(api.response_root.as_deref(), Some(expected_root));
+            let pag = api
+                .pagination
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} paginates in the body"));
+            assert_eq!(pag.input_token.as_deref(), Some("NextToken"));
+            assert_eq!(pag.output_token.as_deref(), Some("/NextToken"));
+            assert_eq!(pag.max_results_param.as_deref(), Some("MaxResults"));
+        }
+    }
+
+    /// Classic WAF (v1) is a global region-less service -- waf.amazonaws.com,
+    /// signed as us-east-1, the same shape as IAM. Every List op shares the same
+    /// NextMarker/Limit pagination, distinct from the NextToken of most services.
+    #[test]
+    fn waf_lists_hit_the_regionless_host_with_next_marker_pagination() {
+        let service = crate::aws::http::get_service("waf")
+            .unwrap_or_else(|| panic!("waf service must be registered"));
+        assert!(
+            service.is_global,
+            "classic WAF is waf.amazonaws.com; the region must never be in the host"
+        );
+        assert_eq!(service.target_prefix, Some("AWSWAF_20150824"));
+        assert_eq!(service.api_version, "2015-08-24");
+        for (key, expected_root) in [
+            ("waf-web-acls", "/WebACLs"),
+            ("waf-rules", "/Rules"),
+            ("waf-ip-sets", "/IPSets"),
+        ] {
+            let s = get_resource(key).unwrap_or_else(|| panic!("{}", key));
+            let api = s
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} has api_config"));
+            assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Json);
+            assert_eq!(api.response_root.as_deref(), Some(expected_root));
+            let pag = api
+                .pagination
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} paginates"));
+            assert_eq!(pag.input_token.as_deref(), Some("NextMarker"));
+            assert_eq!(pag.output_token.as_deref(), Some("/NextMarker"));
+            assert_eq!(pag.max_results_param.as_deref(), Some("Limit"));
+        }
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

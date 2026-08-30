@@ -1,0 +1,75 @@
+{
+  "resources": {
+    "shield-protections": {
+      "display_name": "Shield Protections",
+      "service": "shield",
+      "sdk_method": "list_protections",
+      "sdk_method_params": {},
+      "response_path": "protections",
+      "id_field": "Id",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "RESOURCE", "json_path": "ResourceArn", "width": 50 },
+        { "header": "PROTECTION ID", "json_path": "Id", "width": 30 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListProtections",
+        "response_root": "/Protections",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Id": { "source": "/Id", "default": "-" },
+        "Name": { "source": "/Name", "default": "-" },
+        "ResourceArn": { "source": "/ResourceArn", "default": "-" },
+        "ProtectionArn": { "source": "/ProtectionArn", "default": "-" }
+      }
+    },
+    "shield-protection-groups": {
+      "display_name": "Shield Protection Groups",
+      "service": "shield",
+      "sdk_method": "list_protection_groups",
+      "sdk_method_params": {},
+      "response_path": "protection_groups",
+      "id_field": "ProtectionGroupId",
+      "name_field": "ProtectionGroupId",
+      "is_global": false,
+      "columns": [
+        { "header": "ID", "json_path": "ProtectionGroupId", "width": 28 },
+        { "header": "PATTERN", "json_path": "Pattern", "width": 16 },
+        { "header": "AGGREGATION", "json_path": "Aggregation", "width": 12 },
+        { "header": "RESOURCE TYPE", "json_path": "ResourceType", "width": 26 },
+        { "header": "MEMBERS", "json_path": "Members", "width": 40 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListProtectionGroups",
+        "response_root": "/ProtectionGroups",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "ProtectionGroupId": { "source": "/ProtectionGroupId", "default": "-" },
+        "Pattern": { "source": "/Pattern", "default": "-" },
+        "Aggregation": { "source": "/Aggregation", "default": "-" },
+        "ResourceType": { "source": "/ResourceType", "default": "-" },
+        "Members": { "source": "/Members", "transform": "array_to_csv", "default": "-" }
+      }
+    }
+  }
+}

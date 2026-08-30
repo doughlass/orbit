@@ -1,0 +1,102 @@
+{
+  "resources": {
+    "waf-web-acls": {
+      "display_name": "WAF Web ACLs",
+      "service": "waf",
+      "sdk_method": "list_web_ac_ls",
+      "sdk_method_params": {},
+      "response_path": "web_acls",
+      "id_field": "WebACLId",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "METRIC", "json_path": "MetricName", "width": 20 },
+        { "header": "DEFAULT ACTION", "json_path": "DefaultAction.Type", "width": 14 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListWebACLs",
+        "response_root": "/WebACLs",
+        "pagination": {
+          "input_token": "NextMarker",
+          "output_token": "/NextMarker",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "WebACLId": { "source": "/WebACLId", "default": "-" },
+        "Name": { "source": "/Name", "default": "-" },
+        "MetricName": { "source": "/MetricName", "default": "-" },
+        "DefaultAction": { "source": "/DefaultAction", "default": "-" }
+      }
+    },
+    "waf-rules": {
+      "display_name": "WAF Rules",
+      "service": "waf",
+      "sdk_method": "list_rules",
+      "sdk_method_params": {},
+      "response_path": "rules",
+      "id_field": "RuleId",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "METRIC", "json_path": "MetricName", "width": 20 },
+        { "header": "RULE ID", "json_path": "RuleId", "width": 34 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListRules",
+        "response_root": "/Rules",
+        "pagination": {
+          "input_token": "NextMarker",
+          "output_token": "/NextMarker",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "RuleId": { "source": "/RuleId", "default": "-" },
+        "Name": { "source": "/Name", "default": "-" },
+        "MetricName": { "source": "/MetricName", "default": "-" }
+      }
+    },
+    "waf-ip-sets": {
+      "display_name": "WAF IP Sets",
+      "service": "waf",
+      "sdk_method": "list_ip_sets",
+      "sdk_method_params": {},
+      "response_path": "ip_sets",
+      "id_field": "IPSetId",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "IP SET ID", "json_path": "IPSetId", "width": 34 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListIPSets",
+        "response_root": "/IPSets",
+        "pagination": {
+          "input_token": "NextMarker",
+          "output_token": "/NextMarker",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "IPSetId": { "source": "/IPSetId", "default": "-" },
+        "Name": { "source": "/Name", "default": "-" }
+      }
+    }
+  }
+}

@@ -115,7 +115,18 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       and **Macie2 classification jobs** (`POST /jobs/list`, new `macie2` &
       `inspector2` service entries). Macie2 live verified 200. GuardDuty/Security
       Hub findings are no longer blocked by the handler.
-- [ ] **Shield**, **WAF classic (v1)**.
+- [x] **Shield**, **WAF classic (v1)**. Both are classic AWS JSON-RPC
+      (`X-Amz-Target` POST /) so they slot into the existing json handler with a
+      target prefix — no new capability. Shield (`AWSShield_20160616`) is served
+      from a regional `shield.<region>` host and offers **protections** +
+      **protection groups** (`NextToken`/`MaxResults` body pagination). Classic
+      WAF (`AWSWAF_20150824`) is the **global region-less shape**: its host is
+      `waf.amazonaws.com` (never a region, same as IAM), so the new `waf`
+      service entry is `is_global: true` and the signer resolves it to us-east-1
+      automatically. WAF paginates with `NextMarker`/`Limit` — the one
+      `input_token` in the codebase that is not `NextToken` — and offers
+      **web ACLs**, **rules**, and **IP sets**. Live verified 200 on all five
+      resources; protections and web ACLs have real rows.
 - [ ] **Key pairs, launch templates, placement groups, dedicated hosts** (EC2).
 
 ### Later sessions (long tail)
