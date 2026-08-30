@@ -72,6 +72,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/service-quotas.json"),
     include_str!("../resources/shield.json"),
     include_str!("../resources/sns.json"),
+    include_str!("../resources/sso.json"),
     include_str!("../resources/sqs.json"),
     include_str!("../resources/ssm.json"),
     include_str!("../resources/stepfunctions.json"),
@@ -1871,6 +1872,28 @@ mod tests {
         let ssvc = crate::aws::http::get_service("ssm")
             .unwrap_or_else(|| panic!("ssm service must be registered"));
         assert_eq!(ssvc.target_prefix, Some("AmazonSSM"));
+    }
+
+    /// IAM Identity Center (sso-admin) is served from the sso.<region> host and
+    /// signs as "sso" even though the CLI commands are sso-admin. The service
+    /// entry must carry signing_name "sso" and endpoint_prefix "sso" or the
+    /// SigV4 credential scope and host both break. Pin that alongside the
+    /// SWBExternalService target.
+    #[test]
+    fn identity_center_lists_instances_via_the_sso_endpoint() {
+        let r = get_resource("sso-admin-instances").expect("sso-admin-instances");
+        let api = r
+            .api_config
+            .as_ref()
+            .expect("sso-admin-instances api_config");
+        assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(api.action.as_deref(), Some("ListInstances"));
+        assert_eq!(api.response_root.as_deref(), Some("/Instances"));
+        let svc = crate::aws::http::get_service("sso-admin")
+            .unwrap_or_else(|| panic!("sso-admin service must be registered"));
+        assert_eq!(svc.signing_name, "sso");
+        assert_eq!(svc.endpoint_prefix, "sso");
+        assert_eq!(svc.target_prefix, Some("SWBExternalService"));
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

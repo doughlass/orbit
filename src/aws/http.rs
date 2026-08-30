@@ -449,6 +449,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        "sso-admin" => Some(ServiceDefinition {
+            signing_name: "sso",
+            endpoint_prefix: "sso",
+            api_version: "2020-07-20",
+            protocol: Protocol::Json,
+            target_prefix: Some("SWBExternalService"),
+            is_global: false,
+        }),
         "servicediscovery" => Some(ServiceDefinition {
             signing_name: "servicediscovery",
             endpoint_prefix: "servicediscovery",

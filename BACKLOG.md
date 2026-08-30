@@ -239,7 +239,15 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       trace-list ops (`GetTraces`/`GetTraceSummaries`) also need a time window
       the JSON model can't source. Needs Rust + a permissive role to verify.
       Patch / State Manager / Sessions).
-- [ ] SSO / Identity Center (permission sets, accounts, assignments).
+- [x] IAM Identity Center instances (sso-admin `ListInstances`). Trap: the
+      service is served from the `sso.<region>` host and signs as **`sso`**
+      even though the CLI commands are `sso-admin`, so the service entry must
+      carry signing_name `sso` / endpoint_prefix `sso` or both the SigV4
+      credential scope and the host break — pinned by test. ListInstances
+      returned 200 (account has no Identity Center instance). Permission sets
+      need an `InstanceArn` parent and remain unwired; the portal `sso`
+      ListAccounts needs a session access token and is not usable for resource
+      browsing.
 - [ ] Cognito identity pools, user pool clients/domains.
 - [ ] IAM SAML/OIDC providers, instance profiles, credential report.
 - [ ] KMS aliases, key policies, grants, rotation config.
