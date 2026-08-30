@@ -2035,6 +2035,71 @@ mod tests {
         assert!(sub.contains(&"kms-key-policies"), "keys drill policies");
     }
 
+    /// SNS subscriptions are query protocol with the Subscriptions/member root,
+    /// both standalone (ListSubscriptions) and scoped to a topic
+    /// (ListSubscriptionsByTopic, parent-scoped by TopicArn). SQS is the
+    /// opposite trap: the current botocore model is JSON protocol signed as
+    /// AmazonSQS, but the resource was wired as query with an XML root, so it
+    /// silently returned no rows. Pin SQS to json + /QueueUrls and json actions.
+    #[test]
+    fn sns_subscriptions_are_query_and_sqs_is_json_not_query() {
+        let subs = get_resource("sns-subscriptions").expect("sns-subscriptions");
+        let api = subs.api_config.as_ref().expect("subs api_config");
+        assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Query);
+        assert_eq!(
+            api.response_root.as_deref(),
+            Some("/ListSubscriptionsResponse/ListSubscriptionsResult/Subscriptions/member")
+        );
+
+        let topic_subs = get_resource("sns-topic-subscriptions").expect("sns-topic-subscriptions");
+        let tsapi = topic_subs
+            .api_config
+            .as_ref()
+            .expect("topic subs api_config");
+        assert_eq!(
+            tsapi.response_root.as_deref(),
+            Some("/ListSubscriptionsByTopicResponse/ListSubscriptionsByTopicResult/Subscriptions/member")
+        );
+        assert!(
+            topic_subs.requires_parent,
+            "topic subscriptions need a TopicArn"
+        );
+        let topics = get_resource("sns-topics").expect("sns-topics");
+        let drill = topics
+            .sub_resources
+            .iter()
+            .find(|s| s.resource_key == "sns-topic-subscriptions")
+            .expect("topics must drill subscriptions");
+        assert_eq!(drill.parent_id_field, "TopicArn");
+
+        let sqs = get_resource("sqs-queues").expect("sqs-queues");
+        let qapi = sqs.api_config.as_ref().expect("sqs api_config");
+        assert_eq!(
+            qapi.protocol,
+            crate::resource::protocol::ApiProtocol::Json,
+            "SQS is a JSON API now"
+        );
+        assert_eq!(qapi.response_root.as_deref(), Some("/QueueUrls"));
+        let qsvc = crate::aws::http::get_service("sqs").expect("sqs service");
+        assert_eq!(qsvc.protocol, crate::aws::http::Protocol::Json);
+        assert_eq!(qsvc.target_prefix, Some("AmazonSQS"));
+        for (action_id, expected) in [
+            ("purge_queue", "PurgeQueue"),
+            ("delete_queue", "DeleteQueue"),
+        ] {
+            let ac = sqs
+                .action_configs
+                .get(action_id)
+                .unwrap_or_else(|| panic!("{action_id} action must exist"));
+            assert_eq!(
+                ac.protocol,
+                crate::resource::protocol::ApiProtocol::Json,
+                "{action_id} must follow SQS to json"
+            );
+            assert_eq!(ac.action.as_deref(), Some(expected));
+        }
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()

@@ -275,7 +275,20 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       grants flatten the `Operations` list via `array_to_csv`. Rotation config
       is out: `GetKeyRotationStatus` returns one bool for one key, a per-key
       describe not a list op.
-- [ ] SNS subscriptions, SQS DLQ/redrive.
+- [x] SNS subscriptions + fixing SQS's broken JSON wiring. SNS: added both
+      `sns-subscriptions` (`ListSubscriptions`, standalone, live 200 with real
+      email/sms/https subscriptions) and a topic-scoped `sns-topic-subscriptions`
+      drill (`ListSubscriptionsByTopic`, parent-scoped by TopicArn, live 200).
+      SQS: the existing `sqs-queues` was wired as query protocol with an XML
+      root, but modern SQS is a JSON API — so it silently returned no rows. It
+      is now json protocol (`AmazonSQS` target) with root `/QueueUrls`, and the
+      two destructive actions moved to json too. The real trap surfaced: SQS
+      needs the `x-amzn-query-mode: true` header (json-1.0) or it answers an
+      XML `<UnknownOperationException/>`; that's now handled alongside
+      CloudWatch and pinned by the drive catching the 404 before the fix.
+      DLQ/redrive is deliberately skipped (per decision): `GetQueueAttributes`
+      returns a map the list model renders as a single row, a per-queue describe
+      not a browseable list.
 - [ ] Elasticache parameter groups/subnets/snapshots; Redshift parameter
       groups/reserved nodes; RDS parameter groups/event subscriptions.
 

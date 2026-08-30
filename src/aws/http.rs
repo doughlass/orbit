@@ -253,8 +253,8 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             signing_name: "sqs",
             endpoint_prefix: "sqs",
             api_version: "2012-11-05",
-            protocol: Protocol::Query,
-            target_prefix: None,
+            protocol: Protocol::Json,
+            target_prefix: Some("AmazonSQS"),
             is_global: false,
         }),
         "sns" => Some(ServiceDefinition {
@@ -829,14 +829,17 @@ impl AwsHttpClient {
         headers.insert("X-Amz-Target".to_string(), target_header);
 
         // The plain JSON-RPC services (DynamoDB, Logs, ECR, ...) all answer
-        // application/x-amz-json-1.1. Two services need the older 1.0 content
+        // application/x-amz-json-1.1. Three services need the older 1.0 content
         // type instead:
         //  - "monitoring" (CloudWatch): also needs the x-amzn-query-mode header
         //    (Granite endpoint), see below.
         //  - "states" (Step Functions): a standard awsJson1.0 service whose
         //    endpoint returns an XML <UnknownOperationException/> when the
         //    request arrives as 1.1. Verified against the live API.
-        let query_mode = service_name == "monitoring";
+        //  - "sqs": a query-compatible JSON service. Without x-amzn-query-mode
+        //    it answers an XML <UnknownOperationException/> to a JSON request;
+        //    with it, the request is accepted. Verified against the live API.
+        let query_mode = service_name == "monitoring" || service_name == "sqs";
         let json10 = query_mode || service_name == "states";
         headers.insert(
             "Content-Type".to_string(),
