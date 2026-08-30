@@ -29,6 +29,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/ec2.json"),
     include_str!("../resources/ecr.json"),
     include_str!("../resources/ecs.json"),
+    include_str!("../resources/ecs-task-definitions.json"),
     include_str!("../resources/efs.json"),
     include_str!("../resources/eks.json"),
     include_str!("../resources/elasticache.json"),
@@ -981,6 +982,50 @@ mod tests {
         assert!(
             service.target_prefix.is_none(),
             "apigatewayv2 sends no X-Amz-Target; it is REST-JSON GET"
+        );
+    }
+
+    /// ECS task definitions are the classic scalar-string list (the API lists
+    /// ARNs only, not full objects). The empty source maps the bare ARN string,
+    /// and the three taskdef_arn_* transforms split family:revision out of it.
+    /// Pin that the id field (full ARN, needed for a describe) is mapped too.
+    #[test]
+    fn ecs_task_definitions_map_bare_arn_strings_into_name_family_revision() {
+        let td = get_resource("ecs-task-definitions").expect("ecs-task-definitions");
+        let cfg = td.api_config.as_ref().expect("api_config");
+        assert_eq!(cfg.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(cfg.action.as_deref(), Some("ListTaskDefinitions"));
+        assert_eq!(cfg.response_root.as_deref(), Some("/taskDefinitionArns"));
+        let arn = td
+            .field_mappings
+            .get("Arn")
+            .expect("ecs-task-definitions must map Arn");
+        assert!(
+            arn.source.is_empty() || arn.source == "/",
+            "bare-string items map through an empty (or /) source, got {:?}",
+            arn.source
+        );
+        let name = td
+            .field_mappings
+            .get("Name")
+            .expect("ecs-task-definitions must map Name");
+        assert_eq!(name.transform.as_deref(), Some("taskdef_arn_name"));
+        let family = td
+            .field_mappings
+            .get("Family")
+            .expect("ecs-task-definitions must map Family");
+        assert_eq!(family.transform.as_deref(), Some("taskdef_arn_family"));
+        let revision = td
+            .field_mappings
+            .get("Revision")
+            .expect("ecs-task-definitions must map Revision");
+        assert_eq!(revision.transform.as_deref(), Some("taskdef_arn_revision"));
+        assert_eq!(td.id_field, "Arn");
+        let service = crate::aws::http::get_service("ecs")
+            .unwrap_or_else(|| panic!("ecs service must be registered"));
+        assert_eq!(
+            service.target_prefix,
+            Some("AmazonEC2ContainerServiceV20141113")
         );
     }
 

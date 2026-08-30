@@ -83,7 +83,14 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       path (`/v2/apis`), which lives in the resource JSON, not the service
       table. `GetApis` returns `Items` + `NextToken`. Live verified 200 (account
       empty).
-- [ ] **ECS task definitions** (clusters/services/tasks exist).
+- [x] **ECS task definitions**. The classic scalar-string list: `ListTaskDefinitions`
+      returns bare ARN strings, not objects, so the empty source maps each string
+      directly (the DynamoDB table-names pattern). Added the `taskdef_arn_name` /
+      `taskdef_arn_family` / `taskdef_arn_revision` transforms to split
+      `task-definition/<family>:<rev>` out of the ARN, keeping the full ARN as the
+      mapped id. Reuses the existing `ecs` service entry (its target prefix is
+      already `AmazonEC2ContainerServiceV20141113`). Live verified 200 against 6
+      real task definitions.
 
 ### Session 3
 

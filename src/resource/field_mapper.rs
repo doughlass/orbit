@@ -72,6 +72,9 @@ pub fn apply_transform(value: &Value, transform: &str) -> Value {
         "route53_record_value" => transform_route53_record_value(value),
         "route53_record_id" => transform_route53_record_id(value),
         "ecr_visibility" => transform_ecr_visibility(value),
+        "taskdef_arn_name" => transform_taskdef_arn_name(value),
+        "taskdef_arn_family" => transform_taskdef_arn_family(value),
+        "taskdef_arn_revision" => transform_taskdef_arn_revision(value),
         _ => value.clone(),
     }
 }
@@ -269,6 +272,46 @@ pub fn transform_ecr_visibility(value: &Value) -> Value {
         "Private"
     };
     Value::String(visibility.to_string())
+}
+
+/// Extract the family:revision suffix from a task-definition ARN.
+/// "arn:aws:ecs:eu-west-1:123456789012:task-definition/TPayments:1" -> "TPayments:1"
+pub fn transform_taskdef_arn_name(value: &Value) -> Value {
+    match value {
+        Value::String(s) => {
+            let suffix = s.split("task-definition/").nth(1).unwrap_or("");
+            Value::String(if suffix.is_empty() {
+                s.clone()
+            } else {
+                suffix.to_string()
+            })
+        }
+        _ => value.clone(),
+    }
+}
+
+/// Extract just the family part of a task-definition ARN.
+/// ".../TPayments:1" -> "TPayments"
+pub fn transform_taskdef_arn_family(value: &Value) -> Value {
+    match transform_taskdef_arn_name(value) {
+        Value::String(s) => Value::String(s.split(':').next().unwrap_or(&s).to_string()),
+        other => other,
+    }
+}
+
+/// Extract just the revision part of a task-definition ARN.
+/// ".../TPayments:1" -> "1"
+pub fn transform_taskdef_arn_revision(value: &Value) -> Value {
+    match transform_taskdef_arn_name(value) {
+        Value::String(s) => Value::String(
+            s.rsplit(':')
+                .next()
+                .filter(|r| *r != s)
+                .unwrap_or("-")
+                .to_string(),
+        ),
+        other => other,
+    }
 }
 
 /// Transform array to comma-separated values
@@ -519,5 +562,27 @@ mod tests {
 
         let result = transform_route53_record_id(&record);
         assert_eq!(result, json!("-#-"));
+    }
+
+    #[test]
+    fn test_transform_taskdef_arn_parts() {
+        let arn = json!("arn:aws:ecs:eu-west-1:123456789012:task-definition/TPayments:3");
+        assert_eq!(transform_taskdef_arn_name(&arn), json!("TPayments:3"));
+        assert_eq!(transform_taskdef_arn_family(&arn), json!("TPayments"));
+        assert_eq!(transform_taskdef_arn_revision(&arn), json!("3"));
+    }
+
+    #[test]
+    fn test_transform_taskdef_arn_unparseable_passes_through() {
+        let not_an_arn = json!("just-a-string");
+        assert_eq!(
+            transform_taskdef_arn_name(&not_an_arn),
+            json!("just-a-string")
+        );
+        assert_eq!(
+            transform_taskdef_arn_family(&not_an_arn),
+            json!("just-a-string")
+        );
+        assert_eq!(transform_taskdef_arn_revision(&not_an_arn), json!("-"));
     }
 }

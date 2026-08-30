@@ -1,0 +1,38 @@
+{
+  "resources": {
+    "ecs-task-definitions": {
+      "display_name": "ECS Task Definitions",
+      "service": "ecs",
+      "sdk_method": "list_task_definitions",
+      "sdk_method_params": {},
+      "response_path": "task_definition_arns",
+      "id_field": "Arn",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "FAMILY", "json_path": "Family", "width": 24 },
+        { "header": "REVISION", "json_path": "Revision", "width": 8 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListTaskDefinitions",
+        "response_root": "/taskDefinitionArns",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Arn": { "source": "/" },
+        "Name": { "source": "/", "transform": "taskdef_arn_name" },
+        "Family": { "source": "/", "transform": "taskdef_arn_family" },
+        "Revision": { "source": "/", "transform": "taskdef_arn_revision" }
+      }
+    }
+  }
+}
