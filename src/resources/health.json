@@ -37,7 +37,7 @@
         "eventTypeCategory": { "source": "/eventTypeCategory", "default": "-" },
         "region": { "source": "/region", "default": "-" },
         "statusCode": { "source": "/statusCode", "default": "-" },
-        "startTime": { "source": "/startTime", "default": "-" },
+        "startTime": { "source": "/startTime", "transform": "format_epoch_seconds", "default": "-" },
         "arn": { "source": "/arn", "default": "-" }
       }
     }

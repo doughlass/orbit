@@ -2031,6 +2031,17 @@ mod tests {
             !hsvc.is_global,
             "health stays regional in the selected region"
         );
+
+        let start_time = h
+            .field_mappings
+            .get("startTime")
+            .expect("health-events startTime mapping");
+        assert_eq!(
+            start_time.transform.as_deref(),
+            Some("format_epoch_seconds"),
+            "health events ship startTime as thread epoch seconds on the json wire; \
+             formatting it is what makes the START column readable"
+        );
     }
 
     /// Config rules and the two new SSM lists all live behind the JSON protocol
