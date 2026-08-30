@@ -69,6 +69,14 @@
       { "value": "Yes", "color": [0, 255, 255] },
       { "value": "false", "color": [128, 128, 128] },
       { "value": "No", "color": [128, 128, 128] }
+    ],
+    "severity": [
+      { "value": "CRITICAL", "color": [255, 0, 0] },
+      { "value": "HIGH", "color": [255, 128, 0] },
+      { "value": "MEDIUM", "color": [255, 255, 0] },
+      { "value": "LOW", "color": [0, 180, 255] },
+      { "value": "INFORMATIONAL", "color": [128, 128, 128] },
+      { "value": "UNTRIAGED", "color": [128, 128, 128] }
     ]
   },
   "resources": {}

@@ -94,22 +94,27 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
 
 ### Session 3
 
-- [x] **GuardDuty** (detectors; findings deferred). Detectors are a bare-ID
+- [x] **GuardDuty** (detectors). Detectors are a bare-ID
       list (`GET /detector` → `DetectorIds`), so it maps like the ECS
       task-definition scalar list. Because a bare-string id cannot be extracted
       for the `{resource_id}` describe path, detectors have no describe (same
-      limit as the ECS task-definition resource). **Findings deferred:** it is
-      a POST whose body must exclude the parent `DetectorId` (consumed by the
-      `/{DetectorId}` path placeholder) and carry `MaxResults`/`NextToken` in
-      the body — the rest-json handler only paginates GETs and leaks
-      non-underscore params into POST bodies. Needs a handler capability, not
-      JSON. Live verified 200 against the one real detector.
-- [x] **Security Hub** (standards; findings deferred). Standards are a clean
+      limit as the ECS task-definition resource). Live verified 200 against the
+      one real detector.
+- [x] **Security Hub** (standards). Standards are a clean
       REST-JSON GET (`GET /standards` → `Standards`), no X-Amz-Target — live
-      verified 200 against real standards. New `securityhub` service. **Findings
-      deferred:** `GetFindings` is a POST needing `NextToken`/`MaxResults` in
-      the body, the same rest-json handler gap that defers GuardDuty findings.
-- [ ] **Macie**, **Inspector**.
+      verified 200 against real standards. New `securityhub` service.
+- [x] **Macie**, **Inspector**. Both services' useful lists are **POSTs whose
+      pagination lives in the JSON body** (`maxResults`/`nextToken`), which is
+      exactly the rest-json handler gap that deferred GuardDuty and Security Hub
+      findings. Rather than a new flag, the handler now mirrors the JSON
+      protocol's body-pagination for POSTs and, crucially, skips any param
+      consumed by a `{key}` path placeholder — so a parent `DetectorId` that
+      scopes a `/{DetectorId}` path segment is no longer leaked into the payload
+      (GuardDuty `ListFindings` rejects it there). This unblocks
+      **Inspector2 findings** (`POST /findings/list`, new `severity` colour map)
+      and **Macie2 classification jobs** (`POST /jobs/list`, new `macie2` &
+      `inspector2` service entries). Macie2 live verified 200. GuardDuty/Security
+      Hub findings are no longer blocked by the handler.
 - [ ] **Shield**, **WAF classic (v1)**.
 - [ ] **Key pairs, launch templates, placement groups, dedicated hosts** (EC2).
 

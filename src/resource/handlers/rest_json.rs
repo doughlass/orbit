@@ -79,7 +79,12 @@ impl RestJsonProtocolHandler {
             }
         }
 
-        // Build request body for non-GET requests
+        // Build request body for non-GET requests. A param whose {key} appears
+        // in the path template is a path segment, so it must NOT leak into the
+        // body -- GuardDuty's ListFindings POST is scoped by a /{DetectorId}
+        // path segment but rejects DetectorId in the payload. For POSTs the
+        // pagination params (maxResults + nextToken) go in the body, not the
+        // query string, which is what Macie and Inspector2 expect.
         let body = if method != "GET" {
             let mut body = serde_json::Map::new();
             for (key, value) in &config.static_params {
@@ -87,13 +92,30 @@ impl RestJsonProtocolHandler {
             }
             if let Value::Object(map) = params {
                 for (key, value) in map {
-                    if !key.starts_with('_') {
-                        // Unwrap single-element arrays to single values
-                        let unwrapped_value = match value {
-                            Value::Array(arr) if arr.len() == 1 => arr[0].clone(),
-                            _ => value.clone(),
-                        };
-                        body.insert(key.clone(), unwrapped_value);
+                    if key.starts_with('_') {
+                        continue;
+                    }
+                    // Skip params consumed by a {key} path placeholder.
+                    if path.contains(&format!("{{{}}}", key)) {
+                        continue;
+                    }
+                    // Unwrap single-element arrays to single values
+                    let unwrapped_value = match value {
+                        Value::Array(arr) if arr.len() == 1 => arr[0].clone(),
+                        _ => value.clone(),
+                    };
+                    body.insert(key.clone(), unwrapped_value);
+                }
+            }
+            // Pagination last so a page token always wins (mirrors json.rs).
+            if let Some(pagination) = &config.pagination {
+                if let Some(max_param) = &pagination.max_results_param {
+                    let max_value = pagination.max_results.unwrap_or(50);
+                    body.insert(max_param.clone(), Value::from(max_value));
+                }
+                if let Some(token) = params.get("_page_token").and_then(|v| v.as_str()) {
+                    if let Some(input_token) = &pagination.input_token {
+                        body.insert(input_token.clone(), Value::String(token.to_string()));
                     }
                 }
             }

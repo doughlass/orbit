@@ -38,8 +38,10 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/fsx.json"),
     include_str!("../resources/guardduty.json"),
     include_str!("../resources/iam.json"),
+    include_str!("../resources/inspector2.json"),
     include_str!("../resources/kms.json"),
     include_str!("../resources/lambda.json"),
+    include_str!("../resources/macie2.json"),
     include_str!("../resources/msk.json"),
     include_str!("../resources/rds.json"),
     include_str!("../resources/redshift.json"),
@@ -1096,6 +1098,70 @@ mod tests {
             "securityhub sends no X-Amz-Target; it is REST-JSON GET"
         );
         assert_eq!(service.api_version, "2018-10-26");
+    }
+
+    /// Macie2 has no GET list; ListClassificationJobs is a POST whose pagination
+    /// (nextToken/maxResults) lives in the JSON body. The rest-json handler only
+    /// paginates GET query strings, so this resource needs the boolean that lets
+    /// POST requests put pagination in the body.
+    #[test]
+    fn macie2_classification_jobs_post_with_body_pagination() {
+        let s = get_resource("macie2-classification-jobs").expect("macie2-classification-jobs");
+        let cfg = s.api_config.as_ref().expect("api_config");
+        assert_eq!(
+            cfg.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson
+        );
+        assert_eq!(cfg.method.as_deref(), Some("POST"));
+        assert_eq!(cfg.path.as_deref(), Some("/jobs/list"));
+        assert_eq!(cfg.response_root.as_deref(), Some("/items"));
+        let pag = cfg
+            .pagination
+            .as_ref()
+            .expect("macie2 paginates in the body");
+        assert_eq!(pag.max_results_param.as_deref(), Some("maxResults"));
+        assert_eq!(pag.input_token.as_deref(), Some("nextToken"));
+        let service = crate::aws::http::get_service("macie2")
+            .unwrap_or_else(|| panic!("macie2 service must be registered"));
+        assert!(
+            service.target_prefix.is_none(),
+            "macie2 sends no X-Amz-Target; it is REST-JSON"
+        );
+        assert_eq!(service.api_version, "2020-01-01");
+    }
+
+    /// Inspector2 findings list is a POST with body pagination, like Macie2.
+    /// Pin the path / root and the severity colour map referenced from the UI.
+    #[test]
+    fn inspector2_findings_post_with_body_pagination() {
+        let s = get_resource("inspector2-findings").expect("inspector2-findings");
+        let cfg = s.api_config.as_ref().expect("api_config");
+        assert_eq!(
+            cfg.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson
+        );
+        assert_eq!(cfg.method.as_deref(), Some("POST"));
+        assert_eq!(cfg.path.as_deref(), Some("/findings/list"));
+        assert_eq!(cfg.response_root.as_deref(), Some("/findings"));
+        let pag = cfg
+            .pagination
+            .as_ref()
+            .expect("inspector2 paginates in the body");
+        assert_eq!(pag.max_results_param.as_deref(), Some("maxResults"));
+        assert_eq!(pag.input_token.as_deref(), Some("nextToken"));
+        let service = crate::aws::http::get_service("inspector2")
+            .unwrap_or_else(|| panic!("inspector2 service must be registered"));
+        assert!(
+            service.target_prefix.is_none(),
+            "inspector2 sends no X-Amz-Target; it is REST-JSON"
+        );
+        assert_eq!(service.api_version, "2020-06-08");
+        let severity = s
+            .columns
+            .iter()
+            .find(|c| c.json_path == "severity")
+            .expect("inspector2-findings must show a severity column");
+        assert_eq!(severity.color_map.as_deref(), Some("severity"));
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

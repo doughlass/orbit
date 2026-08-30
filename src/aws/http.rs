@@ -153,6 +153,22 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        "macie2" => Some(ServiceDefinition {
+            signing_name: "macie2",
+            endpoint_prefix: "macie2",
+            api_version: "2020-01-01",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "inspector2" => Some(ServiceDefinition {
+            signing_name: "inspector2",
+            endpoint_prefix: "inspector2",
+            api_version: "2020-06-08",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
         "eks" => Some(ServiceDefinition {
             signing_name: "eks",
             endpoint_prefix: "eks",

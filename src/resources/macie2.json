@@ -1,0 +1,41 @@
+{
+  "resources": {
+    "macie2-classification-jobs": {
+      "display_name": "Macie Classification Jobs",
+      "service": "macie2",
+      "sdk_method": "list_classification_jobs",
+      "sdk_method_params": {},
+      "response_path": "classification_jobs",
+      "id_field": "jobId",
+      "name_field": "name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "name", "width": 30 },
+        { "header": "STATUS", "json_path": "jobStatus", "width": 12 },
+        { "header": "TYPE", "json_path": "jobType", "width": 12 },
+        { "header": "CREATED", "json_path": "createdAt", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "POST",
+        "path": "/jobs/list",
+        "response_root": "/items",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "name": { "source": "/name", "default": "-" },
+        "jobId": { "source": "/jobId", "default": "-" },
+        "jobStatus": { "source": "/jobStatus", "default": "-" },
+        "jobType": { "source": "/jobType", "default": "-" },
+        "createdAt": { "source": "/createdAt", "default": "-" }
+      }
+    }
+  }
+}
