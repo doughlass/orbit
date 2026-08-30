@@ -575,6 +575,59 @@ mod tests {
         assert!(invoke_action.is_some(), "Lambda should have invoke action");
     }
 
+    /// CloudWatch migrated to the `GraniteServiceVersion20100801` JSON target;
+    /// the resource must resolve a service entry that produces that exact
+    /// header, otherwise every request 404s. The wire was verified live.
+    #[test]
+    fn cloudwatch_alarms_resolves_the_monitoring_json_target() {
+        let resource = get_resource("cloudwatch-alarms").expect("cloudwatch-alarms");
+        let api = resource.api_config.as_ref().expect("api_config");
+
+        assert_eq!(
+            api.protocol,
+            crate::resource::protocol::ApiProtocol::Json,
+            "cloudwatch-alarms must speak the JSON target protocol"
+        );
+        let service_name = api.service_name.as_deref().unwrap_or(&resource.service);
+        let service = crate::aws::http::get_service(service_name)
+            .unwrap_or_else(|| panic!("uses unknown service {service_name}"));
+        assert_eq!(
+            service.target_prefix,
+            Some("GraniteServiceVersion20100801"),
+            "the live cloudwatch API only answers the GraniteServiceVersion target"
+        );
+        assert_eq!(api.action.as_deref(), Some("DescribeAlarms"));
+        assert_eq!(
+            api.response_root.as_deref(),
+            Some("/MetricAlarms"),
+            "MetricAlarms is the list element in the DescribeAlarms response"
+        );
+    }
+
+    /// The id field has to be mapped, or describe silently sends an empty
+    /// string (AGENTS.md invariant).
+    #[test]
+    fn cloudwatch_alarms_id_is_mapped() {
+        let resource = get_resource("cloudwatch-alarms").expect("cloudwatch-alarms");
+        assert_eq!(resource.id_field, "AlarmName");
+        assert!(
+            resource.field_mappings.contains_key("AlarmName"),
+            "id field AlarmName must be mapped"
+        );
+        // Column json_paths must have roots in field_mappings.
+        for col in &resource.columns {
+            let root = col.json_path.split('.').next().unwrap_or("");
+            assert!(
+                resource.field_mappings.contains_key(&col.json_path)
+                    || resource.field_mappings.contains_key(root),
+                "column {} json_path {} root {} not in field_mappings",
+                col.header,
+                col.json_path,
+                root
+            );
+        }
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()

@@ -1,0 +1,74 @@
+# Resource coverage backlog
+
+Goal: bring Orbit's browseable resources up to cover the AWS services a
+k9s-style browser should. Effort is multi-session, so this file is the durable
+source of truth for what's done and what's next. **One logical change per
+commit; verify each resource against the real wire format before committing.**
+
+Per AGENTS.md:
+- New services need a `ServiceDefinition` entry in `src/aws/http.rs`.
+- New resources are pure JSON under `src/resources/` (data, not code).
+- Every new resource: TDD a registry invariant, confirm the `response_root`
+  against a real response, check pagination support in the botocore model.
+- Nothing is committed without `cargo test` + `cargo clippy --all-targets -- -D
+  warnings` + `cargo fmt --check` green.
+
+## Covered today
+
+See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
+
+## Ordering (do top-down)
+
+### Session 1 (high value, on deck)
+
+- [ ] `monitoring` service entry + **CloudWatch Alarms** (`DescribeAlarms`).
+      AGENTS.md already flags this as missing. Note the service entry name
+      (`monitoring`) differs from the resource service key; both needed.
+- [ ] **CloudWatch Dashboards** (`ListDashboards` / `GetDashboard`).
+- [ ] **RDS Aurora clusters** (`DescribeDBClusters`). AGENTS.md: only
+      `DescribeDBInstances` is wired today.
+- [ ] **CloudTrail LookupEvents** (event-history search, not just trails).
+- [ ] **Lambda layers / aliases / versions** (functions only today).
+- [ ] **S3 bucket policies / lifecycle / replication** (buckets + objects only).
+
+### Session 2
+
+- [ ] **EFS** (file systems, access points, mount targets).
+- [ ] **FSx** (file systems across all flavors; verify each API).
+- [ ] **Step Functions** (state machines, executions).
+- [ ] **EventBridge Scheduler** (schedules).
+- [ ] **API Gateway v2** (HTTP/WebSocket APIs; only v1 rest-apis today).
+- [ ] **ECS task definitions** (clusters/services/tasks exist).
+
+### Session 3
+
+- [ ] **GuardDuty** (detectors, findings).
+- [ ] **Security Hub** (findings, standards).
+- [ ] **Macie**, **Inspector**.
+- [ ] **Shield**, **WAF classic (v1)**.
+- [ ] **Key pairs, launch templates, placement groups, dedicated hosts** (EC2).
+
+### Later sessions (long tail)
+
+- [ ] Kinesis (streams, delivery streams), Data Firehose.
+- [ ] AppSync, MQ, Timestream, QLDB, DocumentDB, Neptune.
+- [ ] Glue, EMR, DataSync, Transfer Family.
+- [ ] Global Accelerator, App Mesh, Cloud Map, VPC Lattice, Route53 Resolver.
+- [ ] Backup (vaults/plans), Resource Groups, Service Quotas.
+- [ ] Cost Explorer, Budgets, Trusted Advisor, Health.
+- [ ] Config rules/compliance, X-Ray, Systems Manager fleet ops (Run Command /
+      Patch / State Manager / Sessions).
+- [ ] SSO / Identity Center (permission sets, accounts, assignments).
+- [ ] Cognito identity pools, user pool clients/domains.
+- [ ] IAM SAML/OIDC providers, instance profiles, credential report.
+- [ ] KMS aliases, key policies, grants, rotation config.
+- [ ] SNS subscriptions, SQS DLQ/redrive.
+- [ ] Elasticache parameter groups/subnets/snapshots; Redshift parameter
+      groups/reserved nodes; RDS parameter groups/event subscriptions.
+
+## Known structural blockers
+
+- Two-token pagination (e.g. Route53 health checks / some List* ops) needs a
+  Rust change in `PaginationConfig`, not a JSON one.
+- Windows self-update asset (zip) not read by the tar extractor.
+- Column widths are fixed percentages; content-aware autofit unimplemented.

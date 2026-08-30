@@ -178,6 +178,21 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("Logs_20140328"),
             is_global: false,
         }),
+        // CloudWatch metrics/alarms. AWS migrated this service off the classic
+        // AWS-Query XML path to a JSON target; the observed wire header is
+        // `X-Amz-Target: GraniteServiceVersion20100801.<Action>` with a
+        // `Content-Type: application/x-amz-json-1.0` body. Verifying this
+        // against the live API is what pinned the target prefix — the older
+        // `CloudWatchService20100801` / `HTTPMonitorService20100801` prefixes
+        // no longer answer.
+        "monitoring" | "cloudwatch" => Some(ServiceDefinition {
+            signing_name: "monitoring",
+            endpoint_prefix: "monitoring",
+            api_version: "2010-08-01",
+            protocol: Protocol::Json,
+            target_prefix: Some("GraniteServiceVersion20100801"),
+            is_global: false,
+        }),
         "sqs" => Some(ServiceDefinition {
             signing_name: "sqs",
             endpoint_prefix: "sqs",
@@ -554,10 +569,27 @@ impl AwsHttpClient {
 
         let mut headers = HashMap::new();
         headers.insert("X-Amz-Target".to_string(), target_header);
+
+        // CloudWatch ("monitoring") migrated to the "Granite" JSON endpoint,
+        // which only answers JSON requests bearing the `x-amzn-query-mode: true`
+        // header and a `application/x-amz-json-1.0` content type. Without the
+        // header it returns an XML `<UnknownOperationException/>` regardless of
+        // the otherwise-correct target. Verified against the live API. Other
+        // JSON services (DynamoDB, Logs, ECR, ...) ignore the query-mode header,
+        // so gating on this one service keeps their behavior unchanged.
+        let query_mode = service_name == "monitoring";
         headers.insert(
             "Content-Type".to_string(),
-            "application/x-amz-json-1.1".to_string(),
+            if query_mode {
+                "application/x-amz-json-1.0"
+            } else {
+                "application/x-amz-json-1.1"
+            }
+            .to_string(),
         );
+        if query_mode {
+            headers.insert("x-amzn-query-mode".to_string(), "true".to_string());
+        }
 
         self.signed_request(&service, "POST", &url, body, Some(headers))
             .await

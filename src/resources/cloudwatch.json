@@ -1,5 +1,53 @@
 {
   "resources": {
+    "cloudwatch-alarms": {
+      "display_name": "CloudWatch Alarms",
+      "service": "monitoring",
+      "sdk_method": "describe_alarms",
+      "sdk_method_params": {},
+      "response_path": "alarms",
+      "id_field": "AlarmName",
+      "name_field": "AlarmName",
+      "is_global": false,
+      "columns": [
+        { "header": "ALARM NAME", "json_path": "AlarmName", "width": 30 },
+        { "header": "STATE", "json_path": "StateValue", "width": 18, "color_map": "state" },
+        { "header": "METRIC", "json_path": "MetricName", "width": 22 },
+        { "header": "NAMESPACE", "json_path": "Namespace", "width": 22 },
+        { "header": "THRESHOLD", "json_path": "Threshold", "width": 10 },
+        { "header": "PERIOD", "json_path": "Period", "width": 8 },
+        { "header": "ACTIONS", "json_path": "ActionsEnabled", "width": 9, "color_map": "bool" }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "service_name": "monitoring",
+        "action": "DescribeAlarms",
+        "response_root": "/MetricAlarms",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "AlarmName": { "source": "/AlarmName", "default": "-" },
+        "AlarmArn": { "source": "/AlarmArn", "default": "-" },
+        "StateValue": { "source": "/StateValue", "default": "-" },
+        "StateReason": { "source": "/StateReason", "default": "-" },
+        "MetricName": { "source": "/MetricName", "default": "-" },
+        "Namespace": { "source": "/Namespace", "default": "-" },
+        "Threshold": { "source": "/Threshold", "default": "-" },
+        "Period": { "source": "/Period", "default": "-" },
+        "EvaluationPeriods": { "source": "/EvaluationPeriods", "default": "-" },
+        "ComparisonOperator": { "source": "/ComparisonOperator", "default": "-" },
+        "ActionsEnabled": { "source": "/ActionsEnabled", "transform": "bool_to_yes_no", "default": "-" },
+        "StateUpdatedTimestamp": { "source": "/StateUpdatedTimestamp", "transform": "format_epoch_millis", "default": "-" },
+        "AlarmDescription": { "source": "/AlarmDescription", "default": "-" }
+      }
+    },
     "cloudwatch-log-groups": {
       "display_name": "CloudWatch Log Groups",
       "service": "cloudwatchlogs",
