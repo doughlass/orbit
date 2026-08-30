@@ -129,6 +129,22 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        "docdb" => Some(ServiceDefinition {
+            signing_name: "rds",
+            endpoint_prefix: "rds",
+            api_version: "2014-10-31",
+            protocol: Protocol::Query,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "neptune" => Some(ServiceDefinition {
+            signing_name: "rds",
+            endpoint_prefix: "rds",
+            api_version: "2014-10-31",
+            protocol: Protocol::Query,
+            target_prefix: None,
+            is_global: false,
+        }),
         "dynamodb" => Some(ServiceDefinition {
             signing_name: "dynamodb",
             endpoint_prefix: "dynamodb",

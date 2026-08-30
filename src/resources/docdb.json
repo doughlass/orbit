@@ -1,0 +1,84 @@
+{
+  "resources": {
+    "docdb-clusters": {
+      "display_name": "DocDB Clusters",
+      "service": "docdb",
+      "sdk_method": "describe_db_clusters",
+      "sdk_method_params": {},
+      "response_path": "docdb_clusters",
+      "id_field": "DBClusterIdentifier",
+      "name_field": "DBClusterIdentifier",
+      "is_global": false,
+      "columns": [
+        { "header": "CLUSTER ID", "json_path": "DBClusterIdentifier", "width": 25 },
+        { "header": "STATUS", "json_path": "Status", "width": 12, "color_map": "state" },
+        { "header": "ENGINE", "json_path": "Engine", "width": 10 },
+        { "header": "ENDPOINT", "json_path": "Endpoint", "width": 34 },
+        { "header": "CREATED", "json_path": "ClusterCreateTime", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeDBClusters",
+        "response_root": "/DescribeDBClustersResponse/DescribeDBClustersResult/DBClusters",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeDBClustersResponse/DescribeDBClustersResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "DBClusterIdentifier": { "source": "/DBClusterIdentifier", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "Engine": { "source": "/Engine", "default": "-" },
+        "Endpoint": { "source": "/Endpoint", "default": "-" },
+        "MasterUsername": { "source": "/MasterUsername", "default": "-" },
+        "Port": { "source": "/Port", "default": "-" },
+        "DBClusterArn": { "source": "/DBClusterArn", "default": "-" },
+        "ClusterCreateTime": { "source": "/ClusterCreateTime", "default": "-" }
+      }
+    },
+    "docdb-instances": {
+      "display_name": "DocDB Instances",
+      "service": "docdb",
+      "sdk_method": "describe_db_instances",
+      "sdk_method_params": {},
+      "response_path": "docdb_instances",
+      "id_field": "DBInstanceIdentifier",
+      "name_field": "DBInstanceIdentifier",
+      "is_global": false,
+      "columns": [
+        { "header": "INSTANCE ID", "json_path": "DBInstanceIdentifier", "width": 25 },
+        { "header": "STATUS", "json_path": "DBInstanceStatus", "width": 14, "color_map": "state" },
+        { "header": "CLASS", "json_path": "DBInstanceClass", "width": 22 },
+        { "header": "ENGINE", "json_path": "Engine", "width": 10 },
+        { "header": "ENDPOINT", "json_path": "Endpoint.Address", "width": 34 },
+        { "header": "CREATED", "json_path": "InstanceCreateTime", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeDBInstances",
+        "response_root": "/DescribeDBInstancesResponse/DescribeDBInstancesResult/DBInstances/DBInstance",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeDBInstancesResponse/DescribeDBInstancesResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "DBInstanceIdentifier": { "source": "/DBInstanceIdentifier", "default": "-" },
+        "DBInstanceStatus": { "source": "/DBInstanceStatus", "default": "-" },
+        "DBInstanceClass": { "source": "/DBInstanceClass", "default": "-" },
+        "Engine": { "source": "/Engine", "default": "-" },
+        "Endpoint": { "source": "/Endpoint", "default": "-" },
+        "DBClusterIdentifier": { "source": "/DBClusterIdentifier", "default": "-" },
+        "InstanceCreateTime": { "source": "/InstanceCreateTime", "default": "-" }
+      }
+    }
+  }
+}

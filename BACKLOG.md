@@ -165,7 +165,18 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       (`nextToken`/`maxResults`), MQ PascalCase (`NextToken`/`MaxResults`) —
       pinned by test since a swapped case silently never pages. Live verified
       200 (both accounts empty of these resources).
-- [ ] Timestream, QLDB, DocumentDB, Neptune.
+- [x] DocumentDB + Neptune clusters/instances. RDS-family Query protocol: both
+      are served from `rds.<region>.amazonaws.com` with signing_name `rds`, so
+      their service entries reuse the RDS endpoint/signing identity rather than
+      inventing a non-existent `docdb.<region>`/`neptune.<region>` host — pinned
+      by test. Wire roots and actions are identical to RDS's
+      (`DescribeDBClustersResponse/.../DBClusters`, etc.). Live verified 200 on
+      all four (both accounts empty).
+- [ ] Timestream (databases/tables) + QLDB ledgers — **blocked for live
+      verification**: the target account is not enabled for Timestream
+      (`AccessDeniedException` on DescribeEndpoints), and QLDB is not bundled
+      in this awscli's botocore model, so a wrong `response_root` cannot be
+      caught. Implement only once both can be confirmed against a real response.
 - [ ] Glue, EMR, DataSync, Transfer Family.
 - [ ] Global Accelerator, App Mesh, Cloud Map, VPC Lattice, Route53 Resolver.
 - [ ] Backup (vaults/plans), Resource Groups, Service Quotas.

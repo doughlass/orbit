@@ -27,6 +27,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/cognito.json"),
     include_str!("../resources/common.json"),
     include_str!("../resources/dynamodb.json"),
+    include_str!("../resources/docdb.json"),
     include_str!("../resources/ec2.json"),
     include_str!("../resources/ecr.json"),
     include_str!("../resources/ecs.json"),
@@ -47,6 +48,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/macie2.json"),
     include_str!("../resources/mq.json"),
     include_str!("../resources/msk.json"),
+    include_str!("../resources/neptune.json"),
     include_str!("../resources/rds.json"),
     include_str!("../resources/redshift.json"),
     include_str!("../resources/route53.json"),
@@ -1449,6 +1451,65 @@ mod tests {
         assert_eq!(pag.max_results_param.as_deref(), Some("MaxResults"));
         crate::aws::http::get_service("mq")
             .unwrap_or_else(|| panic!("mq service must be registered"));
+    }
+
+    /// DocumentDB and Neptune are the RDS-family Query protocol and, critically,
+    /// share the RDS endpoint and signing identity: both are served from
+    /// rds.<region>.amazonaws.com with signing_name "rds", so the service entry
+    /// must use endpoint_prefix "rds" and signing_name "rds" even though the
+    /// resources are separate. Assert that an (misleading) docdb/neptune pair
+    /// is not silently overridden to a docdb.<region> host that does not exist,
+    /// and that the four resources agree with RDS's wire roots.
+    #[test]
+    fn docdb_and_neptune_reuse_the_rds_endpoint_and_wire_shape() {
+        let docdb_service =
+            crate::aws::http::get_service("docdb").expect("docdb service must be registered");
+        assert_eq!(docdb_service.endpoint_prefix, "rds");
+        assert_eq!(docdb_service.signing_name, "rds");
+        let neptune_service =
+            crate::aws::http::get_service("neptune").expect("neptune service must be registered");
+        assert_eq!(neptune_service.endpoint_prefix, "rds");
+        assert_eq!(neptune_service.signing_name, "rds");
+
+        for (key, action, root) in [
+            (
+                "docdb-clusters",
+                "DescribeDBClusters",
+                "/DescribeDBClustersResponse/DescribeDBClustersResult/DBClusters",
+            ),
+            (
+                "docdb-instances",
+                "DescribeDBInstances",
+                "/DescribeDBInstancesResponse/DescribeDBInstancesResult/DBInstances/DBInstance",
+            ),
+            (
+                "neptune-clusters",
+                "DescribeDBClusters",
+                "/DescribeDBClustersResponse/DescribeDBClustersResult/DBClusters",
+            ),
+            (
+                "neptune-instances",
+                "DescribeDBInstances",
+                "/DescribeDBInstancesResponse/DescribeDBInstancesResult/DBInstances/DBInstance",
+            ),
+        ] {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            let api = r
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} needs api_config"));
+            assert_eq!(
+                api.action.as_deref(),
+                Some(action),
+                "docdb/neptune must use the same action names as RDS"
+            );
+            assert_eq!(
+                api.response_root.as_deref(),
+                Some(root),
+                "docdb/neptune share RDS's wire roots"
+            );
+            assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Query);
+        }
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.
