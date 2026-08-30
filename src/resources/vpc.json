@@ -41,6 +41,42 @@
         "InstanceTenancy": { "source": "/instanceTenancy", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
       },
+      "describe_config": {
+        "protocol": "query",
+        "action": "DescribeVpcs",
+        "id_param": "VpcId.1",
+        "response_path": "/DescribeVpcsResponse/vpcSet/item",
+        "enrich_calls": [
+          {
+            "result_field": "FlowLogs",
+            "action": "DescribeFlowLogs",
+            "extract_path": "/DescribeFlowLogsResponse/flowLogSet/item",
+            "filters": [ { "name": "resource-id", "values_source": "/vpcId" } ]
+          },
+          {
+            "result_field": "InternetGateways",
+            "action": "DescribeInternetGateways",
+            "extract_path": "/DescribeInternetGatewaysResponse/internetGatewaySet/item",
+            "filters": [ { "name": "attachment.vpc-id", "values_source": "/vpcId" } ]
+          }
+        ],
+        "describe_fields": [
+          { "label": "VPC ID", "source": "/vpcId", "section": "Identity" },
+          { "label": "State", "source": "/state" },
+          { "label": "Owner ID", "source": "/ownerId" },
+          { "label": "DHCP Options", "source": "/dhcpOptionsId" },
+          { "label": "Default VPC", "source": "/isDefault" },
+          { "label": "Tenancy", "source": "/instanceTenancy" },
+
+          { "label": "IPv4 CIDR Blocks", "source": "/cidrBlockAssociationSet/item", "section": "CIDR Blocks", "list": true, "item_template": "{cidrBlock}" },
+          { "label": "Block Public Access", "source": "/blockPublicAccessStates/internetGatewayBlockMode" },
+
+          { "label": "Flow Logs", "source": "/FlowLogs", "section": "Flow Logs", "list": true, "item_template": "{flowLogId} {flowLogStatus} {trafficType} -> {logGroupName}" },
+          { "label": "Internet Gateways", "source": "/InternetGateways", "section": "Internet Gateways", "list": true, "item_template": "{internetGatewayId}" },
+
+          { "label": "Tags", "source": "/tagSet/item", "section": "Tags", "list": true, "item_template": "{key}={value}" }
+        ]
+      },
       "tag_filter": {
         "enabled": true
       }

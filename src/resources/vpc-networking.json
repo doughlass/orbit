@@ -194,6 +194,44 @@
           "default": "-"
         },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      },
+      "describe_config": {
+        "protocol": "query",
+        "action": "DescribeVpcEndpoints",
+        "id_param": "VpcEndpointId.1",
+        "response_path": "/DescribeVpcEndpointsResponse/vpcEndpointSet/item",
+        "enrich_calls": [
+          {
+            "result_field": "NetworkInterfaces",
+            "action": "DescribeNetworkInterfaces",
+            "extract_path": "/DescribeNetworkInterfacesResponse/networkInterfaceSet/item",
+            "filters": [ { "name": "network-interface-id", "values_source": "/networkInterfaceIdSet/item" } ]
+          }
+        ],
+        "describe_fields": [
+          { "label": "Endpoint ID", "source": "/vpcEndpointId", "section": "Identity" },
+          { "label": "Service", "source": "/serviceName" },
+          { "label": "Type", "source": "/vpcEndpointType" },
+          { "label": "State", "source": "/state" },
+          { "label": "VPC ID", "source": "/vpcId" },
+          { "label": "Owner ID", "source": "/ownerId" },
+          { "label": "Requester managed", "source": "/requesterManaged" },
+          { "label": "Created", "source": "/creationTimestamp" },
+
+          { "label": "IP Address Type", "source": "/ipAddressType", "section": "Configuration" },
+          { "label": "DNS Record Type", "source": "/dnsOptions/dnsRecordIpType" },
+          { "label": "Private DNS enabled", "source": "/privateDnsEnabled" },
+          { "label": "Service Region", "source": "/serviceRegion" },
+
+          { "label": "Subnets", "source": "/subnetIdSet/item", "section": "Associated", "list": true },
+          { "label": "Route Tables", "source": "/routeTableIdSet/item", "list": true },
+          { "label": "Security Groups", "source": "/groupSet/item", "list": true, "item_template": "{groupName} {groupId}" },
+          { "label": "Network Interfaces", "source": "/NetworkInterfaces", "list": true, "item_template": "{availabilityZone} {privateIpAddress} {status}" },
+          { "label": "DNS Entries", "source": "/dnsEntrySet/item", "section": "DNS", "list": true, "item_template": "{dnsName}" },
+          { "label": "Policy", "source": "/policyDocument" },
+
+          { "label": "Tags", "source": "/tagSet/item", "section": "Tags", "list": true, "item_template": "{key}={value}" }
+        ]
       }
     },
 
@@ -279,6 +317,35 @@
         "AccepterCidr": { "source": "/accepterVpcInfo/cidrBlock", "default": "-" },
         "AccepterRegion": { "source": "/accepterVpcInfo/region", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      },
+      "describe_config": {
+        "protocol": "query",
+        "action": "DescribeVpcPeeringConnections",
+        "id_param": "VpcPeeringConnectionId.1",
+        "response_path": "/DescribeVpcPeeringConnectionsResponse/vpcPeeringConnectionSet/item",
+        "describe_fields": [
+          { "label": "Peering ID", "source": "/vpcPeeringConnectionId", "section": "Identity" },
+          { "label": "Status", "source": "/status/code" },
+          { "label": "Status Message", "source": "/status/message" },
+
+          { "label": "VPC ID", "source": "/requesterVpcInfo/vpcId", "section": "Requester VPC" },
+          { "label": "Owner ID", "source": "/requesterVpcInfo/ownerId" },
+          { "label": "Region", "source": "/requesterVpcInfo/region" },
+          { "label": "CIDR", "source": "/requesterVpcInfo/cidrBlock" },
+          { "label": "CIDR Blocks", "source": "/requesterVpcInfo/cidrBlockSet/item", "list": true, "item_template": "{cidrBlock}" },
+
+          { "label": "VPC ID", "source": "/accepterVpcInfo/vpcId", "section": "Accepter VPC" },
+          { "label": "Owner ID", "source": "/accepterVpcInfo/ownerId" },
+          { "label": "Region", "source": "/accepterVpcInfo/region" },
+          { "label": "CIDR", "source": "/accepterVpcInfo/cidrBlock" },
+          { "label": "CIDR Blocks", "source": "/accepterVpcInfo/cidrBlockSet/item", "list": true, "item_template": "{cidrBlock}" },
+
+          { "label": "DNS resolution", "source": "/accepterVpcInfo/peeringOptions/allowDnsResolutionFromRemoteVpc", "section": "Peering Options" },
+          { "label": "ClassicLink to remote", "source": "/accepterVpcInfo/peeringOptions/allowEgressFromLocalClassicLinkToRemoteVpc" },
+          { "label": "Remote ClassicLink", "source": "/accepterVpcInfo/peeringOptions/allowEgressFromLocalVpcToRemoteClassicLink" },
+
+          { "label": "Tags", "source": "/tagSet/item", "section": "Tags", "list": true, "item_template": "{key}={value}" }
+        ]
       }
     },
 

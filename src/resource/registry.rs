@@ -1790,6 +1790,83 @@ mod tests {
         }
     }
 
+    /// VPCs, VPC endpoints and peering connections each got the console-style
+    /// detail view. The VPC and endpoint describes enrich their attached
+    /// resources, and every such call must be scoped to the row -- leaving the
+    /// VPC's internet-gateway lookup unfiltered would list every gateway in the
+    /// account as this VPC's own. The peering detail needs no enrichment: its
+    /// request/response call already returns the whole requester+accepter VPC
+    /// pair inline. Pin the describe entry points so a drift in the query
+    /// protocol's indexed id params (VpcId.1, not VpcId) is caught.
+    #[test]
+    fn vpc_networking_detail_views_are_scoped_and_use_indexed_id_params() {
+        let cases: Vec<(&str, &str, &str)> = vec![
+            ("vpc", "DescribeVpcs", "/DescribeVpcsResponse/vpcSet/item"),
+            (
+                "vpc-endpoints",
+                "DescribeVpcEndpoints",
+                "/DescribeVpcEndpointsResponse/vpcEndpointSet/item",
+            ),
+            (
+                "vpc-peering-connections",
+                "DescribeVpcPeeringConnections",
+                "/DescribeVpcPeeringConnectionsResponse/vpcPeeringConnectionSet/item",
+            ),
+        ];
+        for (key, action, root) in &cases {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            let dc = r
+                .describe_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} needs describe_config"));
+            assert_eq!(dc.action.as_deref(), Some(*action), "{key} describe action");
+            assert_eq!(
+                dc.response_path.as_deref(),
+                Some(*root),
+                "{key} describe response root"
+            );
+        }
+        for (key, id_param) in [
+            ("vpc", "VpcId.1"),
+            ("vpc-endpoints", "VpcEndpointId.1"),
+            ("vpc-peering-connections", "VpcPeeringConnectionId.1"),
+        ] {
+            let r = get_resource(key).unwrap();
+            let dc = r.describe_config.as_ref().unwrap();
+            assert_eq!(
+                dc.id_param.as_deref(),
+                Some(id_param),
+                "{key} describe id param must be the indexed list member, not the bare name"
+            );
+        }
+
+        let vpc = get_resource("vpc")
+            .unwrap()
+            .describe_config
+            .clone()
+            .unwrap();
+        let igw = vpc
+            .enrich_calls
+            .iter()
+            .find(|e| e.result_field == "InternetGateways")
+            .expect("vpc internet gateway enrichment");
+        assert_eq!(igw.filters[0].name, "attachment.vpc-id");
+        assert_eq!(igw.filters[0].values_source, "/vpcId");
+
+        let qe = get_resource("vpc-endpoints")
+            .unwrap()
+            .describe_config
+            .clone()
+            .unwrap();
+        let eni = qe
+            .enrich_calls
+            .iter()
+            .find(|e| e.result_field == "NetworkInterfaces")
+            .expect("endpoint network interface enrichment");
+        assert_eq!(eni.filters[0].name, "network-interface-id");
+        assert_eq!(eni.filters[0].values_source, "/networkInterfaceIdSet/item");
+    }
+
     /// An enrichment costs an extra API call per describe, so one whose result
     /// no describe field reads is pure latency the user pays for nothing -- and
     /// a typo between the two (Tags vs TagList) shows as a silently blank row,
