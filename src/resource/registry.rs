@@ -716,6 +716,73 @@ mod tests {
         assert!(resource.field_mappings.contains_key("EventId"));
     }
 
+    /// Lambda aliases/versions are reached from a function row; their REST path
+    /// placeholder must line up with the filter_param used to scope the child.
+    /// Layers is standalone and nests its latest version under
+    /// `LatestMatchingVersion`.
+    #[test]
+    fn lambda_aliases_and_versions_are_parent_scoped_children_with_matching_path() {
+        let functions = get_resource("lambda-functions").expect("lambda-functions");
+        for key in ["lambda-aliases", "lambda-versions"] {
+            let sub = functions
+                .sub_resources
+                .iter()
+                .find(|s| s.resource_key == key)
+                .unwrap_or_else(|| panic!("lambda-functions must declare {key} as a sub-resource"));
+            assert_eq!(
+                sub.filter_param, "functionName",
+                "{key} filter_param must match the {{functionName}} path placeholder"
+            );
+            assert_eq!(
+                sub.parent_id_field, "FunctionName",
+                "{key} parent_id_field must read FunctionName from the parent row"
+            );
+            let child = get_resource(key).expect(key);
+            assert!(
+                child.requires_parent,
+                "{key} must require a parent function"
+            );
+            let api = child.api_config.as_ref().expect(key);
+            assert!(
+                api.path.as_deref().expect(key).contains("{functionName}"),
+                "{key} path must carry the {{functionName}} placeholder"
+            );
+            assert_eq!(
+                api.response_root.as_deref().unwrap(),
+                format!(
+                    "/{}",
+                    if key == "lambda-aliases" {
+                        "Aliases"
+                    } else {
+                        "Versions"
+                    }
+                )
+            );
+        }
+
+        let layers = get_resource("lambda-layers").expect("lambda-layers");
+        assert!(
+            !layers.requires_parent,
+            "lambda-layers must list standalone"
+        );
+        let layers_api = layers.api_config.as_ref().expect("layers api_config");
+        assert_eq!(layers_api.response_root.as_deref(), Some("/Layers"));
+        assert!(
+            layers_api.path.as_deref().unwrap().contains("/2018-10-31/"),
+            "ListLayers lives under the 2018-10-31 API, not 2015-03-31; a wrong version \
+             makes Lambda answer AccessDenied: unable to determine operation"
+        );
+        assert!(
+            layers.field_mappings.contains_key("Version"),
+            "layers must map the nested LatestMatchingVersion"
+        );
+        assert_eq!(
+            layers.field_mappings.get("Version").unwrap().source,
+            "/LatestMatchingVersion/Version",
+            "layers Version comes from the nested latest-matching-version object"
+        );
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()

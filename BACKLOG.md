@@ -40,7 +40,13 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       `cloudtrail-events` resource — a flat `/Events` array paging on NextToken.
       `EventTime` is ISO-8601 in this JSON API (not epoch millis). Live account
       has real events; verified 200.
-- [ ] **Lambda layers / aliases / versions** (functions only today).
+- [x] **Lambda layers / aliases / versions** (functions only before). Layers is a
+      standalone `lambda-layers`; aliases/versions are parent-scoped children of
+      `lambda-functions` (`v`/`a` shortcuts, `{functionName}` path placeholder
+      mirrored from EKS). **Trap:** `ListLayers` lives under the `2018-10-31`
+      API while functions/aliases/versions are `2015-03-31`; using the wrong
+      version makes Lambda answer `AccessDenied: unable to determine
+      operation`. Layers verified live 200; aliases/versions paths CLI-verified.
 - [ ] **S3 bucket policies / lifecycle / replication** (buckets + objects only).
 
 ### Session 2
