@@ -337,6 +337,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("AWSStepFunctions"),
             is_global: false,
         }),
+        "efs" => Some(ServiceDefinition {
+            signing_name: "elasticfilesystem",
+            endpoint_prefix: "elasticfilesystem",
+            api_version: "2015-02-01",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
         "autoscaling" => Some(ServiceDefinition {
             signing_name: "autoscaling",
             endpoint_prefix: "autoscaling",

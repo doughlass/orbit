@@ -51,7 +51,13 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
 
 ### Session 2
 
-- [ ] **EFS** (file systems, access points, mount targets).
+- [x] **EFS** (file systems, access points, mount targets). REST-JSON GET service
+      (`elasticfilesystem` signing). Access points and mount targets are
+      parent-scoped under a file system, but EFS scopes them by a URI **query
+      parameter** (`?FileSystemId=...`), not a path segment — so this added a
+      new `api_config.query_params` capability to the rest-json handler. Mount
+      targets genuinely need it: `DescribeMountTargets` refuses to run with no
+      filter at all. File systems verified live 200 (account empty).
 - [ ] **FSx** (file systems across all flavors; verify each API).
 - [x] **Step Functions** (state machines, executions). Added the `states`
       service (plain `AWSStepFunctions` JSON target — **no** query-mode header,

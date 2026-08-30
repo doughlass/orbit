@@ -28,6 +28,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/ec2.json"),
     include_str!("../resources/ecr.json"),
     include_str!("../resources/ecs.json"),
+    include_str!("../resources/efs.json"),
     include_str!("../resources/eks.json"),
     include_str!("../resources/elasticache.json"),
     include_str!("../resources/elbv2.json"),
@@ -820,6 +821,73 @@ mod tests {
             ex.api_config.as_ref().unwrap().response_root.as_deref(),
             Some("/executions")
         );
+    }
+
+    /// EFS is a REST-JSON GET service whose children (access points, mount
+    /// targets) are scoped by a URI query parameter, not a path segment the way
+    /// EKS/Lambda children are. That only works if the resource declares the
+    /// param in `query_params`; otherwise the parent FileSystemId would be
+    /// silently dropped and DescribeMountTargets (which requires a filter)
+    /// would fail its own request. Pin the declaration here.
+    #[test]
+    fn efs_children_scope_file_system_by_uri_query_param() {
+        let fs = get_resource("efs-file-systems").expect("efs-file-systems");
+        let fs_api = fs.api_config.as_ref().expect("api_config");
+        assert_eq!(
+            fs_api.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson
+        );
+        assert_eq!(fs_api.path.as_deref(), Some("/2015-02-01/file-systems"));
+        assert_eq!(fs_api.response_root.as_deref(), Some("/FileSystems"));
+        let service = crate::aws::http::get_service("efs")
+            .unwrap_or_else(|| panic!("efs service must be registered"));
+        assert_eq!(
+            service.signing_name, "elasticfilesystem",
+            "efs signs with elasticfilesystem, not efs"
+        );
+
+        for (key, sub, root, expected_token_pair) in [
+            (
+                "efs-access-points",
+                "efs-access-points",
+                "/AccessPoints",
+                ("NextToken", "/NextToken"),
+            ),
+            (
+                "efs-mount-targets",
+                "efs-mount-targets",
+                "/MountTargets",
+                ("Marker", "/NextMarker"),
+            ),
+        ] {
+            let child = get_resource(key).expect(key);
+            assert!(child.requires_parent, "{key} needs a parent file system");
+            let child_api = child.api_config.as_ref().expect("api_config");
+            assert_eq!(
+                child_api.query_params.as_slice(),
+                &["FileSystemId".to_string()],
+                "{key} must declare FileSystemId as a URI query param"
+            );
+            assert_eq!(child_api.response_root.as_deref(), Some(root));
+            assert_eq!(
+                child_api.pagination.as_ref().map(|p| (
+                    p.input_token.as_deref().unwrap_or("").to_string(),
+                    p.output_token.as_deref().unwrap_or("").to_string()
+                )),
+                Some((
+                    expected_token_pair.0.to_string(),
+                    expected_token_pair.1.to_string()
+                )),
+                "{key} must page on the EFS token pair"
+            );
+            let declared = fs
+                .sub_resources
+                .iter()
+                .find(|s| s.resource_key == sub)
+                .expect("file systems declare the child");
+            assert_eq!(declared.filter_param, "FileSystemId");
+            assert_eq!(declared.parent_id_field, "FileSystemId");
+        }
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

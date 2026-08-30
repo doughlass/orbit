@@ -1,0 +1,128 @@
+{
+  "resources": {
+    "efs-file-systems": {
+      "display_name": "EFS File Systems",
+      "service": "efs",
+      "sdk_method": "describe_file_systems",
+      "sdk_method_params": {},
+      "response_path": "file_systems",
+      "id_field": "FileSystemId",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 24 },
+        { "header": "ID", "json_path": "FileSystemId", "width": 20 },
+        { "header": "STATE", "json_path": "LifeCycleState", "width": 12, "color_map": "state" },
+        { "header": "SIZE", "json_path": "Size", "width": 10 },
+        { "header": "PERFORMANCE", "json_path": "PerformanceMode", "width": 14 },
+        { "header": "ENCRYPTED", "json_path": "Encrypted", "width": 9, "color_map": "bool" },
+        { "header": "MOUNT TARGETS", "json_path": "NumberOfMountTargets", "width": 12 }
+      ],
+      "enter_sub_resource": "efs-mount-targets",
+      "sub_resources": [
+        { "shortcut": "a", "display_name": "Access Points", "resource_key": "efs-access-points", "parent_id_field": "FileSystemId", "filter_param": "FileSystemId" },
+        { "shortcut": "m", "display_name": "Mount Targets", "resource_key": "efs-mount-targets", "parent_id_field": "FileSystemId", "filter_param": "FileSystemId" }
+      ],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/2015-02-01/file-systems",
+        "response_root": "/FileSystems",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/NextMarker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "FileSystemId": { "source": "/FileSystemId", "default": "-" },
+        "Name": { "source": "/Name", "default": "-" },
+        "LifeCycleState": { "source": "/LifeCycleState", "default": "-" },
+        "Size": { "source": "/SizeInBytes/Value", "transform": "format_bytes", "default": "-" },
+        "PerformanceMode": { "source": "/PerformanceMode", "default": "-" },
+        "Encrypted": { "source": "/Encrypted", "default": "-" },
+        "NumberOfMountTargets": { "source": "/NumberOfMountTargets", "default": "-" }
+      }
+    },
+    "efs-access-points": {
+      "display_name": "EFS Access Points",
+      "service": "efs",
+      "sdk_method": "describe_access_points",
+      "sdk_method_params": {},
+      "response_path": "access_points",
+      "id_field": "AccessPointId",
+      "name_field": "Name",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 24 },
+        { "header": "ACCESS POINT", "json_path": "AccessPointId", "width": 22 },
+        { "header": "STATE", "json_path": "LifeCycleState", "width": 12, "color_map": "state" },
+        { "header": "FILE SYSTEM", "json_path": "FileSystemId", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/2015-02-01/access-points",
+        "query_params": ["FileSystemId"],
+        "response_root": "/AccessPoints",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "AccessPointId": { "source": "/AccessPointId", "default": "-" },
+        "Name": { "source": "/Name", "default": "-" },
+        "LifeCycleState": { "source": "/LifeCycleState", "default": "-" },
+        "FileSystemId": { "source": "/FileSystemId", "default": "-" }
+      }
+    },
+    "efs-mount-targets": {
+      "display_name": "EFS Mount Targets",
+      "service": "efs",
+      "sdk_method": "describe_mount_targets",
+      "sdk_method_params": {},
+      "response_path": "mount_targets",
+      "id_field": "MountTargetId",
+      "name_field": "MountTargetId",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "MOUNT TARGET", "json_path": "MountTargetId", "width": 24 },
+        { "header": "STATE", "json_path": "LifeCycleState", "width": 12, "color_map": "state" },
+        { "header": "SUBNET", "json_path": "SubnetId", "width": 22 },
+        { "header": "IP", "json_path": "IpAddress", "width": 15 },
+        { "header": "NETWORK IFACE", "json_path": "NetworkInterfaceId", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/2015-02-01/mount-targets",
+        "query_params": ["FileSystemId"],
+        "response_root": "/MountTargets",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/NextMarker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "MountTargetId": { "source": "/MountTargetId", "default": "-" },
+        "LifeCycleState": { "source": "/LifeCycleState", "default": "-" },
+        "SubnetId": { "source": "/SubnetId", "default": "-" },
+        "IpAddress": { "source": "/IpAddress", "default": "-" },
+        "NetworkInterfaceId": { "source": "/NetworkInterfaceId", "default": "-" }
+      }
+    }
+  }
+}

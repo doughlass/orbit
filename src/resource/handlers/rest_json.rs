@@ -42,6 +42,17 @@ impl RestJsonProtocolHandler {
         if method == "GET" {
             let mut query_parts: Vec<String> = Vec::new();
 
+            // Add declared query params (e.g., EFS scopes a list by ?FileSystemId=...).
+            // Only params explicitly named in api_config.query_params are emitted, so a
+            // parent filter that a path placeholder already consumed is never re-sent.
+            if let Value::Object(map) = params {
+                for name in &config.query_params {
+                    if let Some(s) = map.get(name).and_then(|v| v.as_str()) {
+                        query_parts.push(format!("{}={}", name, urlencoding::encode(s)));
+                    }
+                }
+            }
+
             // Add pagination token if present
             if let Some(token) = params.get("_page_token").and_then(|v| v.as_str()) {
                 if let Some(pagination) = &config.pagination {

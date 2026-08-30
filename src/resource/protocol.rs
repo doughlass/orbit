@@ -81,6 +81,14 @@ pub struct ApiConfig {
     #[serde(default)]
     pub path: Option<String>,
 
+    /// Param names to send as URI query parameters on a REST GET, e.g.
+    /// ["FileSystemId"]. Some REST-JSON services (EFS mount targets/access
+    /// points) scope a list by a query param rather than a path segment, and
+    /// only params listed here are emitted so unrelated filter params (which
+    /// path placeholders already consumed) never leak into the URL.
+    #[serde(default)]
+    pub query_params: Vec<String>,
+
     /// Path to extract items from the response (JSON pointer format)
     /// For XML: after xml_to_json conversion
     /// e.g., "/DescribeInstancesResponse/reservationSet/item/instancesSet/item"
