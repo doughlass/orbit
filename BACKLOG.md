@@ -35,7 +35,11 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       `DescribeDBClustersResult/DBClusters` wrapper; tags on `TagList`. Live
       account has zero clusters (verified `<DBClusters/>` empty) but the
       request returns 200.
-- [ ] **CloudTrail LookupEvents** (event-history search, not just trails).
+- [x] **CloudTrail LookupEvents** (event-history search). The `cloudtrail`
+      service + `cloudtrail-trails` already existed, so this was just the
+      `cloudtrail-events` resource — a flat `/Events` array paging on NextToken.
+      `EventTime` is ISO-8601 in this JSON API (not epoch millis). Live account
+      has real events; verified 200.
 - [ ] **Lambda layers / aliases / versions** (functions only today).
 - [ ] **S3 bucket policies / lifecycle / replication** (buckets + objects only).
 

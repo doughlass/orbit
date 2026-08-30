@@ -691,6 +691,31 @@ mod tests {
         );
     }
 
+    /// LookupEvents returns a flat `Events` array (no result wrapper) and pages
+    /// on NextToken. EventTime arrives as an ISO-8601 string in the JSON API,
+    /// so it must NOT be passed through the epoch-millis formatter.
+    #[test]
+    fn cloudtrail_events_read_from_flat_events_array_and_keep_iso_time() {
+        let resource = get_resource("cloudtrail-events").expect("cloudtrail-events");
+        let api = resource.api_config.as_ref().expect("api_config");
+        assert_eq!(api.action.as_deref(), Some("LookupEvents"));
+        assert_eq!(
+            api.response_root.as_deref(),
+            Some("/Events"),
+            "LookupEvents returns a bare Events array, not a wrapper"
+        );
+        let pag = api.pagination.as_ref().expect("pagination");
+        assert_eq!(pag.input_token.as_deref(), Some("NextToken"));
+        assert_eq!(pag.output_token.as_deref(), Some("/NextToken"));
+        let time = resource.field_mappings.get("EventTime").expect("EventTime");
+        assert_eq!(
+            time.transform.as_deref(),
+            None,
+            "EventTime is ISO-8601 in this JSON API, not epoch millis"
+        );
+        assert!(resource.field_mappings.contains_key("EventId"));
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()
