@@ -174,7 +174,101 @@
         "protocol": "query",
         "action": "DescribeDBInstances",
         "id_param": "DBInstanceIdentifier",
-        "response_path": "/DescribeDBInstancesResponse/DescribeDBInstancesResult/DBInstances/DBInstance"
+        "response_path": "/DescribeDBInstancesResponse/DescribeDBInstancesResult/DBInstances/DBInstance",
+        "describe_fields": [
+          {
+            "label": "Instance ID",
+            "source": "/DBInstanceIdentifier"
+          },
+          {
+            "label": "Status",
+            "source": "/DBInstanceStatus"
+          },
+          {
+            "label": "ARN",
+            "source": "/DBInstanceArn"
+          },
+          {
+            "label": "Instance Class",
+            "source": "/DBInstanceClass"
+          },
+          {
+            "label": "Engine",
+            "source": "/Engine"
+          },
+          {
+            "label": "Engine Version",
+            "source": "/EngineVersion"
+          },
+          {
+            "label": "Endpoint",
+            "source": "/Endpoint/Address"
+          },
+          {
+            "label": "Port",
+            "source": "/Endpoint/Port"
+          },
+          {
+            "label": "Availability Zone",
+            "source": "/AvailabilityZone"
+          },
+          {
+            "label": "VPC",
+            "source": "/DBSubnetGroup/VpcId"
+          },
+          {
+            "label": "Subnet Group",
+            "source": "/DBSubnetGroup/DBSubnetGroupName"
+          },
+          {
+            "label": "Security Groups",
+            "source": "/VpcSecurityGroups"
+          },
+          {
+            "label": "Publicly Accessible",
+            "source": "/PubliclyAccessible"
+          },
+          {
+            "label": "Storage Encrypted",
+            "source": "/StorageEncrypted"
+          },
+          {
+            "label": "Backup Retention",
+            "source": "/BackupRetentionPeriod"
+          },
+          {
+            "label": "Backup Window",
+            "source": "/PreferredBackupWindow"
+          },
+          {
+            "label": "Restorable Time",
+            "source": "/LatestRestorableTime"
+          },
+          {
+            "label": "Maintenance Window",
+            "source": "/PreferredMaintenanceWindow"
+          },
+          {
+            "label": "CA Certificate",
+            "source": "/CACertificateIdentifier"
+          },
+          {
+            "label": "Auto Minor Upgrade",
+            "source": "/AutoMinorVersionUpgrade"
+          },
+          {
+            "label": "Perf Insights",
+            "source": "/PerformanceInsightsEnabled"
+          },
+          {
+            "label": "CloudWatch Logs",
+            "source": "/EnabledCloudwatchLogsExports"
+          },
+          {
+            "label": "Created",
+            "source": "/InstanceCreateTime"
+          }
+        ]
       }
     }
   }

@@ -1529,9 +1529,10 @@ mod tests {
 
     /// A DocDB instance's describe uses the same RDS-shaped DescribeDBInstances
     /// call filtered by DBInstanceIdentifier as its list call, so pressing d on
-    /// an instance fetches the full instance payload. It deliberately has no
-    /// describe_fields so the panel renders the raw JSON detail (all fields)
-    /// rather than a hand-picked subset.
+    /// an instance fetches the full instance payload. It renders a formatted
+    /// labelled view (Web-console-style configuration/network/backup fields)
+    /// rather than a raw JSON dump, so every describe_field source must point
+    /// at a field that actually exists in the DescribeDBInstances payload.
     #[test]
     fn docdb_instances_describe_fetches_the_full_instance_by_identifier() {
         let r = get_resource("docdb-instances").expect("docdb-instances");
@@ -1546,10 +1547,39 @@ mod tests {
             dc.response_path.as_deref(),
             Some("/DescribeDBInstancesResponse/DescribeDBInstancesResult/DBInstances/DBInstance")
         );
-        assert!(
-            dc.describe_fields.is_empty(),
-            "docdb instances rely on the raw JSON detail dump, not a formatted field layout"
-        );
+
+        let labels: Vec<&str> = dc
+            .describe_fields
+            .iter()
+            .map(|f| f.label.as_str())
+            .collect();
+        for expected in [
+            "Instance ID",
+            "Status",
+            "Instance Class",
+            "Engine",
+            "Engine Version",
+            "Endpoint",
+            "Port",
+            "Availability Zone",
+            "VPC",
+            "Security Groups",
+            "Storage Encrypted",
+            "Backup Retention",
+            "Maintenance Window",
+            "CloudWatch Logs",
+        ] {
+            assert!(
+                labels.contains(&expected),
+                "missing describe field {expected}"
+            );
+        }
+        let endpoint = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.source == "/Endpoint/Port")
+            .expect("port is nested under Endpoint");
+        assert_eq!(endpoint.label, "Port");
     }
 
     /// Glue and EMR are JSON protocol services whose targets and pagination
