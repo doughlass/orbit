@@ -33,12 +33,14 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/ecs.json"),
     include_str!("../resources/ecs-task-definitions.json"),
     include_str!("../resources/efs.json"),
+    include_str!("../resources/emr.json"),
     include_str!("../resources/eks.json"),
     include_str!("../resources/elasticache.json"),
     include_str!("../resources/elbv2.json"),
     include_str!("../resources/eventbridge.json"),
     include_str!("../resources/firehose.json"),
     include_str!("../resources/fsx.json"),
+    include_str!("../resources/glue.json"),
     include_str!("../resources/guardduty.json"),
     include_str!("../resources/iam.json"),
     include_str!("../resources/inspector2.json"),
@@ -1509,6 +1511,84 @@ mod tests {
                 "docdb/neptune share RDS's wire roots"
             );
             assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Query);
+        }
+    }
+
+    /// Glue and EMR are JSON protocol services whose targets and pagination
+    /// shapes differ. Glue pages every list on NextToken/MaxResults with rich
+    /// summary shapes. EMR pages on a bare Marker token and, unlike most json
+    /// APIs, accepts NO MaxResults parameter at all -- sending one is the
+    /// DescribeAddresses failure mode (parameter not supported, fails silently
+    /// to a single page). Pin the roots and that EMR omits max_results_param.
+    #[test]
+    fn glue_and_emr_lists_page_with_their_distinct_json_tokens() {
+        for (key, action, root, target, pag_in, pag_max) in [
+            (
+                "glue-jobs",
+                "GetJobs",
+                "/Jobs",
+                "AWSGlue",
+                Some("NextToken"),
+                Some("MaxResults"),
+            ),
+            (
+                "glue-databases",
+                "GetDatabases",
+                "/DatabaseList",
+                "AWSGlue",
+                Some("NextToken"),
+                Some("MaxResults"),
+            ),
+            (
+                "glue-crawlers",
+                "GetCrawlers",
+                "/Crawlers",
+                "AWSGlue",
+                Some("NextToken"),
+                Some("MaxResults"),
+            ),
+            (
+                "glue-triggers",
+                "GetTriggers",
+                "/Triggers",
+                "AWSGlue",
+                Some("NextToken"),
+                Some("MaxResults"),
+            ),
+            (
+                "emr-clusters",
+                "ListClusters",
+                "/Clusters",
+                "ElasticMapReduce",
+                Some("Marker"),
+                None,
+            ),
+        ] {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            let api = r
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} needs api_config"));
+            assert_eq!(api.action.as_deref(), Some(action), "{key} action");
+            assert_eq!(api.response_root.as_deref(), Some(root), "{key} root");
+            let pag = api
+                .pagination
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} paginates"));
+            assert_eq!(pag.input_token.as_deref(), pag_in, "{key} input token");
+            assert_eq!(
+                pag.max_results_param.as_deref(),
+                pag_max,
+                "{key} max-results param"
+            );
+            let svc_key = if key.starts_with("glue-") {
+                "glue"
+            } else {
+                "emr"
+            };
+            let svc = crate::aws::http::get_service(svc_key)
+                .unwrap_or_else(|| panic!("{svc_key} service must be registered"));
+            assert_eq!(svc.target_prefix, Some(target), "{key} target prefix");
         }
     }
 

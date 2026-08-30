@@ -1,0 +1,39 @@
+{
+  "resources": {
+    "emr-clusters": {
+      "display_name": "EMR Clusters",
+      "service": "emr",
+      "sdk_method": "list_clusters",
+      "sdk_method_params": {},
+      "response_path": "emr_clusters",
+      "id_field": "Id",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "ID", "json_path": "Id", "width": 12 },
+        { "header": "NAME", "json_path": "Name", "width": 26 },
+        { "header": "STATE", "json_path": "Status.State", "width": 22, "color_map": "state" },
+        { "header": "NODE-HRS", "json_path": "NormalizedInstanceHours", "width": 10 },
+        { "header": "CLUSTER ARN", "json_path": "ClusterArn", "width": 46, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListClusters",
+        "response_root": "/Clusters",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/Marker"
+        }
+      },
+      "field_mappings": {
+        "Id": { "source": "/Id", "default": "-" },
+        "Name": { "source": "/Name", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "NormalizedInstanceHours": { "source": "/NormalizedInstanceHours", "default": "0" },
+        "ClusterArn": { "source": "/ClusterArn", "default": "-" }
+      }
+    }
+  }
+}

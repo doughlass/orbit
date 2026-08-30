@@ -177,7 +177,15 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       (`AccessDeniedException` on DescribeEndpoints), and QLDB is not bundled
       in this awscli's botocore model, so a wrong `response_root` cannot be
       caught. Implement only once both can be confirmed against a real response.
-- [ ] Glue, EMR, DataSync, Transfer Family.
+- [x] Glue (jobs, databases, crawlers, triggers) + EMR clusters. Both JSON
+      protocol. Glue pages every list on `NextToken`/`MaxResults` with rich
+      summary shapes (job role/worker/version, crawler state/schedule, trigger
+      schedule). **EMR is the list-shaper trap:** `ListClusters` pages on a bare
+      `Marker` token but, unlike most JSON APIs, accepts **no** `MaxResults`
+      parameter at all — the block omits `max_results_param` so the pager never
+      sends one (sending an unsupported param fails silently to a single page).
+      Target prefixes pinned by test (`AWSGlue`, `ElasticMapReduce`). Live
+      verified 200 on all five.
 - [ ] Global Accelerator, App Mesh, Cloud Map, VPC Lattice, Route53 Resolver.
 - [ ] Backup (vaults/plans), Resource Groups, Service Quotas.
 - [ ] Cost Explorer, Budgets, Trusted Advisor, Health.

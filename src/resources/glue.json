@@ -1,0 +1,152 @@
+{
+  "resources": {
+    "glue-jobs": {
+      "display_name": "Glue Jobs",
+      "service": "glue",
+      "sdk_method": "get_jobs",
+      "sdk_method_params": {},
+      "response_path": "glue_jobs",
+      "id_field": "Name",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 32 },
+        { "header": "ROLE", "json_path": "Role", "width": 34 },
+        { "header": "TYPE", "json_path": "Command.Name", "width": 22 },
+        { "header": "WORKER", "json_path": "WorkerType", "width": 12 },
+        { "header": "GLUE VER", "json_path": "GlueVersion", "width": 10 },
+        { "header": "CREATED", "json_path": "CreatedOn", "width": 22 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "GetJobs",
+        "response_root": "/Jobs",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "Role": { "source": "/Role", "default": "-" },
+        "Command": { "source": "/Command", "default": "-" },
+        "WorkerType": { "source": "/WorkerType", "default": "Standard" },
+        "GlueVersion": { "source": "/GlueVersion", "default": "-" },
+        "CreatedOn": { "source": "/CreatedOn", "default": "-" }
+      }
+    },
+    "glue-databases": {
+      "display_name": "Glue Databases",
+      "service": "glue",
+      "sdk_method": "get_databases",
+      "sdk_method_params": {},
+      "response_path": "glue_databases",
+      "id_field": "Name",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "LOCATION", "json_path": "LocationUri", "width": 46 },
+        { "header": "CREATED", "json_path": "CreateTime", "width": 22 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "GetDatabases",
+        "response_root": "/DatabaseList",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "LocationUri": { "source": "/LocationUri", "default": "-" },
+        "CreateTime": { "source": "/CreateTime", "default": "-" }
+      }
+    },
+    "glue-crawlers": {
+      "display_name": "Glue Crawlers",
+      "service": "glue",
+      "sdk_method": "get_crawlers",
+      "sdk_method_params": {},
+      "response_path": "glue_crawlers",
+      "id_field": "Name",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "STATE", "json_path": "State", "width": 12, "color_map": "state" },
+        { "header": "ROLE", "json_path": "Role", "width": 34 },
+        { "header": "DB", "json_path": "DatabaseName", "width": 24 },
+        { "header": "SCHEDULE", "json_path": "Schedule.ScheduleExpression", "width": 24 },
+        { "header": "LAST RUN", "json_path": "LastCrawl.Status", "width": 30 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "GetCrawlers",
+        "response_root": "/Crawlers",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "State": { "source": "/State", "default": "-" },
+        "Role": { "source": "/Role", "default": "-" },
+        "DatabaseName": { "source": "/DatabaseName", "default": "-" },
+        "Schedule": { "source": "/Schedule", "default": "-" },
+        "LastCrawl": { "source": "/LastCrawl", "default": "-" }
+      }
+    },
+    "glue-triggers": {
+      "display_name": "Glue Triggers",
+      "service": "glue",
+      "sdk_method": "get_triggers",
+      "sdk_method_params": {},
+      "response_path": "glue_triggers",
+      "id_field": "Name",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "STATE", "json_path": "State", "width": 12, "color_map": "state" },
+        { "header": "TYPE", "json_path": "Type", "width": 14 },
+        { "header": "WORKFLOW", "json_path": "WorkflowName", "width": 26 },
+        { "header": "SCHEDULE", "json_path": "Schedule", "width": 26 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "GetTriggers",
+        "response_root": "/Triggers",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "State": { "source": "/State", "default": "-" },
+        "Type": { "source": "/Type", "default": "-" },
+        "WorkflowName": { "source": "/WorkflowName", "default": "-" },
+        "Schedule": { "source": "/Schedule", "default": "-" }
+      }
+    }
+  }
+}

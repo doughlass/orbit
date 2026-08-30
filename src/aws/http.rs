@@ -433,6 +433,22 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        "glue" => Some(ServiceDefinition {
+            signing_name: "glue",
+            endpoint_prefix: "glue",
+            api_version: "2017-03-31",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSGlue"),
+            is_global: false,
+        }),
+        "emr" => Some(ServiceDefinition {
+            signing_name: "elasticmapreduce",
+            endpoint_prefix: "elasticmapreduce",
+            api_version: "2009-03-31",
+            protocol: Protocol::Json,
+            target_prefix: Some("ElasticMapReduce"),
+            is_global: false,
+        }),
         "scheduler" => Some(ServiceDefinition {
             signing_name: "scheduler",
             endpoint_prefix: "scheduler",
