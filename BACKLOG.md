@@ -150,7 +150,15 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
 
 ### Later sessions (long tail)
 
-- [ ] Kinesis (streams, delivery streams), Data Firehose.
+- [x] Kinesis (streams, delivery streams), Data Firehose. Both services are
+      plain JSON-RPC (X-Amz-Target header, 1.1 content type). `kinesis-streams`
+      reads the modern `ListStreams` `NextToken`-paginated `StreamSummaries`
+      (status colour, stream mode, created). **Firehose** is the scalar-list
+      pattern again: `ListDeliveryStreams` returns bare name strings, and its
+      pagination marker (`ExclusiveStartDeliveryStreamName` = last-returned
+      name) cannot be derived by a path extractor, so it sends `Limit=100`
+      with no token loop — a page-max-only pagination block. Live verified 200
+      (kinesis empty, firehose has three real streams).
 - [ ] AppSync, MQ, Timestream, QLDB, DocumentDB, Neptune.
 - [ ] Glue, EMR, DataSync, Transfer Family.
 - [ ] Global Accelerator, App Mesh, Cloud Map, VPC Lattice, Route53 Resolver.

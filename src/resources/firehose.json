@@ -1,0 +1,31 @@
+{
+  "resources": {
+    "firehose-delivery-streams": {
+      "display_name": "Firehose Delivery Streams",
+      "service": "firehose",
+      "sdk_method": "list_delivery_streams",
+      "sdk_method_params": {},
+      "response_path": "delivery_streams",
+      "id_field": "DeliveryStreamName",
+      "name_field": "DeliveryStreamName",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "DeliveryStreamName", "width": 44 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListDeliveryStreams",
+        "response_root": "/DeliveryStreamNames",
+        "pagination": {
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "DeliveryStreamName": { "source": "/", "default": "-" }
+      }
+    }
+  }
+}

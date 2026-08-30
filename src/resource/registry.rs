@@ -35,10 +35,12 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/elasticache.json"),
     include_str!("../resources/elbv2.json"),
     include_str!("../resources/eventbridge.json"),
+    include_str!("../resources/firehose.json"),
     include_str!("../resources/fsx.json"),
     include_str!("../resources/guardduty.json"),
     include_str!("../resources/iam.json"),
     include_str!("../resources/inspector2.json"),
+    include_str!("../resources/kinesis.json"),
     include_str!("../resources/kms.json"),
     include_str!("../resources/lambda.json"),
     include_str!("../resources/macie2.json"),
@@ -1370,6 +1372,44 @@ mod tests {
             assert_eq!(api.response_root.as_deref(), Some(case.1));
             assert_eq!(api.path.as_deref(), Some(case.2));
         }
+    }
+
+    /// Kinesis ListStreams pages with a real NextToken (modern API model) and
+    /// returns StreamSummaries. Firehose paginates on the last-returned-name
+    /// marker instead, which a path extractor cannot derive, so it sends
+    /// Limit=100 without a token loop. Pin both targets and roots.
+    #[test]
+    fn kinesis_and_firehose_stream_lists_hit_their_json_targets() {
+        let k = get_resource("kinesis-streams").expect("kinesis-streams");
+        let api = k.api_config.as_ref().expect("kinesis-streams api_config");
+        assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(api.action.as_deref(), Some("ListStreams"));
+        assert_eq!(api.response_root.as_deref(), Some("/StreamSummaries"));
+        let pag = api.pagination.as_ref().expect("kinesis paginates");
+        assert_eq!(pag.input_token.as_deref(), Some("NextToken"));
+        assert_eq!(pag.max_results_param.as_deref(), Some("Limit"));
+        let service = crate::aws::http::get_service("kinesis")
+            .unwrap_or_else(|| panic!("kinesis service must be registered"));
+        assert_eq!(service.target_prefix, Some("Kinesis_20131202"));
+
+        let f = get_resource("firehose-delivery-streams").expect("firehose-delivery-streams");
+        let api = f
+            .api_config
+            .as_ref()
+            .expect("firehose-delivery-streams api_config");
+        assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(api.response_root.as_deref(), Some("/DeliveryStreamNames"));
+        let stream_name = f
+            .field_mappings
+            .get("DeliveryStreamName")
+            .expect("firehose maps the bare stream name");
+        assert!(
+            stream_name.source.is_empty() || stream_name.source == "/",
+            "firehose names are bare strings mapped through the item itself"
+        );
+        let service = crate::aws::http::get_service("firehose")
+            .unwrap_or_else(|| panic!("firehose service must be registered"));
+        assert_eq!(service.target_prefix, Some("Firehose_20150804"));
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

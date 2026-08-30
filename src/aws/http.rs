@@ -186,6 +186,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        "kinesis" => Some(ServiceDefinition {
+            signing_name: "kinesis",
+            endpoint_prefix: "kinesis",
+            api_version: "2013-12-02",
+            protocol: Protocol::Json,
+            target_prefix: Some("Kinesis_20131202"),
+            is_global: false,
+        }),
         "cloudformation" => Some(ServiceDefinition {
             signing_name: "cloudformation",
             endpoint_prefix: "cloudformation",
@@ -383,6 +391,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             api_version: "2018-03-01",
             protocol: Protocol::Json,
             target_prefix: Some("AWSSimbaAPIService_v20180301"),
+            is_global: false,
+        }),
+        "firehose" => Some(ServiceDefinition {
+            signing_name: "firehose",
+            endpoint_prefix: "firehose",
+            api_version: "2015-08-04",
+            protocol: Protocol::Json,
+            target_prefix: Some("Firehose_20150804"),
             is_global: false,
         }),
         "scheduler" => Some(ServiceDefinition {
