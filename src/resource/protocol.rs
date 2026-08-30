@@ -359,10 +359,12 @@ pub struct EnrichCall {
     #[serde(default)]
     pub filters: Vec<EnrichFilter>,
 
-    /// JSON body template for `json`-protocol enrichment. Same template tokens
-    /// as `params`.
+    /// JSON body for `json`-protocol enrichment, written as real JSON rather
+    /// than a string: a body template as a string cannot carry the same `{...}`
+    /// tokens as `params`, since JSON's own braces are indistinguishable from
+    /// them. String leaves are templated, numbers and booleans pass through.
     #[serde(default)]
-    pub body_template: Option<String>,
+    pub body: Option<Value>,
 }
 
 /// One AWS filter on an enrich call, whose values come from the describe

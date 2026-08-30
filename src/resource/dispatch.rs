@@ -851,6 +851,36 @@ fn build_enrich_query_params(
     Ok(params)
 }
 
+/// Resolve the template tokens in every string leaf of a JSON enrich body.
+fn resolve_enrich_body(
+    body: &Value,
+    resource_id: &str,
+    primary: &Value,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<Value> {
+    match body {
+        Value::String(s) => Ok(Value::String(resolve_enrich_template(
+            s,
+            resource_id,
+            primary,
+            now,
+        )?)),
+        Value::Array(items) => items
+            .iter()
+            .map(|item| resolve_enrich_body(item, resource_id, primary, now))
+            .collect::<Result<Vec<Value>>>()
+            .map(Value::Array),
+        Value::Object(fields) => fields
+            .iter()
+            .map(|(key, value)| {
+                resolve_enrich_body(value, resource_id, primary, now).map(|v| (key.clone(), v))
+            })
+            .collect::<Result<serde_json::Map<String, Value>>>()
+            .map(Value::Object),
+        other => Ok(other.clone()),
+    }
+}
+
 fn enrich_filter_values(primary: &Value, source: &str) -> Vec<String> {
     match super::path_extractor::extract_by_path(primary, source) {
         Value::Array(items) => items.iter().filter_map(enrich_scalar).collect(),
@@ -907,13 +937,10 @@ async fn execute_enrich_call(
             let action = enrich.action.as_deref().ok_or_else(|| {
                 anyhow!("json enrich call {} requires 'action'", enrich.result_field)
             })?;
-            let template = enrich.body_template.as_deref().ok_or_else(|| {
-                anyhow!(
-                    "json enrich call {} requires 'body_template'",
-                    enrich.result_field
-                )
+            let body = enrich.body.as_ref().ok_or_else(|| {
+                anyhow!("json enrich call {} requires 'body'", enrich.result_field)
             })?;
-            let body = resolve_enrich_template(template, resource_id, primary, now)?;
+            let body = resolve_enrich_body(body, resource_id, primary, now)?.to_string();
 
             let response = clients.http.json_request(service, action, &body).await?;
             let json: Value = serde_json::from_str(&response)?;
@@ -1459,6 +1486,39 @@ mod tests {
             err.to_string().contains("group-id"),
             "error {:?} should name the filter",
             err.to_string()
+        );
+    }
+
+    /// CloudWatch's GetMetricStatistics body is nested JSON whose own braces
+    /// would be read as template tokens if the body were a string, so it stays
+    /// JSON and only its string leaves are templated.
+    #[test]
+    fn enrich_json_bodies_template_their_string_leaves_only() {
+        use serde_json::json;
+
+        let body = json!({
+            "Namespace": "AWS/DocDB",
+            "MetricName": "CPUUtilization",
+            "Dimensions": [{ "Name": "DBInstanceIdentifier", "Value": "{resource_id}" }],
+            "StartTime": "{now-15m}",
+            "EndTime": "{now}",
+            "Period": 300,
+            "Statistics": ["Average"],
+        });
+
+        let resolved = resolve_enrich_body(&body, "prod-docdb-1", &json!({}), fixed_now()).unwrap();
+
+        assert_eq!(
+            resolved,
+            json!({
+                "Namespace": "AWS/DocDB",
+                "MetricName": "CPUUtilization",
+                "Dimensions": [{ "Name": "DBInstanceIdentifier", "Value": "prod-docdb-1" }],
+                "StartTime": "2026-08-30T20:00:00Z",
+                "EndTime": "2026-08-30T20:15:00Z",
+                "Period": 300,
+                "Statistics": ["Average"],
+            })
         );
     }
 
