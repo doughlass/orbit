@@ -465,6 +465,22 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("Route53Resolver"),
             is_global: false,
         }),
+        "trustedadvisor" => Some(ServiceDefinition {
+            signing_name: "trustedadvisor",
+            endpoint_prefix: "trustedadvisor",
+            api_version: "2022-09-15",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: true,
+        }),
+        "health" => Some(ServiceDefinition {
+            signing_name: "health",
+            endpoint_prefix: "health",
+            api_version: "2016-08-04",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSHealth_20160804"),
+            is_global: false,
+        }),
         "resource-groups" => Some(ServiceDefinition {
             signing_name: "resource-groups",
             endpoint_prefix: "resource-groups",

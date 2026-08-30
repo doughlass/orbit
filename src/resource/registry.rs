@@ -45,6 +45,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/fsx.json"),
     include_str!("../resources/glue.json"),
     include_str!("../resources/guardduty.json"),
+    include_str!("../resources/health.json"),
     include_str!("../resources/iam.json"),
     include_str!("../resources/inspector2.json"),
     include_str!("../resources/kinesis.json"),
@@ -64,6 +65,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/servicediscovery.json"),
     include_str!("../resources/secretsmanager.json"),
     include_str!("../resources/transfer.json"),
+    include_str!("../resources/trustedadvisor.json"),
     include_str!("../resources/vpc-lattice.json"),
     include_str!("../resources/securityhub.json"),
     include_str!("../resources/service-quotas.json"),
@@ -1787,6 +1789,40 @@ mod tests {
             .unwrap_or_else(|| panic!("backup service must be registered"));
         crate::aws::http::get_service("resource-groups")
             .unwrap_or_else(|| panic!("resource-groups service must be registered"));
+    }
+
+    /// Trusted Advisor is a global service (trustedadvisor.amazonaws.com, no
+    /// region in the host) served by a rest-json GET; Health is a regional
+    /// JSON protocol POST. Pin the TA global flip and both roots so a wrong
+    /// regional/global choice doesn't silently resolve to a dead host.
+    #[test]
+    fn trusted_advisor_is_global_and_health_is_regional() {
+        let ta = get_resource("trusted-advisor-checks").expect("trusted-advisor-checks");
+        let api = ta
+            .api_config
+            .as_ref()
+            .expect("trusted-advisor-checks api_config");
+        assert_eq!(
+            api.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson
+        );
+        assert_eq!(api.response_root.as_deref(), Some("/checkSummaries"));
+        assert!(ta.is_global, "trusted-advisor-checks must be marked global");
+        let tasvc = crate::aws::http::get_service("trustedadvisor")
+            .unwrap_or_else(|| panic!("trustedadvisor service must be registered"));
+        assert!(tasvc.is_global, "trustedadvisor is a global service");
+
+        let h = get_resource("health-events").expect("health-events");
+        let api = h.api_config.as_ref().expect("health-events api_config");
+        assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(api.response_root.as_deref(), Some("/events"));
+        let hsvc = crate::aws::http::get_service("health")
+            .unwrap_or_else(|| panic!("health service must be registered"));
+        assert_eq!(hsvc.target_prefix, Some("AWSHealth_20160804"));
+        assert!(
+            !hsvc.is_global,
+            "health stays regional in the selected region"
+        );
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

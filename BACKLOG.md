@@ -214,7 +214,19 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       send params AWS would silently ignore — it falls back to AWS's default
       one page. Pinned by test. Live verified 200 on all four; Backup returned
       a real Default vault, quotas returned the full service list.
-- [ ] Cost Explorer, Budgets, Trusted Advisor, Health.
+- [x] Trusted Advisor checks + Health events. Trusted Advisor is a *global*
+      service served from `trustedadvisor.amazonaws.com` (no region in the
+      host), so its service entry carries `is_global: true` and the resource is
+      marked global to omit the region from the title — pinned by test. Health
+      stays regional in the selected region and is plain JSON
+      (`AWSHealth_20160804`). Live verified 200 on both; Trusted Advisor
+      returned the real check catalog, Health returned live events.
+- [ ] Cost Explorer + Budgets — **blocked for the same reason as Timestream**:
+      `GetCostAndUsage` needs a `TimePeriod` date range and `Budgets`
+      `DescribeBudgets` needs the caller's `AccountId`, and the JSON resource
+      model has no dynamic-parameter substitution — a fixed static date goes
+      stale nightly and a hardcoded account lies. Both need new Rust capability
+      (dynamic date window / caller account resolution) not just JSON.
 - [ ] Config rules/compliance, X-Ray, Systems Manager fleet ops (Run Command /
       Patch / State Manager / Sessions).
 - [ ] SSO / Identity Center (permission sets, accounts, assignments).

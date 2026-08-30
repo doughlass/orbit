@@ -1,0 +1,45 @@
+{
+  "resources": {
+    "health-events": {
+      "display_name": "Health Events",
+      "service": "health",
+      "sdk_method": "describe_events",
+      "sdk_method_params": {},
+      "response_path": "health_events",
+      "id_field": "eventTypeCode",
+      "name_field": "eventTypeCode",
+      "is_global": false,
+      "columns": [
+        { "header": "SERVICE", "json_path": "service", "width": 16 },
+        { "header": "EVENT TYPE", "json_path": "eventTypeCode", "width": 44 },
+        { "header": "CATEGORY", "json_path": "eventTypeCategory", "width": 18 },
+        { "header": "REGION", "json_path": "region", "width": 14 },
+        { "header": "STATUS", "json_path": "statusCode", "width": 14, "color_map": "state" },
+        { "header": "START", "json_path": "startTime", "width": 22 },
+        { "header": "ARN", "json_path": "arn", "width": 50, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "DescribeEvents",
+        "response_root": "/events",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "service": { "source": "/service", "default": "-" },
+        "eventTypeCode": { "source": "/eventTypeCode", "default": "-" },
+        "eventTypeCategory": { "source": "/eventTypeCategory", "default": "-" },
+        "region": { "source": "/region", "default": "-" },
+        "statusCode": { "source": "/statusCode", "default": "-" },
+        "startTime": { "source": "/startTime", "default": "-" },
+        "arn": { "source": "/arn", "default": "-" }
+      }
+    }
+  }
+}
