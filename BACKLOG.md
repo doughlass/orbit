@@ -186,6 +186,13 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       sends one (sending an unsupported param fails silently to a single page).
       Target prefixes pinned by test (`AWSGlue`, `ElasticMapReduce`). Live
       verified 200 on all five.
+- [x] DataSync tasks + Transfer Family servers/users. Both plain JSON protocol
+      with their own `X-Amz-Target` prefixes (`FmrsService`, `TransferService`)
+      pinned by test. Transfer users are scoped per-server: `transfer-users`
+      is `requires_parent` and the servers table drills into it (`u` shortcut,
+      Enter) via a `ServerId` parent filter — live driven through the drill and
+      both hops returned 200. DataSync live 200 (empty), Transfer found a real
+      ONLINE server.
 - [ ] Global Accelerator, App Mesh, Cloud Map, VPC Lattice, Route53 Resolver.
 - [ ] Backup (vaults/plans), Resource Groups, Service Quotas.
 - [ ] Cost Explorer, Budgets, Trusted Advisor, Health.

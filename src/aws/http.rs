@@ -417,6 +417,22 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("Firehose_20150804"),
             is_global: false,
         }),
+        "datasync" => Some(ServiceDefinition {
+            signing_name: "datasync",
+            endpoint_prefix: "datasync",
+            api_version: "2018-11-09",
+            protocol: Protocol::Json,
+            target_prefix: Some("FmrsService"),
+            is_global: false,
+        }),
+        "transfer" => Some(ServiceDefinition {
+            signing_name: "transfer",
+            endpoint_prefix: "transfer",
+            api_version: "2018-11-05",
+            protocol: Protocol::Json,
+            target_prefix: Some("TransferService"),
+            is_global: false,
+        }),
         "appsync" => Some(ServiceDefinition {
             signing_name: "appsync",
             endpoint_prefix: "appsync",

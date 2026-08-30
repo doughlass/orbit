@@ -1,0 +1,39 @@
+{
+  "resources": {
+    "datasync-tasks": {
+      "display_name": "DataSync Tasks",
+      "service": "datasync",
+      "sdk_method": "list_tasks",
+      "sdk_method_params": {},
+      "response_path": "datasync_tasks",
+      "id_field": "TaskArn",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 28 },
+        { "header": "STATUS", "json_path": "Status", "width": 14, "color_map": "state" },
+        { "header": "MODE", "json_path": "TaskMode", "width": 14 },
+        { "header": "TASK ARN", "json_path": "TaskArn", "width": 50, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListTasks",
+        "response_root": "/Tasks",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "TaskMode": { "source": "/TaskMode", "default": "-" },
+        "TaskArn": { "source": "/TaskArn", "default": "-" }
+      }
+    }
+  }
+}

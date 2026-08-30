@@ -27,6 +27,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/cognito.json"),
     include_str!("../resources/common.json"),
     include_str!("../resources/dynamodb.json"),
+    include_str!("../resources/datasync.json"),
     include_str!("../resources/docdb.json"),
     include_str!("../resources/ec2.json"),
     include_str!("../resources/ecr.json"),
@@ -57,6 +58,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/s3.json"),
     include_str!("../resources/scheduler.json"),
     include_str!("../resources/secretsmanager.json"),
+    include_str!("../resources/transfer.json"),
     include_str!("../resources/securityhub.json"),
     include_str!("../resources/shield.json"),
     include_str!("../resources/sns.json"),
@@ -1590,6 +1592,66 @@ mod tests {
                 .unwrap_or_else(|| panic!("{svc_key} service must be registered"));
             assert_eq!(svc.target_prefix, Some(target), "{key} target prefix");
         }
+    }
+
+    /// DataSync and Transfer are plain JSON protocol lists with their own
+    /// X-Amz-Target prefixes and camelCase roots. Transfer's users are scoped
+    /// per-server via a ServerId parent filter and require a parent. Pin the
+    /// targets and roots so a missing include_str or a typoed root lists empty.
+    #[test]
+    fn datasync_and_transfer_lists_and_parent_scope() {
+        for (key, action, root, target) in [
+            ("datasync-tasks", "ListTasks", "/Tasks", "FmrsService"),
+            (
+                "transfer-servers",
+                "ListServers",
+                "/Servers",
+                "TransferService",
+            ),
+            ("transfer-users", "ListUsers", "/Users", "TransferService"),
+        ] {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            let api = r
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} needs api_config"));
+            assert_eq!(api.action.as_deref(), Some(action), "{key} action");
+            assert_eq!(api.response_root.as_deref(), Some(root), "{key} root");
+            let svc = crate::aws::http::get_service(if key.starts_with("datasync-") {
+                "datasync"
+            } else {
+                "transfer"
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "{} service must be registered",
+                    if key.starts_with("datasync-") {
+                        "datasync"
+                    } else {
+                        "transfer"
+                    }
+                )
+            });
+            assert_eq!(svc.target_prefix, Some(target), "{key} target prefix");
+        }
+
+        let users = get_resource("transfer-users").expect("transfer-users");
+        assert!(
+            users.requires_parent,
+            "transfer-users must require a parent server"
+        );
+        let servers = get_resource("transfer-servers").expect("transfer-servers");
+        let drill = servers
+            .sub_resources
+            .iter()
+            .find(|s| s.resource_key == "transfer-users")
+            .expect("servers drill into users");
+        assert_eq!(drill.filter_param, "ServerId", "users scope by ServerId");
+        assert_eq!(
+            servers.enter_sub_resource.as_deref(),
+            Some("transfer-users"),
+            "Enter drills into users"
+        );
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

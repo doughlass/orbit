@@ -1,0 +1,87 @@
+{
+  "resources": {
+    "transfer-servers": {
+      "display_name": "Transfer Servers",
+      "service": "transfer",
+      "sdk_method": "list_servers",
+      "sdk_method_params": {},
+      "response_path": "transfer_servers",
+      "id_field": "ServerId",
+      "name_field": "ServerId",
+      "is_global": false,
+      "columns": [
+        { "header": "SERVER ID", "json_path": "ServerId", "width": 28 },
+        { "header": "STATE", "json_path": "State", "width": 12, "color_map": "state" },
+        { "header": "DOMAIN", "json_path": "Domain", "width": 8 },
+        { "header": "IDP", "json_path": "IdentityProviderType", "width": 22 },
+        { "header": "ENDPOINT", "json_path": "EndpointType", "width": 14 },
+        { "header": "USERS", "json_path": "UserCount", "width": 6 },
+        { "header": "ARN", "json_path": "Arn", "width": 50, "visible": false }
+      ],
+      "sub_resources": [
+        { "shortcut": "u", "display_name": "Users", "resource_key": "transfer-users",
+          "parent_id_field": "ServerId", "filter_param": "ServerId" }
+      ],
+      "enter_sub_resource": "transfer-users",
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListServers",
+        "response_root": "/Servers",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "ServerId": { "source": "/ServerId", "default": "-" },
+        "State": { "source": "/State", "default": "-" },
+        "Domain": { "source": "/Domain", "default": "-" },
+        "IdentityProviderType": { "source": "/IdentityProviderType", "default": "-" },
+        "EndpointType": { "source": "/EndpointType", "default": "-" },
+        "UserCount": { "source": "/UserCount", "default": "0" },
+        "Arn": { "source": "/Arn", "default": "-" }
+      }
+    },
+    "transfer-users": {
+      "display_name": "Transfer Users",
+      "service": "transfer",
+      "sdk_method": "list_users",
+      "sdk_method_params": {},
+      "response_path": "transfer_users",
+      "id_field": "UserName",
+      "name_field": "UserName",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "USERNAME", "json_path": "UserName", "width": 28 },
+        { "header": "ROLE", "json_path": "Role", "width": 44 },
+        { "header": "SSH KEYS", "json_path": "SshPublicKeyCount", "width": 9 },
+        { "header": "HOME", "json_path": "HomeDirectoryType", "width": 12 },
+        { "header": "ARN", "json_path": "Arn", "width": 50, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListUsers",
+        "response_root": "/Users",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "UserName": { "source": "/UserName", "default": "-" },
+        "Role": { "source": "/Role", "default": "-" },
+        "SshPublicKeyCount": { "source": "/SshPublicKeyCount", "default": "0" },
+        "HomeDirectoryType": { "source": "/HomeDirectoryType", "default": "-" },
+        "Arn": { "source": "/Arn", "default": "-" }
+      }
+    }
+  }
+}
