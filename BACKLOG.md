@@ -227,7 +227,17 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       model has no dynamic-parameter substitution — a fixed static date goes
       stale nightly and a hardcoded account lies. Both need new Rust capability
       (dynamic date window / caller account resolution) not just JSON.
-- [ ] Config rules/compliance, X-Ray, Systems Manager fleet ops (Run Command /
+- [x] Config rules, SSM fleet ops (documents + managed instances). Config is
+      JSON (`StarlingDoveService`) and `DescribeConfigRules` pages on
+      `NextToken` only — it takes **no** `MaxResults` (the DescribeAddresses/EMR
+      trap), pinned by test. SSM lists page normally but `ListDocuments`
+      caps `MaxResults` at **50**, and sending 100 draws a `ValidationException`
+      — the resource uses 50. Live verified 200 on all three; Config returned
+      FMS-managed rules and SSM returned a real managed instance.
+- [ ] X-Ray — **blocked**: `GetGroups` is explicitly denied by an IAM identity
+      policy on the target account, so the response root cannot be verified;
+      trace-list ops (`GetTraces`/`GetTraceSummaries`) also need a time window
+      the JSON model can't source. Needs Rust + a permissive role to verify.
       Patch / State Manager / Sessions).
 - [ ] SSO / Identity Center (permission sets, accounts, assignments).
 - [ ] Cognito identity pools, user pool clients/domains.

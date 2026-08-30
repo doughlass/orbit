@@ -37,6 +37,87 @@
         "LastModifiedDate": { "source": "/LastModifiedDate", "default": "-" },
         "Description": { "source": "/Description", "default": "-" }
       }
+    },
+    "ssm-documents": {
+      "display_name": "SSM Documents",
+      "service": "ssm",
+      "sdk_method": "list_documents",
+      "sdk_method_params": {},
+      "response_path": "ssm_documents",
+      "id_field": "Name",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 34 },
+        { "header": "OWNER", "json_path": "Owner", "width": 14 },
+        { "header": "TYPE", "json_path": "DocumentType", "width": 18 },
+        { "header": "PLATFORM", "json_path": "PlatformTypes", "width": 14 },
+        { "header": "VERSION", "json_path": "DocumentVersion", "width": 8 },
+        { "header": "STATUS", "json_path": "ReviewStatus", "width": 14 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListDocuments",
+        "response_root": "/DocumentIdentifiers",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 50
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "Owner": { "source": "/Owner", "default": "-" },
+        "DocumentType": { "source": "/DocumentType", "default": "-" },
+        "PlatformTypes": { "source": "/PlatformTypes", "transform": "array_to_csv", "default": "-" },
+        "DocumentVersion": { "source": "/DocumentVersion", "default": "-" },
+        "ReviewStatus": { "source": "/ReviewStatus", "default": "-" }
+      }
+    },
+    "ssm-managed-instances": {
+      "display_name": "SSM Managed Instances",
+      "service": "ssm",
+      "sdk_method": "describe_instance_information",
+      "sdk_method_params": {},
+      "response_path": "ssm_instances",
+      "id_field": "InstanceId",
+      "name_field": "ComputerName",
+      "is_global": false,
+      "columns": [
+        { "header": "INSTANCE", "json_path": "InstanceId", "width": 20 },
+        { "header": "PING", "json_path": "PingStatus", "width": 10, "color_map": "state" },
+        { "header": "PLATFORM", "json_path": "PlatformName", "width": 18 },
+        { "header": "VERSION", "json_path": "PlatformVersion", "width": 10 },
+        { "header": "AGENT", "json_path": "AgentVersion", "width": 12 },
+        { "header": "ASSOC", "json_path": "AssociationStatus", "width": 10, "color_map": "state" },
+        { "header": "IP", "json_path": "IPAddress", "width": 16 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "DescribeInstanceInformation",
+        "response_root": "/InstanceInformationList",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 50
+        }
+      },
+      "field_mappings": {
+        "InstanceId": { "source": "/InstanceId", "default": "-" },
+        "PingStatus": { "source": "/PingStatus", "default": "-" },
+        "PlatformName": { "source": "/PlatformName", "default": "-" },
+        "PlatformVersion": { "source": "/PlatformVersion", "default": "-" },
+        "AgentVersion": { "source": "/AgentVersion", "default": "-" },
+        "AssociationStatus": { "source": "/AssociationStatus", "default": "-" },
+        "IPAddress": { "source": "/IPAddress", "default": "-" },
+        "ComputerName": { "source": "/ComputerName", "default": "-" }
+      }
     }
   }
 }

@@ -226,6 +226,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("Logs_20140328"),
             is_global: false,
         }),
+        "config" => Some(ServiceDefinition {
+            signing_name: "config",
+            endpoint_prefix: "config",
+            api_version: "2014-11-12",
+            protocol: Protocol::Json,
+            target_prefix: Some("StarlingDoveService"),
+            is_global: false,
+        }),
         // CloudWatch metrics/alarms. AWS migrated this service off the classic
         // AWS-Query XML path to a JSON target; the observed wire header is
         // `X-Amz-Target: GraniteServiceVersion20100801.<Action>` with a

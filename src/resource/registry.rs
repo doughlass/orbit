@@ -25,6 +25,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/cloudtrail.json"),
     include_str!("../resources/cloudwatch.json"),
     include_str!("../resources/codebuild.json"),
+    include_str!("../resources/config.json"),
     include_str!("../resources/codepipeline.json"),
     include_str!("../resources/cognito.json"),
     include_str!("../resources/common.json"),
@@ -1823,6 +1824,53 @@ mod tests {
             !hsvc.is_global,
             "health stays regional in the selected region"
         );
+    }
+
+    /// Config rules and the two new SSM lists all live behind the JSON protocol
+    /// with their own targets. Config's DescribeConfigRules is the trap: it
+    /// pages on NextToken only and takes NO MaxResults parameter, so the block
+    /// omits max_results_param (the DescribeAddresses/EMR failure mode). SSM
+    /// documents and managed instances page normally. Pin roots, targets, and
+    /// the Config no-max-choice.
+    #[test]
+    fn config_rules_and_ssm_lists_keep_their_targets_and_paging() {
+        let c = get_resource("config-rules").expect("config-rules");
+        let api = c.api_config.as_ref().expect("config-rules api_config");
+        assert_eq!(api.protocol, crate::resource::protocol::ApiProtocol::Json);
+        assert_eq!(api.response_root.as_deref(), Some("/ConfigRules"));
+        let pag = api.pagination.as_ref().expect("config rules paginate");
+        assert_eq!(pag.input_token.as_deref(), Some("NextToken"));
+        assert!(
+            pag.max_results_param.is_none(),
+            "DescribeConfigRules takes no MaxResults; a max-results param would fail silently"
+        );
+        let csvc = crate::aws::http::get_service("config")
+            .unwrap_or_else(|| panic!("config service must be registered"));
+        assert_eq!(csvc.target_prefix, Some("StarlingDoveService"));
+
+        for (key, root) in [
+            ("ssm-documents", "/DocumentIdentifiers"),
+            ("ssm-managed-instances", "/InstanceInformationList"),
+        ] {
+            let r = get_resource(key).unwrap_or_else(|| panic!("{key} must parse"));
+            let api = r
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} needs api_config"));
+            assert_eq!(api.response_root.as_deref(), Some(root), "{key} root");
+            let pag = api
+                .pagination
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} paginates"));
+            assert_eq!(
+                pag.max_results_param.as_deref(),
+                Some("MaxResults"),
+                "{key}"
+            );
+        }
+        let ssvc = crate::aws::http::get_service("ssm")
+            .unwrap_or_else(|| panic!("ssm service must be registered"));
+        assert_eq!(ssvc.target_prefix, Some("AmazonSSM"));
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.
