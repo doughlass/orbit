@@ -104,7 +104,11 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       the body — the rest-json handler only paginates GETs and leaks
       non-underscore params into POST bodies. Needs a handler capability, not
       JSON. Live verified 200 against the one real detector.
-- [ ] **Security Hub** (findings, standards).
+- [x] **Security Hub** (standards; findings deferred). Standards are a clean
+      REST-JSON GET (`GET /standards` → `Standards`), no X-Amz-Target — live
+      verified 200 against real standards. New `securityhub` service. **Findings
+      deferred:** `GetFindings` is a POST needing `NextToken`/`MaxResults` in
+      the body, the same rest-json handler gap that defers GuardDuty findings.
 - [ ] **Macie**, **Inspector**.
 - [ ] **Shield**, **WAF classic (v1)**.
 - [ ] **Key pairs, launch templates, placement groups, dedicated hosts** (EC2).

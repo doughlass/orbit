@@ -47,6 +47,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/s3.json"),
     include_str!("../resources/scheduler.json"),
     include_str!("../resources/secretsmanager.json"),
+    include_str!("../resources/securityhub.json"),
     include_str!("../resources/sns.json"),
     include_str!("../resources/sqs.json"),
     include_str!("../resources/ssm.json"),
@@ -1066,6 +1067,35 @@ mod tests {
             "guardduty sends no X-Amz-Target; it is REST-JSON"
         );
         assert_eq!(service.api_version, "2017-11-28");
+    }
+
+    /// Security Hub standards are a straightforward REST-JSON GET (no
+    /// X-Amz-Target), unlike findings which are a POST needing body pagination.
+    /// Pin the GET /standards list, the EnabledByDefault boolean transform, and
+    /// the securityhub service entry.
+    #[test]
+    fn securityhub_standards_are_a_rest_json_get() {
+        let s = get_resource("securityhub-standards").expect("securityhub-standards");
+        let cfg = s.api_config.as_ref().expect("api_config");
+        assert_eq!(
+            cfg.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson
+        );
+        assert_eq!(cfg.method.as_deref(), Some("GET"));
+        assert_eq!(cfg.path.as_deref(), Some("/standards"));
+        assert_eq!(cfg.response_root.as_deref(), Some("/Standards"));
+        let enabled = s
+            .field_mappings
+            .get("EnabledByDefault")
+            .expect("securityhub-standards must map EnabledByDefault");
+        assert_eq!(enabled.transform.as_deref(), Some("bool_to_yes_no"));
+        let service = crate::aws::http::get_service("securityhub")
+            .unwrap_or_else(|| panic!("securityhub service must be registered"));
+        assert!(
+            service.target_prefix.is_none(),
+            "securityhub sends no X-Amz-Target; it is REST-JSON GET"
+        );
+        assert_eq!(service.api_version, "2018-10-26");
     }
 
     /// Every WAFv2 resource, keyed as it appears in the registry.

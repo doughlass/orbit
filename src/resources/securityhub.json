@@ -1,0 +1,39 @@
+{
+  "resources": {
+    "securityhub-standards": {
+      "display_name": "Security Hub Standards",
+      "service": "securityhub",
+      "sdk_method": "describe_standards",
+      "sdk_method_params": {},
+      "response_path": "standards",
+      "id_field": "StandardsArn",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 45 },
+        { "header": "PROVIDER", "json_path": "Provider", "width": 10 },
+        { "header": "ENABLED DEFAULT", "json_path": "EnabledByDefault", "width": 16 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/standards",
+        "response_root": "/Standards",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "StandardsArn": { "source": "/StandardsArn", "default": "-" },
+        "Provider": { "source": "/Provider", "default": "-" },
+        "EnabledByDefault": { "source": "/EnabledByDefault", "transform": "bool_to_yes_no", "default": "-" }
+      }
+    }
+  }
+}

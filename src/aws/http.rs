@@ -225,6 +225,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("secretsmanager"),
             is_global: false,
         }),
+        "securityhub" => Some(ServiceDefinition {
+            signing_name: "securityhub",
+            endpoint_prefix: "securityhub",
+            api_version: "2018-10-26",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
         "ssm" => Some(ServiceDefinition {
             signing_name: "ssm",
             endpoint_prefix: "ssm",
