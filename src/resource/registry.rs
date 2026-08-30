@@ -1296,6 +1296,82 @@ mod tests {
         }
     }
 
+    /// The S3 config-document trio (lifecycle, replication, policy) are all
+    /// per-bucket children: they carry requires_parent, scope on the bucket row's
+    /// Name over the "bucket" param, and hang off s3-buckets' sub_resources.
+    #[test]
+    fn s3_config_documents_are_bucket_scoped_children() {
+        let buckets = get_resource("s3-buckets").expect("s3-buckets");
+        for (key, shortcut) in [
+            ("s3-lifecycle-rules", "l"),
+            ("s3-replication-rules", "r"),
+            ("s3-bucket-policy", "p"),
+        ] {
+            assert!(
+                buckets
+                    .sub_resources
+                    .iter()
+                    .any(|sr| sr.resource_key == key),
+                "s3-buckets must declare {} as a sub_resource",
+                key
+            );
+            let child = get_resource(key).unwrap_or_else(|| panic!("{}", key));
+            assert!(child.requires_parent, "{key} cannot be listed standalone");
+            let sub = buckets
+                .sub_resources
+                .iter()
+                .find(|sr| sr.resource_key == key)
+                .expect("declared above");
+            assert_eq!(sub.shortcut, shortcut);
+            assert_eq!(sub.parent_id_field, "Name");
+            assert_eq!(sub.filter_param, "bucket");
+        }
+    }
+
+    /// GetBucketPolicy returns the raw JSON policy document as the body, not an
+    /// XML wrapper -- so unlike every other S3 resource it must go through the
+    /// rest-json handler (which JSON-parses the body), and each Statement row is
+    /// a list item. Lifecycle and replication are ordinary XML lists.
+    #[test]
+    fn s3_bucket_policy_is_rest_json_while_rules_stay_rest_xml() {
+        let policy = get_resource("s3-bucket-policy").expect("s3-bucket-policy");
+        let api = policy
+            .api_config
+            .as_ref()
+            .expect("s3-bucket-policy api_config");
+        assert_eq!(
+            api.protocol,
+            crate::resource::protocol::ApiProtocol::RestJson,
+            "GetBucketPolicy answers raw JSON, so xml_to_json would corrupt it"
+        );
+        assert_eq!(api.method.as_deref(), Some("GET"));
+        assert_eq!(api.path.as_deref(), Some("/{bucket}?policy"));
+        assert_eq!(api.response_root.as_deref(), Some("/Statement"));
+        for case in [
+            (
+                "s3-lifecycle-rules",
+                "/LifecycleConfiguration/Rule",
+                "/{bucket}?lifecycle",
+                crate::resource::protocol::ApiProtocol::RestXml,
+            ),
+            (
+                "s3-replication-rules",
+                "/ReplicationConfiguration/Rule",
+                "/{bucket}?replication",
+                crate::resource::protocol::ApiProtocol::RestXml,
+            ),
+        ] {
+            let s = get_resource(case.0).unwrap_or_else(|| panic!("{}", case.0));
+            let api = s
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{} api_config", case.0));
+            assert_eq!(api.protocol, case.3, "{} must stay rest-xml", case.0);
+            assert_eq!(api.response_root.as_deref(), Some(case.1));
+            assert_eq!(api.path.as_deref(), Some(case.2));
+        }
+    }
+
     /// Every WAFv2 resource, keyed as it appears in the registry.
     fn wafv2_resources() -> Vec<(&'static String, &'static ResourceDef)> {
         let found: Vec<_> = get_registry()

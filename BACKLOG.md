@@ -47,7 +47,17 @@ See `src/resources/*.json`. Roughly 32 services, 80+ resource views.
       API while functions/aliases/versions are `2015-03-31`; using the wrong
       version makes Lambda answer `AccessDenied: unable to determine
       operation`. Layers verified live 200; aliases/versions paths CLI-verified.
-- [ ] **S3 bucket policies / lifecycle / replication** (buckets + objects only).
+- [x] **S3 bucket policies / lifecycle / replication** (buckets + objects only).
+      All three are per-bucket children reachable from the buckets table
+      (`l`/`r`/`p` shortcuts, scoped via the bucket row's `Name`). Trap: the
+      three config documents speak three different wire formats from the same
+      bucket row. `GetBucketPolicy` returns the **raw JSON policy document**, not
+      an XML wrapper, so `s3-bucket-policy` is the one S3 resource that goes
+      through the **rest-json** handler (its `xml_to_json` step would corrupt
+      the body) and lists each `Statement` as a row. Lifecycle and replication
+      are ordinary XML lists (`/LifecycleConfiguration/Rule`,
+      `/ReplicationConfiguration/Rule`). Live verified: lifecycle + policy 200
+      against real configs, replication correctly 404s in an account with none.
 
 ### Session 2
 
