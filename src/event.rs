@@ -568,6 +568,11 @@ async fn handle_describe_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.error_message = Some(format!("Failed to reveal secret: {}", e));
             }
         }
+        // Flip a revealed secret between its plaintext and key/value
+        // renderings, mirroring the AWS console's switch.
+        KeyCode::Char('t') if app.reveal_secret.is_some() => {
+            app.toggle_secret_reveal_mode();
+        }
         _ => {}
     }
     Ok(false)

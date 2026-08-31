@@ -663,11 +663,32 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
 /// Center a bordered panel over the describe body showing the revealed secret
 /// value, with a live countdown of the remaining seconds before it auto-hides.
 fn render_secret_reveal_overlay(f: &mut Frame, app: &App, area: Rect) {
-    let value = &app.reveal_secret.as_ref().unwrap().value;
+    let reveal = app.reveal_secret.as_ref().unwrap();
     let seconds = app.reveal_seconds_left().unwrap_or(0);
 
+    let mode_label = match reveal.mode {
+        crate::app::RevealMode::Plaintext => "plaintext",
+        crate::app::RevealMode::KeyValue => "key/value",
+    };
+    // A secret string is already its own text; key/value wraps it as one line
+    // and adds a countdown+mode header, so the total is one row per key.
+    let display: String = match reveal.mode {
+        crate::app::RevealMode::KeyValue => match secret_kv_lines(&reveal.value) {
+            Some(pairs) => pairs
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, v))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            None => {
+                // Not a JSON object -- fall back to plaintext per the console.
+                reveal.value.clone()
+            }
+        },
+        crate::app::RevealMode::Plaintext => reveal.value.clone(),
+    };
+
+    let line_count = display.lines().count().clamp(1, 30);
     let popup_width = (area.width / 2).clamp(40, 80);
-    let line_count = value.lines().count().clamp(1, 30);
     let max_height = area.height.saturating_sub(4).max(8);
     let popup_height = (line_count as u16 + 5).clamp(8, max_height);
 
@@ -679,7 +700,7 @@ fn render_secret_reveal_overlay(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let title = Span::styled(
-        format!(" Secret value - hidden in {}s ", seconds),
+        format!(" Secret value [{mode_label}] - hidden in {}s ", seconds),
         Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD),
@@ -694,13 +715,13 @@ fn render_secret_reveal_overlay(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(Clear, popup_area);
     f.render_widget(block, popup_area);
 
-    let paragraph = Paragraph::new(value.to_string())
+    let paragraph = Paragraph::new(display)
         .wrap(Wrap { trim: false })
         .scroll((0, 0));
     f.render_widget(paragraph, inner);
 
     let hint = Paragraph::new(Span::styled(
-        "  [s / Esc to hide now]",
+        "  [t key/value | s / Esc to hide now]",
         Style::default().fg(Color::DarkGray),
     ))
     .alignment(Alignment::Center);
@@ -713,6 +734,20 @@ fn render_secret_reveal_overlay(f: &mut Frame, app: &App, area: Rect) {
         };
         f.render_widget(hint, hint_area);
     }
+}
+
+/// Parse a secret value as a top-level JSON object and return its entries,
+/// sorted by key for a stable render. None when the value is not a JSON object
+/// (including scalars and arrays), which is the "not key/value" fallback.
+fn secret_kv_lines(value: &str) -> Option<Vec<(String, String)>> {
+    let parsed: serde_json::Value = serde_json::from_str(value).ok()?;
+    let obj = parsed.as_object()?;
+    let mut pairs: Vec<(String, String)> = obj
+        .iter()
+        .map(|(k, v)| (k.clone(), v.to_string()))
+        .collect();
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    Some(pairs)
 }
 
 fn render_formatted_describe(

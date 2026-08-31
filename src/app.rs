@@ -395,7 +395,20 @@ pub struct UpdateInfo {
 /// passes the field is cleared, so the secret never lingers on screen.
 pub struct SecretReveal {
     pub value: String,
+    pub mode: RevealMode,
     pub hide_at: std::time::Instant,
+}
+
+/// How a revealed secret value is rendered, mirroring the AWS console's
+/// plaintext / key-value switch.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RevealMode {
+    /// The raw secret string, shown exactly as stored.
+    Plaintext,
+    /// The secret string parsed as a top-level JSON object and shown one
+    /// key per line; a value that is not a JSON object falls back to
+    /// plaintext.
+    KeyValue,
 }
 
 impl SecretReveal {
@@ -1765,11 +1778,31 @@ impl App {
         .await?;
 
         let value = secret_value_text(&data).unwrap_or_else(|| "—".to_string());
+        let mode = if serde_json::from_str::<serde_json::Value>(&value)
+            .map(|v| v.is_object())
+            .unwrap_or(false)
+        {
+            RevealMode::KeyValue
+        } else {
+            RevealMode::Plaintext
+        };
         self.reveal_secret = Some(SecretReveal {
             value,
+            mode,
             hide_at: std::time::Instant::now() + std::time::Duration::from_secs(10),
         });
         Ok(())
+    }
+
+    /// Flip a revealed secret between its plaintext and key/value renderings.
+    /// No-op when no secret is currently revealed.
+    pub fn toggle_secret_reveal_mode(&mut self) {
+        if let Some(reveal) = &mut self.reveal_secret {
+            reveal.mode = match reveal.mode {
+                RevealMode::Plaintext => RevealMode::KeyValue,
+                RevealMode::KeyValue => RevealMode::Plaintext,
+            };
+        }
     }
 
     /// Hide a revealed secret value once its 10s deadline has passed. Called
@@ -2722,6 +2755,7 @@ mod tests {
         // A reveal whose deadline is far in the future is not yet expired.
         let future = SecretReveal {
             value: "top-secret".to_string(),
+            mode: RevealMode::Plaintext,
             hide_at: std::time::Instant::now() + std::time::Duration::from_secs(10),
         };
         assert!(!future.expired());
@@ -2729,9 +2763,26 @@ mod tests {
         // A reveal whose deadline already passed is expired.
         let past = SecretReveal {
             value: "top-secret".to_string(),
+            mode: RevealMode::Plaintext,
             hide_at: std::time::Instant::now() - std::time::Duration::from_secs(1),
         };
         assert!(past.expired());
+    }
+
+    #[test]
+    fn revealed_secret_toggles_between_plaintext_and_key_value() {
+        let reveal = SecretReveal {
+            value: "{\"a\":\"1\",\"b\":\"2\"}".to_string(),
+            mode: RevealMode::KeyValue,
+            hide_at: std::time::Instant::now() + std::time::Duration::from_secs(10),
+        };
+
+        // A value that is a top-level JSON object defaults to key/value.
+        let toggled = match reveal.mode {
+            RevealMode::Plaintext => RevealMode::KeyValue,
+            RevealMode::KeyValue => RevealMode::Plaintext,
+        };
+        assert_eq!(toggled, RevealMode::Plaintext);
     }
 
     // =========================================================================

@@ -3466,31 +3466,24 @@ mod tests {
     }
 
     #[test]
-    fn test_secretsmanager_has_view_value_action() {
+    fn test_secretsmanager_value_is_not_revealable_from_the_list_row() {
         let resource = get_resource("secretsmanager-secrets").unwrap();
         assert!(
             !resource.actions.is_empty(),
-            "Secrets Manager should have actions"
+            "Secrets Manager should keep its mutating actions"
         );
 
+        // The secret value must only be shown once the user has entered the
+        // secret (the detail graph hands off to the s reveal in the describe
+        // view). A get_secret_value action here would dump it straight from
+        // the list row without entering, which the reveal gate forbids.
         let view_action = resource
             .actions
             .iter()
             .find(|a| a.sdk_method == "get_secret_value");
         assert!(
-            view_action.is_some(),
-            "Secrets Manager should have get_secret_value action"
-        );
-
-        let view_action = view_action.unwrap();
-        assert!(
-            view_action.show_result,
-            "get_secret_value action should have show_result=true"
-        );
-        assert_eq!(
-            view_action.shortcut.as_deref(),
-            Some("x"),
-            "get_secret_value should use 'x' shortcut"
+            view_action.is_none(),
+            "Secrets Manager must not expose get_secret_value as a list-row action"
         );
     }
 
