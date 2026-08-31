@@ -257,7 +257,7 @@ pub struct DescribeField {
     #[serde(default)]
     pub transform: Option<String>,
 
-    /// Heading this field sits under. The console groups an instance's ~30
+    /// Heading this field sits under. The console groups a resource's ~30
     /// fields; a flat list that long is unreadable. Emitted once, when the
     /// section changes, so fields sharing a section must be adjacent.
     #[serde(default)]
@@ -278,7 +278,7 @@ pub struct DescribeField {
 }
 
 /// Configuration for describe operation (single resource details)
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct DescribeConfig {
     /// Protocol to use
     pub protocol: ApiProtocol,
@@ -319,6 +319,56 @@ pub struct DescribeConfig {
     /// describe panel renders a labelled list instead of a raw JSON dump.
     #[serde(default)]
     pub describe_fields: Vec<DescribeField>,
+
+    /// An ASCII "Function Overview"-style banner drawn at the top of the
+    /// formatted describe panel, in the spirit of the console's overview card.
+    /// Fully data-driven: title, subtitle and identity chips come from paths
+    /// into the describe response, and `resources` draws a small diagram of
+    /// what the resource is wired to (triggers, destinations, children).
+    #[serde(default)]
+    pub overview: Option<OverviewConfig>,
+}
+
+/// Banner + partial diagram shown above a resource's describe fields.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OverviewConfig {
+    /// Response path holding the resource's primary identity (the box title).
+    pub title_source: String,
+    /// Optional response path for a one-line subtitle under the title.
+    #[serde(default)]
+    pub subtitle_source: Option<String>,
+    /// Key-value "chips" shown inline in the banner, e.g. Runtime / Arch.
+    #[serde(default)]
+    pub chips: Vec<OverviewChip>,
+    /// The partial diagram: resources the function is wired to, drawn as
+    /// boxed nodes in a column beneath the identity banner.
+    #[serde(default)]
+    pub resources: Vec<OverviewResource>,
+}
+
+/// A single labelled value rendered inline in the overview banner.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OverviewChip {
+    /// Short label, e.g. "Runtime".
+    pub label: String,
+    /// Path into the describe response to extract the value.
+    pub source: String,
+    /// Optional transform to apply, same names as field_mappings transforms.
+    #[serde(default)]
+    pub transform: Option<String>,
+}
+
+/// One connected-resource group in the overview diagram (e.g. "Triggers").
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OverviewResource {
+    /// Group heading, e.g. "TRIGGERS".
+    pub label: String,
+    /// Path to the array of connected items in the describe response.
+    pub source: String,
+    /// Per-item line format, like DescribeField::item_template. A key the item
+    /// lacks renders empty.
+    #[serde(default)]
+    pub item_template: Option<String>,
 }
 
 /// Additional API call to enrich describe response
@@ -345,7 +395,9 @@ pub struct EnrichCall {
     /// Service-table key when the enrichment is a different service to the
     /// resource. A DocDB instance's security group *rules* are EC2's, and its
     /// CPU is CloudWatch's; neither is reachable on the rds endpoint.
-    #[serde(default)]
+    /// `service_name` is accepted as an alias for master's Lambda/EventBridge
+    /// cross-service enrich.
+    #[serde(default, alias = "service_name")]
     pub service: Option<String>,
 
     /// Query params. Values are templated: `{resource_id}`, `{/Json/Pointer}`
@@ -365,6 +417,17 @@ pub struct EnrichCall {
     /// them. String leaves are templated, numbers and booleans pass through.
     #[serde(default)]
     pub body: Option<Value>,
+
+    /// Json-protocol action (e.g. "ListRuleNamesByTarget"). The string-body
+    /// alternative to `body`, used by Lambda's EventBridge enrich.
+    #[serde(default)]
+    pub target: Option<String>,
+
+    /// JSON body string for a Json-protocol enrich, supporting the
+    /// `{resource_id}` and `{FieldName}` placeholders
+    /// (e.g. `{"TargetArn":"{FunctionArn}"}`).
+    #[serde(default)]
+    pub body_template: Option<String>,
 }
 
 /// One AWS filter on an enrich call, whose values come from the describe

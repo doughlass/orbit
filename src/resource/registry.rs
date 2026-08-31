@@ -1675,8 +1675,14 @@ mod tests {
                         assert!(enrich.action.is_some(), "{what} needs an action")
                     }
                     ApiProtocol::Json => {
-                        assert!(enrich.action.is_some(), "{what} needs an action");
-                        assert!(enrich.body.is_some(), "{what} needs a json body");
+                        assert!(
+                            enrich.action.is_some() || enrich.target.is_some(),
+                            "{what} needs an action or target"
+                        );
+                        assert!(
+                            enrich.body.is_some() || enrich.body_template.is_some(),
+                            "{what} needs a json body or body_template"
+                        );
                     }
                     ApiProtocol::RestJson | ApiProtocol::RestXml => {
                         assert!(enrich.path.is_some(), "{what} needs a path")
@@ -2124,10 +2130,17 @@ mod tests {
             }
             for enrich in &dc.enrich_calls {
                 let prefix = format!("/{}", enrich.result_field);
+                let shown = dc
+                    .describe_fields
+                    .iter()
+                    .any(|f| f.source == prefix || f.source.starts_with(&format!("{prefix}/")))
+                    || dc.overview.as_ref().is_some_and(|o| {
+                        o.resources.iter().any(|r| {
+                            r.source == prefix || r.source.starts_with(&format!("{prefix}/"))
+                        })
+                    });
                 assert!(
-                    dc.describe_fields
-                        .iter()
-                        .any(|f| f.source == prefix || f.source.starts_with(&format!("{prefix}/"))),
+                    shown,
                     "{key} fetches {} but no describe field shows it",
                     enrich.result_field
                 );
@@ -3588,5 +3601,215 @@ mod tests {
 
         let delete_complete = get_color_for_value("state", "DELETE_COMPLETE");
         assert_eq!(delete_complete, Some([128, 128, 128]));
+    }
+
+    #[test]
+    fn lambda_functions_has_expected_columns() {
+        let resource = get_resource("lambda-functions").unwrap();
+        let headers: Vec<&str> = resource.columns.iter().map(|c| c.header.as_str()).collect();
+
+        for expected in &[
+            "FUNCTION NAME",
+            "RUNTIME",
+            "MEMORY",
+            "TIMEOUT",
+            "STATE",
+            "MODIFIED",
+        ] {
+            assert!(
+                headers.contains(expected),
+                "lambda-functions missing column {}",
+                expected
+            );
+        }
+
+        let hidden: Vec<&str> = resource
+            .columns
+            .iter()
+            .filter(|c| !c.visible)
+            .map(|c| c.header.as_str())
+            .collect();
+        for expected in &[
+            "DESCRIPTION",
+            "PACKAGE TYPE",
+            "ARCHITECTURE",
+            "CODE SIZE",
+            "HANDLER",
+            "ROLE",
+            "VERSION",
+        ] {
+            assert!(
+                hidden.contains(expected),
+                "lambda-functions hidden column {} should have visible: false",
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn lambda_functions_describe_has_formatted_fields() {
+        let resource = get_resource("lambda-functions").unwrap();
+        let dc = resource
+            .describe_config
+            .as_ref()
+            .expect("lambda-functions needs describe_config");
+        assert_eq!(
+            dc.response_path.as_deref(),
+            Some("/Configuration"),
+            "describe should narrow to /Configuration"
+        );
+        assert!(
+            !dc.describe_fields.is_empty(),
+            "lambda-functions needs describe_fields"
+        );
+
+        let labels: Vec<&str> = dc
+            .describe_fields
+            .iter()
+            .map(|f| f.label.as_str())
+            .collect();
+        assert!(labels.contains(&"Function Name"), "missing Function Name");
+        assert!(labels.contains(&"ARN"), "missing ARN");
+        assert!(labels.contains(&"State"), "missing State");
+        assert!(labels.contains(&"Runtime"), "missing Runtime");
+        assert!(labels.contains(&"Memory"), "missing Memory");
+        assert!(labels.contains(&"Timeout"), "missing Timeout");
+    }
+
+    #[test]
+    fn lambda_functions_describe_has_overview_banner_and_triggers_diagram() {
+        let resource = get_resource("lambda-functions").unwrap();
+        let dc = resource
+            .describe_config
+            .as_ref()
+            .expect("lambda-functions needs describe_config");
+
+        let overview = dc
+            .overview
+            .as_ref()
+            .expect("lambda-functions needs an overview banner");
+        assert_eq!(
+            overview.title_source.as_str(),
+            "/FunctionName",
+            "overview title should be the function name"
+        );
+        assert!(
+            !overview.chips.is_empty(),
+            "lambda overview should carry identity chips"
+        );
+
+        let resource_groups: Vec<&str> = overview
+            .resources
+            .iter()
+            .map(|r| r.label.as_str())
+            .collect();
+        assert!(
+            resource_groups.contains(&"EVENT SOURCE MAPPINGS"),
+            "lambda overview should draw an EVENT SOURCE MAPPINGS group"
+        );
+
+        assert!(
+            dc.enrich_calls.iter().any(|e| e
+                .path
+                .as_deref()
+                .is_some_and(|p| p.contains("event-source-mappings"))),
+            "lambda describe must enrich with ListEventSourceMappings for the mapping diagram"
+        );
+    }
+
+    #[test]
+    fn lambda_overview_trigger_source_maps_to_enrich_result_field() {
+        let resource = get_resource("lambda-functions").unwrap();
+        let dc = resource.describe_config.as_ref().unwrap();
+        let overview = dc.overview.as_ref().unwrap();
+
+        let triggers = overview
+            .resources
+            .iter()
+            .find(|r| r.label == "EVENT SOURCE MAPPINGS")
+            .expect("EVENT SOURCE MAPPINGS group exists");
+        assert_eq!(
+            triggers.source.as_str(),
+            "/EventSourceMappings",
+            "EVENT SOURCE MAPPINGS must read the enrich result field"
+        );
+        assert!(
+            dc.enrich_calls
+                .iter()
+                .any(|e| e.result_field == "EventSourceMappings"),
+            "enrich result_field must be EventSourceMappings"
+        );
+    }
+
+    #[test]
+    fn lambda_overview_lists_eventbridge_rules_that_target_the_function() {
+        let resource = get_resource("lambda-functions").unwrap();
+        let dc = resource.describe_config.as_ref().unwrap();
+
+        // The console shows EventBridge rules (CloudWatch Events targets) as a
+        // second trigger type distinct from event-source mappings. That lives
+        // in the `events` service and needs the function ARN, so the enrich
+        // must be a cross-service Json call, not another Lambda call.
+        let rules = dc
+            .enrich_calls
+            .iter()
+            .find(|e| e.result_field == "EventBridgeRules")
+            .expect("lambda must enrich with EventBridgeRules");
+        assert_eq!(
+            rules.service.as_deref(),
+            Some("events"),
+            "EventBridge rules come from the events service"
+        );
+        assert_eq!(
+            rules.protocol.as_ref(),
+            Some(&crate::resource::protocol::ApiProtocol::Json),
+            "events speaks the Json (X-Amz-Target) protocol"
+        );
+        assert_eq!(
+            rules.target.as_deref(),
+            Some("ListRuleNamesByTarget"),
+            "rules enrich targets ListRuleNamesByTarget"
+        );
+        assert!(
+            rules
+                .body_template
+                .as_deref()
+                .is_some_and(|b| b.contains("{FunctionArn}")),
+            "rules enrich must pass the function ARN, not the name"
+        );
+
+        let overview = dc.overview.as_ref().unwrap();
+        assert!(
+            overview
+                .resources
+                .iter()
+                .any(|r| r.label == "EVENTBRIDGE RULES"),
+            "overview must draw an EVENTBRIDGE RULES group"
+        );
+    }
+
+    #[test]
+    fn lambda_functions_id_field_is_mapped() {
+        let resource = get_resource("lambda-functions").unwrap();
+        assert!(
+            resource.field_mappings.contains_key(&resource.id_field),
+            "lambda-functions id_field {} must be in field_mappings",
+            resource.id_field
+        );
+    }
+
+    #[test]
+    fn lambda_functions_new_columns_have_field_mappings() {
+        let resource = get_resource("lambda-functions").unwrap();
+        for col in &resource.columns {
+            let root = col.json_path.split('.').next().unwrap_or("");
+            assert!(
+                resource.field_mappings.contains_key(&col.json_path)
+                    || resource.field_mappings.contains_key(root),
+                "lambda-functions column {} json_path {} has no field_mapping",
+                col.header,
+                col.json_path
+            );
+        }
     }
 }

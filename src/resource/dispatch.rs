@@ -755,6 +755,15 @@ fn resolve_enrich_token(
             .ok_or_else(|| anyhow!("describe response carries no value at {}", token));
     }
 
+    // A bare `{FieldName}` reads a top-level key off the describe response.
+    // EventBridge's enrich templates its body with `{FunctionArn}`, which is on
+    // the row but never the resource_id; the slash-prefixed form above is the
+    // spelling for anything deeper.
+    if let Some(value) = primary.as_object().and_then(|m| m.get(token)) {
+        return enrich_scalar(value)
+            .ok_or_else(|| anyhow!("describe response carries no value at {}", token));
+    }
+
     if let Some(offset) = token.strip_prefix("epoch_now") {
         let at = now - parse_enrich_offset(offset, token)?;
         return Ok(at.timestamp().to_string());
@@ -815,6 +824,30 @@ fn enrich_scalar(value: &Value) -> Option<String> {
         Value::Array(items) => items.iter().find_map(enrich_scalar),
         Value::Object(_) | Value::Null => None,
     }
+}
+
+/// Render a value for literal placeholder replacement in a `body_template`
+/// string: strings as-is, everything else compact JSON.
+fn value_to_plain_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// Replace `{resource_id}` and `{FieldName}` placeholders in a Json enrich's
+/// `body_template`. This is literal string replacement, not the brace-scanning
+/// template: a JSON body has braces of its own that would tokenise as garbage.
+/// `{FieldName}` reads a top-level key of the describe response (the Lambda
+/// enrich substitutes `{FunctionArn}`).
+fn substitute_enrich_body_template(template: &str, resource_id: &str, primary: &Value) -> String {
+    let mut out = template.replace("{resource_id}", resource_id);
+    if let Some(map) = primary.as_object() {
+        for (k, v) in map {
+            out = out.replace(&format!("{{{}}}", k), &value_to_plain_string(v));
+        }
+    }
+    out
 }
 
 /// Query params for an enrich call: templated params first, then any filters in
@@ -902,7 +935,11 @@ fn enrich_filter_values(primary: &Value, source: &str) -> Vec<String> {
     }
 }
 
-/// Execute an enrichment call for describe
+/// Execute an enrichment call for describe. The effective service and protocol
+/// come from the enrich call itself when set, otherwise from the describe_config
+/// — a cross-service enrichment (the tags on a certificate, the EventBridge
+/// rules that target a Lambda) needs another service and often another
+/// protocol, neither of which matches the parent describe.
 async fn execute_enrich_call(
     clients: &AwsClients,
     default_service: &str,
@@ -948,13 +985,32 @@ async fn execute_enrich_call(
         }
 
         ApiProtocol::Json => {
-            let action = enrich.action.as_deref().ok_or_else(|| {
-                anyhow!("json enrich call {} requires 'action'", enrich.result_field)
-            })?;
-            let body = enrich.body.as_ref().ok_or_else(|| {
-                anyhow!("json enrich call {} requires 'body'", enrich.result_field)
-            })?;
-            let body = resolve_enrich_body(body, resource_id, primary, now)?.to_string();
+            let action = enrich
+                .action
+                .as_deref()
+                .or(enrich.target.as_deref())
+                .ok_or_else(|| {
+                    anyhow!("json enrich call {} requires 'action'", enrich.result_field)
+                })?;
+            let body = match (&enrich.body, &enrich.body_template) {
+                // A real JSON object body has string leaves templated recursively
+                // (ACM's ListTagsForCertificate). A body_template is a plain
+                // JSON string whose own braces would fence with the brace-scanning
+                // tokeniser, so it replaces `{resource_id}` and `{FieldName}`
+                // literally instead (EventBridge's ListRuleNamesByTarget).
+                (Some(json_body), _) => {
+                    resolve_enrich_body(json_body, resource_id, primary, now)?.to_string()
+                }
+                (None, Some(template)) => {
+                    substitute_enrich_body_template(template, resource_id, primary)
+                }
+                (None, None) => {
+                    return Err(anyhow!(
+                        "json enrich call {} requires 'body' or 'body_template'",
+                        enrich.result_field
+                    ));
+                }
+            };
 
             let response = clients.http.json_request(service, action, &body).await?;
             let json: Value = serde_json::from_str(&response)?;
@@ -1261,6 +1317,33 @@ mod tests {
     fn describe_body_fills_the_resource_id() {
         let body = render_describe_body("{\"TableName\": \"{resource_id}\"}", "orders").unwrap();
         assert_eq!(body, "{\"TableName\": \"orders\"}");
+    }
+
+    /// A Json enrich's `body_template` is a whole JSON document whose own braces
+    /// would fence with the brace-scanning tokeniser, so it must be substituted
+    /// literally, replacing `{resource_id}` and top-level `{FieldName}` keys.
+    #[test]
+    fn json_enrich_body_template_substitutes_without_braking_on_the_documents_braces() {
+        let primary = serde_json::json!({ "FunctionArn": "arn:aws:lambda:us:1:function:fn" });
+        let out = substitute_enrich_body_template(
+            "{\"TargetArn\":\"{FunctionArn}\",\"s\":\"{resource_id}\"}",
+            "fn",
+            &primary,
+        );
+        assert_eq!(
+            out,
+            "{\"TargetArn\":\"arn:aws:lambda:us:1:function:fn\",\"s\":\"fn\"}"
+        );
+    }
+
+    /// A bare `{FieldName}` reads a top-level key of the describe response, the
+    /// spelling Lambda's EventBridge enrich relies on.
+    #[test]
+    fn enrich_template_reads_a_bare_field_name_off_the_describe_response() {
+        let primary = serde_json::json!({ "FunctionArn": "arn:aws:lambda:us:1:function:fn" });
+        let now = chrono::Utc::now();
+        let out = resolve_enrich_template("call {FunctionArn}", "fn", &primary, now).unwrap();
+        assert_eq!(out, "call arn:aws:lambda:us:1:function:fn");
     }
 
     /// WAFv2's GetWebACL wants Name, Id and Scope together, and the list call only
