@@ -667,6 +667,7 @@ async fn invoke_describe(
             clients,
             service,
             resource_id,
+            &result,
             enrich,
             &describe_config.protocol,
         )
@@ -690,32 +691,103 @@ async fn invoke_describe(
     Ok(result)
 }
 
-/// Execute an enrichment call for describe
+/// Execute an enrichment call for describe.
+///
+/// The effective service and protocol come from the enrich call itself when
+/// set, otherwise from the describe_config — a cross-service enrichment (e.g.
+/// listing EventBridge rules that target a Lambda function) needs the `events`
+/// service and its Json protocol, neither of which matches the parent.
 async fn execute_enrich_call(
     clients: &AwsClients,
     service: &str,
     resource_id: &str,
+    result: &Value,
     enrich: &super::protocol::EnrichCall,
-    _protocol: &ApiProtocol,
+    describe_protocol: &ApiProtocol,
 ) -> Result<Value> {
-    // For now, support REST-XML S3 style enrich calls
-    if let Some(ref path) = enrich.path {
-        let path = path.replace("{resource_id}", resource_id);
-        let method = enrich.method.as_deref().unwrap_or("GET");
+    let service = enrich.service_name.as_deref().unwrap_or(service);
+    let protocol = enrich.protocol.as_ref().unwrap_or(describe_protocol);
 
-        let xml = clients
-            .http
-            .rest_xml_request(service, method, &path, None)
-            .await?;
-        let json = xml_to_json(&xml)?;
-
-        if let Some(ref extract) = enrich.extract_path {
-            Ok(json.pointer(extract).cloned().unwrap_or(Value::Null))
-        } else {
-            Ok(json)
+    // Resolve placeholders. `{resource_id}` is the row id (e.g. the function
+    // name), `{FieldName}` reads from the describe response so an enrichment
+    // can pass e.g. the function ARN even though the row id is just its name.
+    let substitute = |template: String| -> String {
+        let mut out = template.replace("{resource_id}", resource_id);
+        if let Some(map) = result.as_object() {
+            for (k, v) in map {
+                out = out.replace(&format!("{{{}}}", k), &value_to_plain_string(v));
+            }
         }
-    } else {
-        Err(anyhow!("Enrich call requires path"))
+        out
+    };
+
+    match protocol {
+        ApiProtocol::Json => {
+            let target = enrich
+                .target
+                .as_deref()
+                .ok_or_else(|| anyhow!("Json enrich requires a target"))?;
+            let body = enrich
+                .body_template
+                .as_deref()
+                .ok_or_else(|| anyhow!("Json enrich requires a body_template"))?
+                .to_string();
+            let body = substitute(body);
+            let body = clients.http.json_request(service, target, &body).await?;
+            let json: Value = serde_json::from_str(&body)?;
+            Ok(if let Some(ref extract) = enrich.extract_path {
+                json.pointer(extract).cloned().unwrap_or(Value::Null)
+            } else {
+                json
+            })
+        }
+        ApiProtocol::RestJson => {
+            let path = enrich
+                .path
+                .clone()
+                .ok_or_else(|| anyhow!("RestJson enrich requires a path"))?;
+            let path = substitute(path);
+            let method = enrich.method.as_deref().unwrap_or("GET");
+            let body = clients
+                .http
+                .rest_json_request(service, method, &path, None)
+                .await?;
+            let json: Value = serde_json::from_str(&body)?;
+            Ok(if let Some(ref extract) = enrich.extract_path {
+                json.pointer(extract).cloned().unwrap_or(Value::Null)
+            } else {
+                json
+            })
+        }
+        // REST-XML enrich calls (S3 bucket config) answer in XML which must
+        // first round-trip through the XML→JSON converter.
+        _ => {
+            let path = enrich
+                .path
+                .clone()
+                .ok_or_else(|| anyhow!("REST-XML enrich requires a path"))?;
+            let path = substitute(path);
+            let method = enrich.method.as_deref().unwrap_or("GET");
+            let xml = clients
+                .http
+                .rest_xml_request(service, method, &path, None)
+                .await?;
+            let json = xml_to_json(&xml)?;
+            Ok(if let Some(ref extract) = enrich.extract_path {
+                json.pointer(extract).cloned().unwrap_or(Value::Null)
+            } else {
+                json
+            })
+        }
+    }
+}
+
+/// Render a JSON value the way placeholder substitution needs it: strings
+/// as-is, everything else as compact JSON.
+fn value_to_plain_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
     }
 }
 

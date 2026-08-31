@@ -595,16 +595,16 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
         (inner_area, None)
     };
 
-    // Check if this resource has a formatted describe layout
-    let describe_fields = app
+    // A resource renders a formatted panel when it declares describe_fields or
+    // an overview banner; otherwise it falls back to the raw JSON dump.
+    let describe_config = app
         .current_resource()
         .and_then(|r| r.describe_config.as_ref())
-        .map(|dc| &dc.describe_fields)
-        .filter(|fields| !fields.is_empty());
+        .filter(|dc| !dc.describe_fields.is_empty() || dc.overview.is_some());
 
-    if let Some(fields) = describe_fields {
+    if let Some(config) = describe_config {
         if let Some(ref data) = app.describe_data {
-            let lines = render_formatted_describe(fields, data);
+            let lines = render_formatted_describe(config, data);
             let total_lines = lines.len();
             let visible_lines = content_area.height as usize;
             let max_scroll = total_lines.saturating_sub(visible_lines);
@@ -650,12 +650,34 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_formatted_describe(
-    fields: &[crate::resource::protocol::DescribeField],
+    config: &crate::resource::protocol::DescribeConfig,
     data: &Value,
 ) -> Vec<Line<'static>> {
-    let mut lines: Vec<Line> = vec![Line::from("")];
+    let mut lines: Vec<Line> = vec![];
 
-    for field in fields {
+    if let Some(overview) = &config.overview {
+        lines.extend(render_overview_banner(overview, data));
+        lines.push(Line::from(""));
+    }
+
+    let mut current_section: Option<&str> = None;
+
+    for field in &config.describe_fields {
+        if let Some(section) = field.section.as_deref() {
+            if current_section != Some(section) {
+                if current_section.is_some() || !lines.is_empty() {
+                    lines.push(Line::from(""));
+                }
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", section),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )));
+                current_section = Some(section);
+            }
+        }
+
         let value = crate::resource::path_extractor::extract_by_path(data, &field.source);
 
         let value = if let Some(ref transform) = field.transform {
@@ -663,6 +685,11 @@ fn render_formatted_describe(
         } else {
             value
         };
+
+        if field.list {
+            lines.extend(describe_list_lines(field, &value));
+            continue;
+        }
 
         let display = value_to_describe_string(&value);
 
@@ -703,6 +730,201 @@ fn value_to_describe_string(value: &Value) -> String {
         }
         Value::Null => "-".to_string(),
     }
+}
+
+/// A `list` field: its label, then one line per item. An empty list still
+/// prints the label and a dash, so "there are none" cannot be mistaken for
+/// "orbit does not show this".
+fn describe_list_lines(
+    field: &crate::resource::protocol::DescribeField,
+    value: &Value,
+) -> Vec<Line<'static>> {
+    // XML→JSON collapses a one-element list to a bare object.
+    let items: Vec<&Value> = match value {
+        Value::Array(items) => items.iter().collect(),
+        Value::Null => vec![],
+        other => vec![other],
+    };
+
+    if items.is_empty() {
+        return vec![Line::from(vec![
+            Span::styled(
+                format!("  {:<20}", field.label),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled("-", Style::default().fg(Color::White)),
+        ])];
+    }
+
+    let label = Line::from(Span::styled(
+        format!("  {:<20}", field.label),
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    let mut lines = vec![label];
+    for item in items {
+        let text = match field.item_template.as_deref() {
+            Some(template) => render_describe_item(template, item),
+            None => value_to_describe_string(item),
+        };
+        lines.push(Line::from(Span::styled(
+            format!("    {}", text.trim()),
+            Style::default().fg(Color::White),
+        )));
+    }
+    lines
+}
+
+/// Fill `{key}` / `{nested/key}` from one list item. A key the item lacks
+/// renders empty: EC2 rules carry `cidrIpv4` or `referencedGroupInfo`, never
+/// both, and a "-" in the gap would read as a real value.
+fn render_describe_item(template: &str, item: &Value) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+
+    while let Some(start) = rest.find('{') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('}') else {
+            out.push('{');
+            rest = after;
+            continue;
+        };
+        let key = &after[..end];
+        let value = crate::resource::path_extractor::extract_by_path(item, key);
+        if !value.is_null() {
+            out.push_str(&value_to_describe_string(&value));
+        }
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+
+    out
+}
+
+/// An ASCII boxed banner heading the formatted describe panel, standing in for
+/// the console's Function Overview card. The identity (title + subtitle +
+/// chips) is drawn as a boxed card, then each connected-resource group is
+/// rendered as a column of boxed nodes linked up by a `▲` connector line.
+fn render_overview_banner(
+    overview: &crate::resource::protocol::OverviewConfig,
+    data: &Value,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line> = vec![];
+
+    let title = crate::resource::path_extractor::extract_by_path(data, &overview.title_source);
+    let title_text = value_to_describe_string(&title);
+
+    let mut subtitle_text = String::new();
+    if let Some(sub_source) = &overview.subtitle_source {
+        let sub = crate::resource::path_extractor::extract_by_path(data, sub_source);
+        subtitle_text = value_to_describe_string(&sub);
+    }
+
+    lines.push(Line::from(Span::styled(
+        format!("  ╭─── {}", title_text),
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+
+    if !subtitle_text.is_empty() && subtitle_text != "-" {
+        lines.push(Line::from(Span::styled(
+            format!("  │    {}", subtitle_text),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    if !overview.chips.is_empty() {
+        let chip_texts: Vec<String> = overview
+            .chips
+            .iter()
+            .map(|chip| {
+                let mut v = crate::resource::path_extractor::extract_by_path(data, &chip.source);
+                if let Some(ref transform) = chip.transform {
+                    v = crate::resource::field_mapper::apply_transform(&v, transform);
+                }
+                format!("{}: {}", chip.label, value_to_describe_string(&v))
+            })
+            .collect();
+        lines.push(Line::from(Span::styled(
+            format!("  │    {}", chip_texts.join("   ·   ")),
+            Style::default().fg(Color::White),
+        )));
+    }
+
+    lines.push(Line::from(Span::styled(
+        "  ╰──────────────",
+        Style::default().fg(Color::Cyan),
+    )));
+
+    if overview.resources.is_empty() {
+        return lines;
+    }
+
+    // The partial diagram: a single centre connector column rising from the
+    // card, then each group's boxed nodes.
+    lines.push(Line::from(Span::styled(
+        "        ▲",
+        Style::default().fg(Color::DarkGray),
+    )));
+    lines.push(Line::from(Span::styled(
+        "        │",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    for (i, group) in overview.resources.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::from(Span::styled(
+                "        │",
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+        lines.push(Line::from(Span::styled(
+            format!("    {}:", group.label),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )));
+
+        let values = crate::resource::path_extractor::extract_by_path(data, &group.source);
+        let items: Vec<&Value> = match &values {
+            Value::Array(arr) => arr.iter().collect(),
+            Value::Null => vec![],
+            other => vec![other],
+        };
+
+        if items.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "        └─ (none)",
+                Style::default().fg(Color::DarkGray),
+            )));
+            continue;
+        }
+
+        for (j, item) in items.iter().enumerate() {
+            let text = match group.item_template.as_deref() {
+                Some(template) => render_describe_item(template, item),
+                None => value_to_describe_string(item),
+            };
+            let prefix = if j == items.len() - 1 {
+                "└─"
+            } else {
+                "├─"
+            };
+            let styled = if text.trim() == "-" {
+                Style::default().fg(Color::DarkGray)
+            } else {
+                Style::default().fg(Color::Yellow)
+            };
+            lines.push(Line::from(Span::styled(
+                format!("        {} {}", prefix, text.trim()),
+                styled,
+            )));
+        }
+    }
+
+    lines
 }
 
 fn render_describe_search_bar(f: &mut Frame, app: &App, area: Rect) {
@@ -1119,7 +1341,8 @@ fn render_crumb(f: &mut Frame, app: &App, area: Rect) {
 #[cfg(test)]
 mod tests {
     use super::{
-        column_layout, describe_title, max_h_scroll_offset, truncate_cell, TABLE_COLUMN_SPACING,
+        column_layout, describe_title, max_h_scroll_offset, render_overview_banner, truncate_cell,
+        TABLE_COLUMN_SPACING,
     };
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
@@ -1327,5 +1550,84 @@ mod tests {
     fn describe_title_falls_back_to_resource_details() {
         let title = describe_title("EC2 Instances", None);
         assert_eq!(title, " EC2 Instances Details ");
+    }
+
+    #[test]
+    fn overview_banner_renders_title_chips_and_trigger_nodes() {
+        use crate::resource::protocol::{OverviewChip, OverviewConfig, OverviewResource};
+
+        let overview = OverviewConfig {
+            title_source: "/FunctionName".to_string(),
+            subtitle_source: Some("/Description".to_string()),
+            chips: vec![
+                OverviewChip {
+                    label: "Runtime".to_string(),
+                    source: "/Runtime".to_string(),
+                    transform: None,
+                },
+                OverviewChip {
+                    label: "Size".to_string(),
+                    source: "/CodeSize".to_string(),
+                    transform: Some("format_bytes".to_string()),
+                },
+            ],
+            resources: vec![OverviewResource {
+                label: "TRIGGERS".to_string(),
+                source: "/EventSourceMappings".to_string(),
+                item_template: Some("{EventSourceArn}".to_string()),
+            }],
+        };
+
+        let data = serde_json::json!({
+            "FunctionName": "hello-world",
+            "Description": "a test function",
+            "Runtime": "nodejs18.x",
+            "CodeSize": 1048576,
+            "EventSourceMappings": [
+                { "EventSourceArn": "arn:aws:sqs:eu-west-1:123:orders" }
+            ]
+        });
+
+        let lines = render_overview_banner(&overview, &data);
+        let text: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+        let joined = text.join("\n");
+
+        assert!(joined.contains("hello-world"), "banner names the function");
+        assert!(
+            joined.contains("a test function"),
+            "banner carries subtitle"
+        );
+        assert!(joined.contains("Runtime: nodejs18.x"), "chip renders");
+        assert!(joined.contains("Size: 1.0 MB"), "chip transform applies");
+        assert!(joined.contains("TRIGGERS"), "resource group heading");
+        assert!(
+            joined.contains("arn:aws:sqs:eu-west-1:123:orders"),
+            "trigger node renders via item_template"
+        );
+    }
+
+    #[test]
+    fn overview_banner_shows_none_for_empty_resource_groups() {
+        use crate::resource::protocol::{OverviewConfig, OverviewResource};
+
+        let overview = OverviewConfig {
+            title_source: "/FunctionName".to_string(),
+            subtitle_source: None,
+            chips: vec![],
+            resources: vec![OverviewResource {
+                label: "TRIGGERS".to_string(),
+                source: "/EventSourceMappings".to_string(),
+                item_template: None,
+            }],
+        };
+
+        let data = serde_json::json!({ "FunctionName": "quiet", "EventSourceMappings": [] });
+
+        let lines = render_overview_banner(&overview, &data);
+        let joined: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+        assert!(
+            joined.iter().any(|l| l.contains("(none)")),
+            "an empty trigger list should render (none)"
+        );
     }
 }

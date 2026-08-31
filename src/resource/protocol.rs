@@ -248,6 +248,25 @@ pub struct DescribeField {
     /// Optional transform to apply, same names as field_mappings transforms
     #[serde(default)]
     pub transform: Option<String>,
+
+    /// Heading this field sits under. The console groups a resource's ~30
+    /// fields; a flat list that long is unreadable. Emitted once, when the
+    /// section changes, so fields sharing a section must be adjacent.
+    #[serde(default)]
+    pub section: Option<String>,
+
+    /// Render one line per array item instead of a comma-joined line. Security
+    /// group rules, cluster members and subnets are tables in the console and
+    /// wrap into mush when joined.
+    #[serde(default)]
+    pub list: bool,
+
+    /// Per-item line format for a `list` field, e.g.
+    /// `"{ipProtocol} {fromPort}-{toPort} {cidrIpv4}"`. Keys are paths into the
+    /// item. A key the item does not carry renders empty, not "-", because EC2
+    /// rules carry `cidrIpv4` *or* `referencedGroupInfo` and never both.
+    #[serde(default)]
+    pub item_template: Option<String>,
 }
 
 /// Configuration for describe operation (single resource details)
@@ -292,6 +311,56 @@ pub struct DescribeConfig {
     /// describe panel renders a labelled list instead of a raw JSON dump.
     #[serde(default)]
     pub describe_fields: Vec<DescribeField>,
+
+    /// An ASCII "Function Overview"-style banner drawn at the top of the
+    /// formatted describe panel, in the spirit of the console's overview card.
+    /// Fully data-driven: title, subtitle and identity chips come from paths
+    /// into the describe response, and `resources` draws a small diagram of
+    /// what the resource is wired to (triggers, destinations, children).
+    #[serde(default)]
+    pub overview: Option<OverviewConfig>,
+}
+
+/// Banner + partial diagram shown above a resource's describe fields.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OverviewConfig {
+    /// Response path holding the resource's primary identity (the box title).
+    pub title_source: String,
+    /// Optional response path for a one-line subtitle under the title.
+    #[serde(default)]
+    pub subtitle_source: Option<String>,
+    /// Key-value "chips" shown inline in the banner, e.g. Runtime / Arch.
+    #[serde(default)]
+    pub chips: Vec<OverviewChip>,
+    /// The partial diagram: resources the function is wired to, drawn as
+    /// boxed nodes in a column beneath the identity banner.
+    #[serde(default)]
+    pub resources: Vec<OverviewResource>,
+}
+
+/// A single labelled value rendered inline in the overview banner.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OverviewChip {
+    /// Short label, e.g. "Runtime".
+    pub label: String,
+    /// Path into the describe response to extract the value.
+    pub source: String,
+    /// Optional transform to apply, same names as field_mappings transforms.
+    #[serde(default)]
+    pub transform: Option<String>,
+}
+
+/// One connected-resource group in the overview diagram (e.g. "Triggers").
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OverviewResource {
+    /// Group heading, e.g. "TRIGGERS".
+    pub label: String,
+    /// Path to the array of connected items in the describe response.
+    pub source: String,
+    /// Per-item line format, like DescribeField::item_template. A key the item
+    /// lacks renders empty.
+    #[serde(default)]
+    pub item_template: Option<String>,
 }
 
 /// Additional API call to enrich describe response
@@ -308,6 +377,29 @@ pub struct EnrichCall {
     /// Default value if call fails
     #[serde(default)]
     pub default_value: Option<String>,
+
+    /// Service to call for this enrich. Defaults to the describe resource's
+    /// own service — only needed when the enrichment lives in another service
+    /// (e.g. listing EventBridge rules that target a Lambda function).
+    #[serde(default)]
+    pub service_name: Option<String>,
+
+    /// Wire protocol for the enrich call. Defaults to the describe_config's
+    /// protocol, but a cross-service enrich may need a different one — the
+    /// `events` service speaks the Json (X-Amz-Target) protocol while Lambda's
+    /// describe is rest-json.
+    #[serde(default)]
+    pub protocol: Option<ApiProtocol>,
+
+    /// Json-protocol target (e.g. "ListRuleNamesByTarget"). Only used when
+    /// `protocol` is `json`.
+    #[serde(default)]
+    pub target: Option<String>,
+
+    /// JSON body template for a Json-protocol enrich, supporting the
+    /// `{resource_id}` placeholder (e.g. `{"TargetArn":"{resource_id}"}`).
+    #[serde(default)]
+    pub body_template: Option<String>,
 }
 
 #[cfg(test)]
