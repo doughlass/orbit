@@ -63,7 +63,7 @@
         "EventId": { "source": "/EventId", "default": "-" },
         "EventName": { "source": "/EventName", "default": "-" },
         "EventSource": { "source": "/EventSource", "default": "-" },
-        "EventTime": { "source": "/EventTime", "default": "-" },
+        "EventTime": { "source": "/EventTime", "transform": "format_epoch_seconds", "default": "-" },
         "Username": { "source": "/Username", "default": "-" },
         "AccessKeyId": { "source": "/AccessKeyId", "default": "-" },
         "ReadOnly": { "source": "/ReadOnly", "default": "-" }

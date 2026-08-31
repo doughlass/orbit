@@ -120,6 +120,7 @@
         },
         "LastUpdatedDate": {
           "source": "/LastUpdatedDate",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       }
@@ -189,6 +190,7 @@
         },
         "CreationDate": {
           "source": "/CreationDate",
+          "transform": "format_epoch_seconds",
           "default": "-"
         },
         "Operations": {

@@ -266,6 +266,15 @@ pub fn transform_format_bytes(value: &Value) -> Value {
     Value::String(formatted)
 }
 
+/// Format a UTC instant as "September 18, 2017, 16:53:02 (UTC+01:00)" in the
+/// local timezone. The offset suffix names the zone so a machine elsewhere can
+/// read the instant back rather than guessing the wall clock was UTC.
+fn format_local_datetime(dt: chrono::DateTime<chrono::Utc>) -> String {
+    use chrono::Local;
+    let local: chrono::DateTime<chrono::Local> = dt.with_timezone(&Local);
+    local.format("%B %e, %Y, %H:%M:%S (UTC%:z)").to_string()
+}
+
 /// Format epoch milliseconds to human-readable date string
 pub fn transform_format_epoch_millis(value: &Value) -> Value {
     let millis = match value {
@@ -278,12 +287,12 @@ pub fn transform_format_epoch_millis(value: &Value) -> Value {
         return Value::String("-".to_string());
     }
 
-    use chrono::{TimeZone, Utc};
+    use chrono::TimeZone;
 
-    let formatted = Utc
+    let formatted = chrono::Utc
         .timestamp_millis_opt(millis)
         .single()
-        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .map(format_local_datetime)
         .unwrap_or_else(|| "-".to_string());
 
     Value::String(formatted)
@@ -293,7 +302,18 @@ pub fn transform_format_epoch_millis(value: &Value) -> Value {
 pub fn transform_format_epoch_seconds(value: &Value) -> Value {
     let secs = match value {
         Value::Number(n) => n.as_f64().unwrap_or(0.0) as i64,
-        Value::String(s) => s.parse::<i64>().unwrap_or(0),
+        Value::String(s) => {
+            // Some JSON APIs return an ISO-8601 string (CloudTrail EventTime)
+            // instead of epoch. Parse that to epoch seconds.
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                dt.timestamp()
+            } else {
+                match s.parse::<i64>() {
+                    Ok(v) => v,
+                    Err(_) => return Value::String("-".to_string()),
+                }
+            }
+        }
         _ => return Value::String("-".to_string()),
     };
 
@@ -301,12 +321,12 @@ pub fn transform_format_epoch_seconds(value: &Value) -> Value {
         return Value::String("-".to_string());
     }
 
-    use chrono::{TimeZone, Utc};
+    use chrono::TimeZone;
 
-    let formatted = Utc
+    let formatted = chrono::Utc
         .timestamp_opt(secs, 0)
         .single()
-        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .map(format_local_datetime)
         .unwrap_or_else(|| "-".to_string());
 
     Value::String(formatted)
@@ -412,6 +432,7 @@ pub fn build_response(items: Vec<Value>, response_key: &str, next_token: Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
 
     /// CloudWatch does not promise datapoint order, and the panel shows one
     /// number, so the transform picks by timestamp rather than by position.
@@ -562,9 +583,24 @@ mod tests {
     fn test_transform_format_epoch_seconds() {
         assert_eq!(
             transform_format_epoch_seconds(&json!(1687351280)),
-            json!("2023-06-21 12:41:20")
+            json!(format_local_datetime(
+                chrono::Utc.timestamp_opt(1687351280, 0).single().unwrap()
+            ))
         );
         assert_eq!(transform_format_epoch_seconds(&json!(0)), json!("-"));
+    }
+
+    /// CloudTrail LookupEvents returns EventTime as an ISO-8601 string, and the
+    /// table displays dates in the long UTC-offset form, so the seconds
+    /// formatter has to parse ISO strings too rather than only integers.
+    #[test]
+    fn format_epoch_seconds_parses_iso8601_strings() {
+        assert_eq!(
+            transform_format_epoch_seconds(&json!("2026-08-30T20:05:00Z")),
+            json!(format_local_datetime(
+                chrono::Utc.timestamp_opt(1788120300, 0).single().unwrap()
+            ))
+        );
     }
 
     #[test]

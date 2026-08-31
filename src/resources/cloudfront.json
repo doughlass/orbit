@@ -56,7 +56,7 @@
         "PriceClass": { "source": "/PriceClass", "default": "-" },
         "SslCertSource": { "source": "/ViewerCertificate/CertificateSource", "default": "-" },
         "Certificate": { "source": "/ViewerCertificate/Certificate", "default": "-" },
-        "LastModifiedTime": { "source": "/LastModifiedTime", "default": "-" },
+        "LastModifiedTime": { "source": "/LastModifiedTime", "transform": "format_epoch_seconds", "default": "-" },
         "HttpVersion": { "source": "/HttpVersion", "default": "-" },
         "Ipv6Enabled": { "source": "/IsIPV6Enabled", "transform": "bool_to_yes_no", "default": "-" },
         "Staging": { "source": "/Staging", "transform": "bool_to_yes_no", "default": "-" },

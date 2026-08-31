@@ -81,6 +81,7 @@
         },
         "ClusterCreateTime": {
           "source": "/ClusterCreateTime",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       }
@@ -167,6 +168,7 @@
         },
         "InstanceCreateTime": {
           "source": "/InstanceCreateTime",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       },
@@ -227,6 +229,7 @@
           {
             "label": "Created",
             "source": "/InstanceCreateTime",
+            "transform": "format_epoch_seconds",
             "section": "Summary"
           },
           {

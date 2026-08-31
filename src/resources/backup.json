@@ -39,7 +39,7 @@
         "VaultType": { "source": "/VaultType", "default": "-" },
         "NumberOfRecoveryPoints": { "source": "/NumberOfRecoveryPoints", "default": "0" },
         "Locked": { "source": "/Locked", "default": "false" },
-        "CreationDate": { "source": "/CreationDate", "default": "-" }
+        "CreationDate": { "source": "/CreationDate", "transform": "format_epoch_seconds", "default": "-" }
       }
     },
     "backup-plans": {
@@ -77,8 +77,8 @@
         "BackupPlanName": { "source": "/BackupPlanName", "default": "-" },
         "BackupPlanId": { "source": "/BackupPlanId", "default": "-" },
         "VersionId": { "source": "/VersionId", "default": "-" },
-        "CreationDate": { "source": "/CreationDate", "default": "-" },
-        "LastExecutionDate": { "source": "/LastExecutionDate", "default": "-" },
+        "CreationDate": { "source": "/CreationDate", "transform": "format_epoch_seconds", "default": "-" },
+        "LastExecutionDate": { "source": "/LastExecutionDate", "transform": "format_epoch_seconds", "default": "-" },
         "BackupPlanArn": { "source": "/BackupPlanArn", "default": "-" }
       }
     }

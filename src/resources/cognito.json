@@ -36,7 +36,7 @@
         "Id": { "source": "/Id", "default": "-" },
         "Name": { "source": "/Name", "default": "-" },
         "Status": { "source": "/Status", "default": "-" },
-        "CreationDate": { "source": "/CreationDate", "default": "-" }
+        "CreationDate": { "source": "/CreationDate", "transform": "format_epoch_seconds", "default": "-" }
       }
     },
     "cognito-user-pool-clients": {

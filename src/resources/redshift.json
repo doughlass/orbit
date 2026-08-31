@@ -256,6 +256,7 @@
         },
         "SnapshotCreateTime": {
           "source": "/SnapshotCreateTime",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       },
@@ -462,6 +463,7 @@
         },
         "Date": {
           "source": "/Date",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       }

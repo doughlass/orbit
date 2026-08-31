@@ -34,8 +34,8 @@
         "meshName": { "source": "/meshName", "default": "-" },
         "meshOwner": { "source": "/meshOwner", "default": "-" },
         "version": { "source": "/version", "default": "-" },
-        "createdAt": { "source": "/createdAt", "default": "-" },
-        "lastUpdatedAt": { "source": "/lastUpdatedAt", "default": "-" }
+        "createdAt": { "source": "/createdAt", "transform": "format_epoch_seconds", "default": "-" },
+        "lastUpdatedAt": { "source": "/lastUpdatedAt", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

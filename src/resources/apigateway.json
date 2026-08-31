@@ -33,7 +33,7 @@
         "id": { "source": "/id", "default": "-" },
         "name": { "source": "/name", "default": "-" },
         "description": { "source": "/description", "default": "-" },
-        "createdDate": { "source": "/createdDate", "default": "-" }
+        "createdDate": { "source": "/createdDate", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

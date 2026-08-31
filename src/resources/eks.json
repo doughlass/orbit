@@ -67,7 +67,7 @@
           { "label": "Auth Mode",        "source": "/accessConfig/authenticationMode" },
           { "label": "Log Types",        "source": "/logging/clusterLogging" },
           { "label": "Health Issues",    "source": "/health/issues" },
-          { "label": "Created",          "source": "/createdAt" }
+          { "label": "Created",          "source": "/createdAt", "transform": "format_epoch_seconds" }
         ]
       }
     },
@@ -128,7 +128,7 @@
           { "label": "Desired Size",  "source": "/scalingConfig/desiredSize" },
           { "label": "Subnets",        "source": "/subnets", "transform": "array_to_csv" },
           { "label": "ARN",            "source": "/nodegroupArn" },
-          { "label": "Created",        "source": "/createdAt" }
+          { "label": "Created",          "source": "/createdAt", "transform": "format_epoch_seconds" }
         ]
       }
     },
@@ -182,7 +182,7 @@
           { "label": "Pod Execution Role", "source": "/podExecutionRoleArn" },
           { "label": "Subnets",            "source": "/subnets", "transform": "array_to_csv" },
           { "label": "ARN",                "source": "/fargateProfileArn" },
-          { "label": "Created",            "source": "/createdAt" }
+          { "label": "Created",        "source": "/createdAt", "transform": "format_epoch_seconds" }
         ]
       }
     },
@@ -238,7 +238,7 @@
           { "label": "Publisher",              "source": "/publisher" },
           { "label": "Type",                  "source": "/addonType" },
           { "label": "ARN",                   "source": "/addonArn" },
-          { "label": "Created",               "source": "/createdAt" }
+          { "label": "Created",            "source": "/createdAt", "transform": "format_epoch_seconds" }
         ]
       }
     },
@@ -283,7 +283,7 @@
         "Status": { "source": "/status", "default": "-" },
         "Type": { "source": "/type", "default": "-" },
         "Version": { "source": "/version", "default": "-" },
-        "Submitted": { "source": "/createdAt", "default": "-" }
+        "Submitted": { "source": "/createdAt", "transform": "format_epoch_seconds", "default": "-" }
       },
       "describe_config": {
         "protocol": "rest-json",
@@ -298,7 +298,7 @@
           { "label": "Platform",         "source": "/platformVersion" },
           { "label": "Params",           "source": "/params" },
           { "label": "Error",            "source": "/errors" },
-          { "label": "Created",          "source": "/createdAt" }
+          { "label": "Created",          "source": "/createdAt", "transform": "format_epoch_seconds" }
         ]
       }
     }

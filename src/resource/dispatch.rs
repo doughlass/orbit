@@ -58,6 +58,15 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+/// Format a UTC instant as "September 18, 2017, 16:53:02 (UTC+01:00)" in the
+/// local timezone. The offset suffix names the zone so a machine elsewhere can
+/// read the instant back rather than guessing the wall clock was UTC.
+fn format_local_datetime(dt: chrono::DateTime<chrono::Utc>) -> String {
+    use chrono::Local;
+    let local: chrono::DateTime<chrono::Local> = dt.with_timezone(&Local);
+    local.format("%B %e, %Y, %H:%M:%S (UTC%:z)").to_string()
+}
+
 /// Format epoch milliseconds to human-readable date string
 fn format_epoch_millis(millis: i64) -> String {
     use chrono::{TimeZone, Utc};
@@ -68,8 +77,23 @@ fn format_epoch_millis(millis: i64) -> String {
 
     Utc.timestamp_millis_opt(millis)
         .single()
-        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .map(format_local_datetime)
         .unwrap_or_else(|| "-".to_string())
+}
+
+/// Format an ISO-8601 string (S3 object LastModified) the same way, treating
+/// the value as UTC and converting to the local zone. S3 returns LastModified
+/// without a timezone suffix, so parse it as a naive UTC timestamp.
+fn format_iso_date(s: &str) -> String {
+    use chrono::{NaiveDateTime, TimeZone, Utc};
+    let naive = s
+        .parse::<NaiveDateTime>()
+        .or_else(|_| s.trim_end_matches('Z').parse::<NaiveDateTime>())
+        .ok();
+    match naive.and_then(|d| Utc.from_local_datetime(&d).single()) {
+        Some(dt) => format_local_datetime(dt),
+        None => s.to_string(),
+    }
 }
 
 /// Resolve template variables in static param values: {resource_id}, {timestamp}
@@ -233,7 +257,7 @@ pub async fn invoke_sdk(
                         // Raw byte count kept alongside the display string so the
                         // download size guard doesn't have to parse "1.2 KB" back
                         "SizeBytes": size_bytes,
-                        "LastModified": obj.pointer("/LastModified").and_then(|v| v.as_str()).unwrap_or("-"),
+                        "LastModified": obj.pointer("/LastModified").map(|v| v.as_str().map(format_iso_date).unwrap_or_else(|| "-".to_string())).unwrap_or_else(|| "-".to_string()),
                         "StorageClass": obj.pointer("/StorageClass").and_then(|v| v.as_str()).unwrap_or("STANDARD"),
                         "IsFolder": false
                     }));

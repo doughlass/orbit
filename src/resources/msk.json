@@ -48,7 +48,7 @@
         "ClusterArn": { "source": "/clusterArn", "default": "-" },
         "ClusterType": { "source": "/clusterType", "default": "-" },
         "State": { "source": "/state", "default": "-" },
-        "CreationTime": { "source": "/creationTime", "default": "-" },
+        "CreationTime": { "source": "/creationTime", "transform": "format_epoch_seconds", "default": "-" },
         "KafkaVersion": {
           "source": "/provisioned/currentBrokerSoftwareInfo/kafkaVersion",
           "default": "-"

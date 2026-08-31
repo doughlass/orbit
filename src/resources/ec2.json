@@ -45,7 +45,7 @@
         "PlatformDetails": { "source": "/platformDetails", "default": "-" },
         "RootDeviceType": { "source": "/rootDeviceType", "default": "-" },
         "RootDeviceName": { "source": "/rootDeviceName", "default": "-" },
-        "CreationDate": { "source": "/creationDate", "default": "-" },
+        "CreationDate": { "source": "/creationDate", "transform": "format_epoch_seconds", "default": "-" },
         "Public": { "source": "/isPublic", "transform": "bool_to_yes_no" },
         "Description": { "source": "/description", "default": "-" },
         "OwnerId": { "source": "/imageOwnerId", "default": "-" },
@@ -128,7 +128,7 @@
         "AvailabilityZone": { "source": "/availabilityZone", "default": "-" },
         "Encrypted": { "source": "/encrypted", "transform": "bool_to_yes_no" },
         "SnapshotId": { "source": "/snapshotId", "default": "-" },
-        "CreateTime": { "source": "/createTime", "default": "-" },
+        "CreateTime": { "source": "/createTime", "transform": "format_epoch_seconds", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" },
         "Throughput": { "source": "/throughput", "default": "-" },
         "SourceVolumeId": { "source": "/sourceVolumeId", "default": "-" },
@@ -200,7 +200,7 @@
         "State": { "source": "/status", "default": "-" },
         "VolumeSize": { "source": "/volumeSize", "default": "0" },
         "Progress": { "source": "/progress", "default": "-" },
-        "StartTime": { "source": "/startTime", "default": "-" },
+        "StartTime": { "source": "/startTime", "transform": "format_epoch_seconds", "default": "-" },
         "Description": { "source": "/description", "default": "-" },
         "OwnerId": { "source": "/ownerId", "default": "-" },
         "Encrypted": { "source": "/encrypted", "transform": "bool_to_yes_no" },
@@ -311,7 +311,7 @@
         "AvailabilityZone": { "source": "/placement/availabilityZone", "default": "-" },
         "PublicIpAddress": { "source": "/ipAddress", "default": "-" },
         "PrivateIpAddress": { "source": "/privateIpAddress", "default": "-" },
-        "LaunchTime": { "source": "/launchTime", "default": "-" },
+        "LaunchTime": { "source": "/launchTime", "transform": "format_epoch_seconds", "default": "-" },
         "Platform": { "source": "/platform", "default": "" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" },
         "PublicDnsName": { "source": "/dnsName", "default": "-" },
@@ -419,7 +419,7 @@
         "KeyName": { "source": "/keyName", "default": "-" },
         "KeyType": { "source": "/keyType", "default": "-" },
         "KeyFingerprint": { "source": "/keyFingerprint", "default": "-" },
-        "CreateTime": { "source": "/createTime", "default": "-" },
+        "CreateTime": { "source": "/createTime", "transform": "format_epoch_seconds", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
       }
     },
@@ -457,7 +457,7 @@
         "LaunchTemplateName": { "source": "/launchTemplateName", "default": "-" },
         "LatestVersionNumber": { "source": "/latestVersionNumber", "default": "-" },
         "DefaultVersionNumber": { "source": "/defaultVersionNumber", "default": "-" },
-        "CreateTime": { "source": "/createTime", "default": "-" },
+        "CreateTime": { "source": "/createTime", "transform": "format_epoch_seconds", "default": "-" },
         "CreatedBy": { "source": "/createdBy", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
       }
@@ -526,7 +526,7 @@
         "State": { "source": "/state", "default": "-" },
         "AvailabilityZone": { "source": "/availabilityZone", "default": "-" },
         "InstanceType": { "source": "/hostProperties/instanceType", "default": "-" },
-        "AllocationTime": { "source": "/allocationTime", "default": "-" },
+        "AllocationTime": { "source": "/allocationTime", "transform": "format_epoch_seconds", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
       }
     }

@@ -259,6 +259,7 @@
         },
         "SnapshotCreateTime": {
           "source": "/SnapshotCreateTime",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       },
@@ -369,6 +370,7 @@
         },
         "ClusterCreateTime": {
           "source": "/ClusterCreateTime",
+          "transform": "format_epoch_seconds",
           "default": "-"
         },
         "Tags": {
@@ -563,6 +565,7 @@
         },
         "Date": {
           "source": "/Date",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       }

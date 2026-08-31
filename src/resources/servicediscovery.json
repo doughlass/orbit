@@ -36,7 +36,7 @@
         "Type": { "source": "/Type", "default": "-" },
         "InstanceCount": { "source": "/InstanceCount", "default": "0" },
         "DnsConfig": { "source": "/DnsConfig", "default": "-" },
-        "CreateDate": { "source": "/CreateDate", "default": "-" },
+        "CreateDate": { "source": "/CreateDate", "transform": "format_epoch_seconds", "default": "-" },
         "Arn": { "source": "/Arn", "default": "-" }
       }
     },
@@ -74,7 +74,7 @@
         "Name": { "source": "/Name", "default": "-" },
         "Type": { "source": "/Type", "default": "-" },
         "ServiceCount": { "source": "/ServiceCount", "default": "0" },
-        "CreateDate": { "source": "/CreateDate", "default": "-" },
+        "CreateDate": { "source": "/CreateDate", "transform": "format_epoch_seconds", "default": "-" },
         "Arn": { "source": "/Arn", "default": "-" }
       }
     }

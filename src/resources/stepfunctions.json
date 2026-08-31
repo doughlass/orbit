@@ -33,7 +33,7 @@
         "name": { "source": "/name", "default": "-" },
         "stateMachineArn": { "source": "/stateMachineArn", "default": "-" },
         "type": { "source": "/type", "default": "-" },
-        "creationDate": { "source": "/creationDate", "default": "-" }
+        "creationDate": { "source": "/creationDate", "transform": "format_epoch_seconds", "default": "-" }
       }
     },
     "stepfunctions-executions": {
@@ -69,8 +69,8 @@
         "executionArn": { "source": "/executionArn", "default": "-" },
         "stateMachineArn": { "source": "/stateMachineArn", "default": "-" },
         "status": { "source": "/status", "default": "-" },
-        "startDate": { "source": "/startDate", "default": "-" },
-        "stopDate": { "source": "/stopDate", "default": "-" }
+        "startDate": { "source": "/startDate", "transform": "format_epoch_seconds", "default": "-" },
+        "stopDate": { "source": "/stopDate", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

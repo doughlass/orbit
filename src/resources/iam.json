@@ -85,6 +85,7 @@
         },
         "CreateDate": {
           "source": "/CreateDate",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       },
@@ -257,6 +258,7 @@
         },
         "CreateDate": {
           "source": "/CreateDate",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       }
@@ -332,6 +334,7 @@
         },
         "CreateDate": {
           "source": "/CreateDate",
+          "transform": "format_epoch_seconds",
           "default": "-"
         },
         "Description": {
@@ -469,6 +472,7 @@
         },
         "CreateDate": {
           "source": "/CreateDate",
+          "transform": "format_epoch_seconds",
           "default": "-"
         },
         "AttachmentCount": {
@@ -552,6 +556,7 @@
         },
         "CreateDate": {
           "source": "/CreateDate",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       }
@@ -678,6 +683,7 @@
         },
         "CreateDate": {
           "source": "/CreateDate",
+          "transform": "format_epoch_seconds",
           "default": "-"
         },
         "Roles": {
@@ -731,6 +737,7 @@
         },
         "CreateDate": {
           "source": "/CreateDate",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       }

@@ -31,8 +31,8 @@
       "field_mappings": {
         "name": { "source": "/name", "default": "-" },
         "version": { "source": "/version", "default": "0" },
-        "created": { "source": "/created", "default": "-" },
-        "updated": { "source": "/updated", "default": "-" }
+        "created": { "source": "/created", "transform": "format_epoch_seconds", "default": "-" },
+        "updated": { "source": "/updated", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

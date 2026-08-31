@@ -732,7 +732,8 @@ mod tests {
 
     /// LookupEvents returns a flat `Events` array (no result wrapper) and pages
     /// on NextToken. EventTime arrives as an ISO-8601 string in the JSON API,
-    /// so it must NOT be passed through the epoch-millis formatter.
+    /// so it must go through the seconds formatter (which parses ISO-8601),
+    /// not the raw epoch-millis formatter.
     #[test]
     fn cloudtrail_events_read_from_flat_events_array_and_keep_iso_time() {
         let resource = get_resource("cloudtrail-events").expect("cloudtrail-events");
@@ -749,8 +750,8 @@ mod tests {
         let time = resource.field_mappings.get("EventTime").expect("EventTime");
         assert_eq!(
             time.transform.as_deref(),
-            None,
-            "EventTime is ISO-8601 in this JSON API, not epoch millis"
+            Some("format_epoch_seconds"),
+            "EventTime is ISO-8601 in this JSON API, which format_epoch_seconds parses"
         );
         assert!(resource.field_mappings.contains_key("EventId"));
     }
