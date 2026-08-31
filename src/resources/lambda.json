@@ -11,8 +11,17 @@
       "is_global": false,
       "columns": [
         { "header": "FUNCTION NAME", "json_path": "FunctionName", "width": 30 },
-        { "header": "RUNTIME", "json_path": "Runtime", "width": 15 },
+        { "header": "DESCRIPTION", "json_path": "Description", "width": 25, "visible": false },
+        { "header": "RUNTIME", "json_path": "Runtime", "width": 12 },
+        { "header": "PACKAGE TYPE", "json_path": "PackageType", "width": 10, "visible": false },
+        { "header": "ARCHITECTURE", "json_path": "Architectures", "width": 14, "visible": false },
+        { "header": "CODE SIZE", "json_path": "CodeSize", "width": 10, "visible": false },
         { "header": "MEMORY", "json_path": "MemorySize", "width": 10 },
+        { "header": "TIMEOUT", "json_path": "Timeout", "width": 10 },
+        { "header": "STATE", "json_path": "State", "width": 10, "color_map": "state" },
+        { "header": "HANDLER", "json_path": "Handler", "width": 20, "visible": false },
+        { "header": "ROLE", "json_path": "Role", "width": 40, "visible": false },
+        { "header": "VERSION", "json_path": "Version", "width": 10, "visible": false },
         { "header": "MODIFIED", "json_path": "LastModified", "width": 25 }
       ],
       "sub_resources": [],
@@ -35,10 +44,18 @@
       },
       "field_mappings": {
         "FunctionName": { "source": "/FunctionName", "default": "-" },
+        "Description": { "source": "/Description", "default": "-" },
         "Runtime": { "source": "/Runtime", "default": "-" },
+        "PackageType": { "source": "/PackageType", "default": "-" },
+        "Architectures": { "source": "/Architectures", "transform": "array_to_csv", "default": "-" },
+        "CodeSize": { "source": "/CodeSize", "transform": "format_bytes", "default": "-" },
         "MemorySize": { "source": "/MemorySize", "default": "0" },
-        "LastModified": { "source": "/LastModified", "default": "-" },
-        "Description": { "source": "/Description", "default": "-" }
+        "Timeout": { "source": "/Timeout", "default": "-" },
+        "State": { "source": "/State", "default": "-" },
+        "Handler": { "source": "/Handler", "default": "-" },
+        "Role": { "source": "/Role", "default": "-" },
+        "Version": { "source": "/Version", "default": "-" },
+        "LastModified": { "source": "/LastModified", "default": "-" }
       },
       "action_configs": {
         "invoke_function": {
@@ -58,7 +75,79 @@
       "describe_config": {
         "protocol": "rest-json",
         "method": "GET",
-        "path": "/2015-03-31/functions/{resource_id}"
+        "path": "/2015-03-31/functions/{resource_id}",
+        "response_path": "/Configuration",
+        "enrich_calls": [
+          {
+            "result_field": "EventSourceMappings",
+            "path": "/2015-03-31/event-source-mappings?FunctionName={resource_id}",
+            "method": "GET",
+            "extract_path": "/EventSourceMappings"
+          },
+          {
+            "result_field": "EventBridgeRules",
+            "service_name": "events",
+            "protocol": "json",
+            "target": "ListRuleNamesByTarget",
+            "body_template": "{\"TargetArn\":\"{FunctionArn}\"}",
+            "extract_path": "/RuleNames"
+          }
+        ],
+        "overview": {
+          "title_source": "/FunctionName",
+          "subtitle_source": "/Description",
+          "chips": [
+            { "label": "Runtime",  "source": "/Runtime" },
+            { "label": "Arch",     "source": "/Architectures", "transform": "array_to_csv" },
+            { "label": "Package",  "source": "/PackageType" },
+            { "label": "State",    "source": "/State" },
+            { "label": "Size",     "source": "/CodeSize", "transform": "format_bytes" }
+          ],
+          "resources": [
+            { "label": "EVENT SOURCE MAPPINGS", "source": "/EventSourceMappings", "item_template": "{EventSourceArn}" },
+            { "label": "EVENTBRIDGE RULES", "source": "/EventBridgeRules" }
+          ]
+        },
+        "describe_fields": [
+          { "label": "Function Name",    "source": "/FunctionName", "section": "Identity" },
+          { "label": "ARN",              "source": "/FunctionArn" },
+          { "label": "Description",      "source": "/Description" },
+          { "label": "State",            "source": "/State" },
+          { "label": "Last Update",      "source": "/LastUpdateStatus" },
+          { "label": "State Reason",     "source": "/StateReason" },
+
+          { "label": "Runtime",          "source": "/Runtime", "section": "Configuration" },
+          { "label": "Handler",          "source": "/Handler" },
+          { "label": "Role",             "source": "/Role" },
+          { "label": "Package Type",     "source": "/PackageType" },
+          { "label": "Architectures",    "source": "/Architectures", "transform": "array_to_csv" },
+          { "label": "Memory",           "source": "/MemorySize" },
+          { "label": "Timeout",          "source": "/Timeout" },
+          { "label": "Code Size",        "source": "/CodeSize", "transform": "format_bytes" },
+          { "label": "Ephemeral Storage","source": "/EphemeralStorage/Size" },
+          { "label": "Signing",          "source": "/SigningJobArn" },
+          { "label": "Version",          "source": "/Version" },
+          { "label": "Revision",         "source": "/RevisionId" },
+
+          { "label": "Tracing Mode",     "source": "/TracingConfig/Mode", "section": "Monitoring" },
+          { "label": "Log Format",       "source": "/LoggingConfig/LogFormat" },
+          { "label": "Application Level", "source": "/LoggingConfig/ApplicationLogLevel" },
+          { "label": "System Level",     "source": "/LoggingConfig/SystemLogLevel" },
+          { "label": "Log Group",        "source": "/LoggingConfig/LogGroup" },
+
+          { "label": "VPC ID",           "source": "/VpcConfig/VpcId", "section": "Network" },
+          { "label": "Subnets",          "source": "/VpcConfig/SubnetIds", "transform": "array_to_csv" },
+          { "label": "Security Groups",  "source": "/VpcConfig/SecurityGroupIds", "transform": "array_to_csv" },
+          { "label": "Public IPv6",      "source": "/VpcConfig/Ipv6AllowedForDualStack", "transform": "bool_to_yes_no" },
+
+          { "label": "Variables",        "source": "/Environment/Variables", "section": "Environment" },
+
+          { "label": "SnapStart",        "source": "/SnapStart/ApplyOn", "section": "SnapStart" },
+          { "label": "Optimization",     "source": "/SnapStart/OptimizationStatus" },
+
+          { "label": "Last Modified",    "source": "/LastModified", "section": "Dates" },
+          { "label": "Created",          "source": "/LastModified" }
+        ]
       }
     }
   }
