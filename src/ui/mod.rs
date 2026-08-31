@@ -15,8 +15,8 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
-        Table, TableState, Wrap,
+        Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table, TableState, Wrap,
     },
     Frame,
 };
@@ -646,6 +646,68 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
         if let Some(search_area) = search_area {
             render_describe_search_bar(f, app, search_area);
         }
+    }
+
+    // A revealed secret value sits in an overlay above the describe body so
+    // the secret is unmistakably foregrounded while visible, and disappears
+    // entirely when the countdown expires.
+    if app.reveal_secret.is_some() {
+        render_secret_reveal_overlay(f, app, inner_area);
+    }
+}
+
+/// Center a bordered panel over the describe body showing the revealed secret
+/// value, with a live countdown of the remaining seconds before it auto-hides.
+fn render_secret_reveal_overlay(f: &mut Frame, app: &App, area: Rect) {
+    let value = &app.reveal_secret.as_ref().unwrap().value;
+    let seconds = app.reveal_seconds_left().unwrap_or(0);
+
+    let popup_width = (area.width / 2).clamp(40, 80);
+    let line_count = value.lines().count().clamp(1, 30);
+    let max_height = area.height.saturating_sub(4).max(8);
+    let popup_height = (line_count as u16 + 5).clamp(8, max_height);
+
+    let popup_area = Rect {
+        x: area.x + (area.width.saturating_sub(popup_width)) / 2,
+        y: area.y + (area.height.saturating_sub(popup_height)) / 2,
+        width: popup_width,
+        height: popup_height,
+    };
+
+    let title = Span::styled(
+        format!(" Secret value - hidden in {}s ", seconds),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    );
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(title);
+
+    let inner = block.inner(popup_area);
+    f.render_widget(Clear, popup_area);
+    f.render_widget(block, popup_area);
+
+    let paragraph = Paragraph::new(value.to_string())
+        .wrap(Wrap { trim: false })
+        .scroll((0, 0));
+    f.render_widget(paragraph, inner);
+
+    let hint = Paragraph::new(Span::styled(
+        "  [s / Esc to hide now]",
+        Style::default().fg(Color::DarkGray),
+    ))
+    .alignment(Alignment::Center);
+    if popup_height >= 8 {
+        let hint_area = Rect {
+            x: popup_area.x,
+            y: popup_area.y + popup_height - 2,
+            width: popup_area.width,
+            height: 1,
+        };
+        f.render_widget(hint, hint_area);
     }
 }
 

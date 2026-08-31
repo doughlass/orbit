@@ -5,6 +5,9 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use std::time::Duration;
 
 pub async fn handle_events(app: &mut App) -> Result<bool> {
+    // Auto-hide a revealed secret as soon as its countdown deadline passes,
+    // even if the user stops pressing keys.
+    app.expire_revealed_secret();
     if event::poll(Duration::from_millis(100))? {
         if let Event::Key(key) = event::read()? {
             // Only handle key press events, not release or repeat
@@ -23,7 +26,7 @@ async fn handle_key_event(app: &mut App, key: KeyEvent) -> Result<bool> {
         Mode::Normal => handle_normal_mode(app, key).await,
         Mode::Command => handle_command_mode(app, key).await,
         Mode::Help => handle_help_mode(app, key),
-        Mode::Describe => handle_describe_mode(app, key),
+        Mode::Describe => handle_describe_mode(app, key).await,
         Mode::Confirm => handle_confirm_mode(app, key).await,
         Mode::Warning => handle_warning_mode(app, key),
         Mode::Profiles => handle_profiles_mode(app, key).await,
@@ -488,7 +491,7 @@ fn handle_column_picker_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
     Ok(false)
 }
 
-fn handle_describe_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
+async fn handle_describe_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
     // Clear transient status message on any keypress
     app.status_message = None;
 
@@ -557,6 +560,13 @@ fn handle_describe_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
         // Copy value to clipboard
         KeyCode::Char('c') => {
             app.copy_describe_value_to_clipboard();
+        }
+        // Toggle the secret value reveal (Secrets Manager describe view),
+        // auto-hiding after a 10s countdown.
+        KeyCode::Char('s') if app.current_resource_key == "secretsmanager-secrets" => {
+            if let Err(e) = app.toggle_secret_reveal().await {
+                app.error_message = Some(format!("Failed to reveal secret: {}", e));
+            }
         }
         _ => {}
     }

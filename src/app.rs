@@ -300,6 +300,11 @@ pub struct App {
     pub describe_data: Option<Value>, // Full resource details from describe API
     pub last_action_display_name: Option<String>,
 
+    // A secret value revealed from the describe view. Held only while its
+    // deadlining countdown is live; the value auto-hides when the deadline
+    // passes or the user toggles it off, so it is never left on screen.
+    pub reveal_secret: Option<SecretReveal>,
+
     // Describe search state
     pub describe_search_text: String,
     pub describe_search_active: bool,
@@ -383,6 +388,37 @@ pub struct UpdateInfo {
     pub in_progress: bool,
     /// Set after the update/relaunch is handed off, so the loop can quit.
     pub should_quit: bool,
+}
+
+/// A secret value revealed in the describe view along with when it must
+/// auto-hide. The value is only held while this is live; once the deadline
+/// passes the field is cleared, so the secret never lingers on screen.
+pub struct SecretReveal {
+    pub value: String,
+    pub hide_at: std::time::Instant,
+}
+
+impl SecretReveal {
+    /// True once the auto-hide deadline has passed.
+    fn expired(&self) -> bool {
+        std::time::Instant::now() >= self.hide_at
+    }
+}
+
+/// Pull the human-readable text out of a GetSecretValue response -- its
+/// SecretString if present, otherwise the base64 SecretBinary decoded.
+fn secret_value_text(data: &serde_json::Value) -> Option<String> {
+    if let Some(s) = data.get("SecretString").and_then(|v| v.as_str()) {
+        return Some(s.to_string());
+    }
+    if let Some(b) = data.get("SecretBinary").and_then(|v| v.as_str()) {
+        use base64::Engine;
+        return base64::engine::general_purpose::STANDARD
+            .decode(b)
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok());
+    }
+    None
 }
 
 /// SSM Connect request data
@@ -560,6 +596,7 @@ impl App {
             describe_scroll: 0,
             describe_data: None,
             last_action_display_name: None,
+            reveal_secret: None,
             describe_search_text: String::new(),
             describe_search_active: false,
             describe_match_lines: Vec::new(),
@@ -1695,6 +1732,66 @@ impl App {
         }
     }
 
+    /// Toggle the secret value reveal in the describe view. Fetching the value
+    /// is a read-only GetSecretValue, so it is allowed even in --readonly.
+    /// The value auto-hides when its countdown deadline passes (see
+    /// `expire_revealed_secret`, driven by the main loop each tick) or when
+    /// this is called again to toggle it off.
+    pub async fn toggle_secret_reveal(&mut self) -> Result<()> {
+        if self.reveal_secret.is_some() {
+            self.reveal_secret = None;
+            return Ok(());
+        }
+
+        let Some(resource) = self.current_resource() else {
+            return Ok(());
+        };
+        let Some(item) = self.selected_item() else {
+            self.error_message = Some("No secret selected".to_string());
+            return Ok(());
+        };
+        let id = crate::resource::extract_json_value(item, &resource.id_field);
+        if id == "-" || id.is_empty() {
+            self.error_message = Some("No secret selected".to_string());
+            return Ok(());
+        }
+
+        let data = crate::resource::execute_action_with_result(
+            &resource.service,
+            "get_secret_value",
+            &self.clients,
+            &id,
+        )
+        .await?;
+
+        let value = secret_value_text(&data).unwrap_or_else(|| "—".to_string());
+        self.reveal_secret = Some(SecretReveal {
+            value,
+            hide_at: std::time::Instant::now() + std::time::Duration::from_secs(10),
+        });
+        Ok(())
+    }
+
+    /// Hide a revealed secret value once its 10s deadline has passed. Called
+    /// from the event loop on every tick so the value cannot linger past the
+    /// countdown just because the user stops pressing keys.
+    pub fn expire_revealed_secret(&mut self) {
+        if let Some(reveal) = &self.reveal_secret {
+            if reveal.expired() {
+                self.reveal_secret = None;
+            }
+        }
+    }
+
+    /// Seconds left on a live secret reveal, for the countdown display.
+    pub fn reveal_seconds_left(&self) -> Option<u64> {
+        self.reveal_secret.as_ref().and_then(|r| {
+            r.hide_at
+                .checked_duration_since(std::time::Instant::now())
+                .map(|d| d.as_secs().max(1))
+        })
+    }
+
     // =========================================================================
     // Resource Navigation
     // =========================================================================
@@ -2597,6 +2694,44 @@ mod tests {
         });
         let result = extract_copyable_value("secretsmanager-secrets", &data);
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn secret_reveal_text_prefers_secret_string_then_decodes_binary() {
+        // Plain-text secret: SecretString wins.
+        let s = serde_json::json!({
+            "Name": "plain",
+            "SecretString": "hello-world",
+        });
+        assert_eq!(secret_value_text(&s).as_deref(), Some("hello-world"));
+
+        // Binary secret: the base64 SecretBinary is decoded to text.
+        let b = serde_json::json!({
+            "Name": "binary",
+            "SecretBinary": "aGVsbG8sIGJpbmFyeQ==", // "hello, binary"
+        });
+        assert_eq!(secret_value_text(&b).as_deref(), Some("hello, binary"));
+
+        // Nothing present yields None.
+        let empty = serde_json::json!({ "Name": "empty" });
+        assert_eq!(secret_value_text(&empty), None);
+    }
+
+    #[test]
+    fn revealed_secret_expires_once_its_deadline_passes() {
+        // A reveal whose deadline is far in the future is not yet expired.
+        let future = SecretReveal {
+            value: "top-secret".to_string(),
+            hide_at: std::time::Instant::now() + std::time::Duration::from_secs(10),
+        };
+        assert!(!future.expired());
+
+        // A reveal whose deadline already passed is expired.
+        let past = SecretReveal {
+            value: "top-secret".to_string(),
+            hide_at: std::time::Instant::now() - std::time::Duration::from_secs(1),
+        };
+        assert!(past.expired());
     }
 
     // =========================================================================
