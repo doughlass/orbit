@@ -52,15 +52,19 @@ pub fn render(f: &mut Frame, app: &App) {
         .skip(scroll)
         .take(visible_height)
         .map(|(idx, col)| {
-            let on = app.column_picker_toggles.get(idx).copied().unwrap_or(true);
+            let on = col.locked || app.column_picker_toggles.get(idx).copied().unwrap_or(true);
             let is_cursor = idx == selected;
 
             let checkbox = if on { "[x]" } else { "[ ]" };
-            let checkbox_style = if on {
+            let checkbox_style = if col.locked {
+                Style::default().fg(Color::Cyan)
+            } else if on {
                 Style::default().fg(Color::Green)
             } else {
                 Style::default().fg(Color::DarkGray)
             };
+
+            let lock = if col.locked { " \u{1F512}" } else { "" };
 
             let label_style = if is_cursor {
                 Style::default()
@@ -75,7 +79,7 @@ pub fn render(f: &mut Frame, app: &App) {
             Line::from(vec![
                 Span::styled(format!(" {}{}", cursor, checkbox), checkbox_style),
                 Span::raw(" "),
-                Span::styled(col.header.clone(), label_style),
+                Span::styled(format!("{}{}", col.header, lock), label_style),
             ])
         })
         .collect();

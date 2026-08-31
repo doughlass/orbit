@@ -103,6 +103,12 @@ pub struct ColumnDef {
     /// (p key) toggles them, and saved preferences override this entirely.
     #[serde(default = "default_true")]
     pub visible: bool,
+    /// A column that can never be hidden. The id column keys describe and
+    /// navigation, so hiding it would strand the row with no way to act on
+    /// it. Saved preferences cannot remove it, and the picker refuses to
+    /// toggle it off.
+    #[serde(default)]
+    pub locked: bool,
 }
 
 fn default_true() -> bool {
@@ -1930,8 +1936,71 @@ mod tests {
 
         let tags = dc.enrich_calls.iter().find(|e| e.result_field == "Tags");
         let tags = tags.expect("tags enrichment");
-        assert_eq!(tags.action.as_deref(), Some("ListTagsForResource"));
+        assert_eq!(
+            tags.action.as_deref(),
+            Some("ListTagsForCertificate"),
+            "certificates use the certificate-scoped tag API, not ListTagsForResource"
+        );
         assert_eq!(tags.extract_path.as_deref(), Some("/Tags"));
+    }
+
+    /// The ACM list replaced its four columns with the full console set, and
+    /// its id column is the one thing that can never be turned off: describe
+    /// keys off CertificateArn, so hiding it would strand a row with no id.
+    /// Pin the column set and that exactly one column is locked to the id.
+    #[test]
+    fn acm_list_columns_follow_the_console_and_lock_the_id() {
+        let r = get_resource("acm-certificates").expect("acm-certificates");
+        let headers: Vec<&str> = r.columns.iter().map(|c| c.header.as_str()).collect();
+        for want in [
+            "CERTIFICATE ID",
+            "COMMON NAME",
+            "TYPE",
+            "STATUS",
+            "IN USE",
+            "RENEWAL ELIGIBILITY",
+            "KEY ALGORITHM",
+            "DNS NAMES",
+            "KEY USAGE NAME",
+            "EXT KEY USAGE NAME",
+            "CREATED AT",
+            "ISSUED AT",
+            "NOT BEFORE",
+            "NOT AFTER",
+            "REVOKED AT",
+            "MANAGED BY",
+            "IMPORTED AT",
+            "IS EXPORTED",
+            "EXPORT OPTION",
+            "KEY SOURCE",
+        ] {
+            assert!(headers.contains(&want), "ACM should show column {want}");
+        }
+
+        let locked: Vec<&str> = r
+            .columns
+            .iter()
+            .filter(|c| c.locked)
+            .map(|c| c.header.as_str())
+            .collect();
+        assert_eq!(
+            locked,
+            vec!["CERTIFICATE ID"],
+            "the cert id column is the only non-hideable ACM column"
+        );
+
+        let id_col = r.columns.iter().find(|c| c.locked).unwrap();
+        assert_eq!(id_col.json_path, "CertificateArn");
+
+        for col in &r.columns {
+            let root = col.json_path.split('.').next().unwrap_or("");
+            assert!(
+                r.field_mappings.contains_key(root),
+                "ACM column {} json_path root {} is not in field_mappings",
+                col.header,
+                root
+            );
+        }
     }
 
     /// An enrichment costs an extra API call per describe, so one whose result

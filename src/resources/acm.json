@@ -10,10 +10,26 @@
       "name_field": "DomainName",
       "is_global": false,
       "columns": [
-        { "header": "DOMAIN NAME", "json_path": "DomainName", "width": 40 },
-        { "header": "STATUS", "json_path": "Status", "width": 15, "color_map": "state" },
-        { "header": "TYPE", "json_path": "Type", "width": 15 },
-        { "header": "IN USE", "json_path": "InUse", "width": 8 }
+        { "header": "CERTIFICATE ID", "json_path": "CertificateArn", "width": 45, "locked": true },
+        { "header": "COMMON NAME", "json_path": "DomainName", "width": 22 },
+        { "header": "TYPE", "json_path": "Type", "width": 12 },
+        { "header": "STATUS", "json_path": "Status", "width": 12, "color_map": "state" },
+        { "header": "IN USE", "json_path": "InUse", "width": 8 },
+        { "header": "RENEWAL ELIGIBILITY", "json_path": "RenewalEligibility", "width": 12 },
+        { "header": "KEY ALGORITHM", "json_path": "KeyAlgorithm", "width": 12 },
+        { "header": "DNS NAMES", "json_path": "SubjectAlternativeNameSummaries", "width": 22 },
+        { "header": "KEY USAGE NAME", "json_path": "KeyUsages", "width": 18 },
+        { "header": "EXT KEY USAGE NAME", "json_path": "ExtendedKeyUsages", "width": 22 },
+        { "header": "CREATED AT", "json_path": "CreatedAt", "width": 18 },
+        { "header": "ISSUED AT", "json_path": "IssuedAt", "width": 18 },
+        { "header": "NOT BEFORE", "json_path": "NotBefore", "width": 18 },
+        { "header": "NOT AFTER", "json_path": "NotAfter", "width": 18 },
+        { "header": "REVOKED AT", "json_path": "RevokedAt", "width": 18 },
+        { "header": "MANAGED BY", "json_path": "ManagedBy", "width": 12 },
+        { "header": "IMPORTED AT", "json_path": "ImportedAt", "width": 18 },
+        { "header": "IS EXPORTED", "json_path": "Exported", "width": 10 },
+        { "header": "EXPORT OPTION", "json_path": "ExportOption", "width": 12 },
+        { "header": "KEY SOURCE", "json_path": "CertificateKeyPairOrigin", "width": 14 }
       ],
       "sub_resources": [],
       "actions": [],
@@ -29,11 +45,26 @@
         }
       },
       "field_mappings": {
-        "DomainName": { "source": "/DomainName", "default": "-" },
         "CertificateArn": { "source": "/CertificateArn", "default": "-" },
+        "DomainName": { "source": "/DomainName", "default": "-" },
         "Status": { "source": "/Status", "default": "-" },
         "Type": { "source": "/Type", "default": "-" },
-        "InUse": { "source": "/InUse", "transform": "bool_to_yes_no" }
+        "InUse": { "source": "/InUse", "transform": "bool_to_yes_no" },
+        "RenewalEligibility": { "source": "/RenewalEligibility", "default": "-" },
+        "KeyAlgorithm": { "source": "/KeyAlgorithm", "default": "-" },
+        "SubjectAlternativeNameSummaries": { "source": "/SubjectAlternativeNameSummaries", "transform": "array_to_csv", "default": "-" },
+        "KeyUsages": { "source": "/KeyUsages", "transform": "array_to_csv", "default": "-" },
+        "ExtendedKeyUsages": { "source": "/ExtendedKeyUsages", "transform": "array_to_csv", "default": "-" },
+        "CreatedAt": { "source": "/CreatedAt", "transform": "format_epoch_seconds", "default": "-" },
+        "IssuedAt": { "source": "/IssuedAt", "transform": "format_epoch_seconds", "default": "-" },
+        "NotBefore": { "source": "/NotBefore", "transform": "format_epoch_seconds", "default": "-" },
+        "NotAfter": { "source": "/NotAfter", "transform": "format_epoch_seconds", "default": "-" },
+        "RevokedAt": { "source": "/RevokedAt", "transform": "format_epoch_seconds", "default": "-" },
+        "ManagedBy": { "source": "/ManagedBy", "default": "-" },
+        "ImportedAt": { "source": "/ImportedAt", "transform": "format_epoch_seconds", "default": "-" },
+        "Exported": { "source": "/Exported", "transform": "bool_to_yes_no" },
+        "ExportOption": { "source": "/ExportOption", "default": "-" },
+        "CertificateKeyPairOrigin": { "source": "/CertificateKeyPairOrigin", "default": "-" }
       },
       "describe_config": {
         "protocol": "json",
@@ -43,8 +74,8 @@
         "enrich_calls": [
           {
             "result_field": "Tags",
-            "action": "ListTagsForResource",
-            "body": { "ResourceArn": "{resource_id}" },
+            "action": "ListTagsForCertificate",
+            "body": { "CertificateArn": "{resource_id}" },
             "extract_path": "/Tags"
           }
         ],

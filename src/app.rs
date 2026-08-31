@@ -1376,8 +1376,8 @@ impl App {
             .columns
             .iter()
             .map(|col| match saved {
-                Some(visible) => visible.contains(&col.header),
-                None => col.visible,
+                Some(visible) => col.locked || visible.contains(&col.header),
+                None => col.locked || col.visible,
             })
             .collect();
         self.column_picker_selected = 0;
@@ -1385,16 +1385,28 @@ impl App {
     }
 
     /// Toggle the column under the picker cursor. Refuses to hide the last
-    /// visible column — an empty table is never a useful outcome.
+    /// visible column — an empty table is never a useful outcome — and refuses
+    /// to hide a locked column, whose absence would strand the row's id.
     pub fn column_picker_toggle(&mut self) {
         let idx = self.column_picker_selected;
         if idx >= self.column_picker_toggles.len() {
             return;
         }
-        let visible_count = self.column_picker_toggles.iter().filter(|&&v| v).count();
-        if self.column_picker_toggles[idx] && visible_count <= 1 {
-            self.show_warning("At least one column must stay visible");
-            return;
+        if self.column_picker_toggles[idx] {
+            let locked = self
+                .current_resource()
+                .and_then(|r| r.columns.get(idx))
+                .map(|c| c.locked)
+                .unwrap_or(false);
+            if locked {
+                self.show_warning("The id column cannot be hidden");
+                return;
+            }
+            let visible_count = self.column_picker_toggles.iter().filter(|&&v| v).count();
+            if visible_count <= 1 {
+                self.show_warning("At least one column must stay visible");
+                return;
+            }
         }
         self.column_picker_toggles[idx] = !self.column_picker_toggles[idx];
     }
@@ -1406,13 +1418,21 @@ impl App {
             return;
         };
 
-        let visible: Vec<String> = resource
+        let mut visible: Vec<String> = resource
             .columns
             .iter()
             .zip(&self.column_picker_toggles)
             .filter(|(_, &on)| on)
             .map(|(col, _)| col.header.clone())
             .collect();
+
+        // A locked column can never be hidden, so a hand-edited config that
+        // dropped it is repaired on save rather than silently obeying the edit.
+        for col in &resource.columns {
+            if col.locked && !visible.contains(&col.header) {
+                visible.push(col.header.clone());
+            }
+        }
 
         if visible.is_empty() {
             self.mode = Mode::Normal;
@@ -1431,17 +1451,19 @@ impl App {
     /// Resolve the columns to render for the current resource, paired with each
     /// column's original index so sort state stays pinned to full-list
     /// positions even when columns are hidden. Saved picker preferences win
-    /// over the JSON `visible` flags.
+    /// over the JSON `visible` flags. Locked columns (the id, always) are
+    /// included regardless, so a stale saved preference cannot hide them.
     pub fn effective_columns(&self) -> Vec<(usize, &crate::resource::ColumnDef)> {
         let Some(resource) = self.current_resource() else {
             return Vec::new();
         };
+        let locked = |col: &crate::resource::ColumnDef| col.locked;
         match self.config.column_preferences(&self.current_resource_key) {
             Some(visible) => resource
                 .columns
                 .iter()
                 .enumerate()
-                .filter(|(_, col)| visible.contains(&col.header))
+                .filter(|(_, col)| locked(col) || visible.contains(&col.header))
                 .collect(),
             None => resource
                 .columns
