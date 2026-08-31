@@ -1867,6 +1867,73 @@ mod tests {
         assert_eq!(eni.filters[0].values_source, "/networkInterfaceIdSet/item");
     }
 
+    /// ACM certificates keep their DNS validation records, not on the list row
+    /// but only in DescribeCertificate, where they are the interesting part.
+    /// The ask is "all the domains, their records": the describe must hold the
+    /// DomainValidationOptions as a rendered list whose item template walks into
+    /// each ResourceRecord, and it must carry the ISO names the console shows.
+    #[test]
+    fn acm_certificate_describe_surfaces_each_domain_validation_record() {
+        let r = get_resource("acm-certificates")
+            .unwrap_or_else(|| panic!("acm-certificates must parse"));
+        let dc = r.describe_config.as_ref().expect("needs describe_config");
+
+        assert_eq!(dc.action.as_deref(), Some("DescribeCertificate"));
+        assert_eq!(dc.id_param.as_deref(), Some("CertificateArn"));
+        assert_eq!(dc.response_path.as_deref(), Some("/Certificate"));
+
+        let validation = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.source == "/DomainValidationOptions")
+            .expect("domain validation list field");
+        assert!(
+            validation.list,
+            "DomainValidationOptions must render as a list"
+        );
+        let tmpl = validation.item_template.as_deref().unwrap();
+        for needle in [
+            "{ResourceRecord/Name}",
+            "{ResourceRecord/Type}",
+            "{ResourceRecord/Value}",
+        ] {
+            assert!(
+                tmpl.contains(needle),
+                "item template must surface the DNS record {needle}: {tmpl}"
+            );
+        }
+
+        let names: Vec<&str> = dc
+            .describe_fields
+            .iter()
+            .map(|f| f.source.as_str())
+            .collect();
+        for want in ["/SubjectAlternativeNames", "/InUseBy", "/KeyUsages"] {
+            assert!(
+                names.contains(&want),
+                "{want} should be in the ACM detail view"
+            );
+        }
+
+        for ts in ["/CreatedAt", "/IssuedAt", "/NotBefore", "/NotAfter"] {
+            let f = dc
+                .describe_fields
+                .iter()
+                .find(|f| f.source == ts)
+                .unwrap_or_else(|| panic!("{ts} describe field"));
+            assert_eq!(
+                f.transform.as_deref(),
+                Some("format_epoch_seconds"),
+                "{ts} is epoch-seconds on the ACM wire"
+            );
+        }
+
+        let tags = dc.enrich_calls.iter().find(|e| e.result_field == "Tags");
+        let tags = tags.expect("tags enrichment");
+        assert_eq!(tags.action.as_deref(), Some("ListTagsForResource"));
+        assert_eq!(tags.extract_path.as_deref(), Some("/Tags"));
+    }
+
     /// An enrichment costs an extra API call per describe, so one whose result
     /// no describe field reads is pure latency the user pays for nothing -- and
     /// a typo between the two (Tags vs TagList) shows as a silently blank row,

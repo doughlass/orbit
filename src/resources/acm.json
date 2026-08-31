@@ -34,6 +34,59 @@
         "Status": { "source": "/Status", "default": "-" },
         "Type": { "source": "/Type", "default": "-" },
         "InUse": { "source": "/InUse", "transform": "bool_to_yes_no" }
+      },
+      "describe_config": {
+        "protocol": "json",
+        "action": "DescribeCertificate",
+        "id_param": "CertificateArn",
+        "response_path": "/Certificate",
+        "enrich_calls": [
+          {
+            "result_field": "Tags",
+            "action": "ListTagsForResource",
+            "body": { "ResourceArn": "{resource_id}" },
+            "extract_path": "/Tags"
+          }
+        ],
+        "describe_fields": [
+          { "label": "Certificate ARN", "source": "/CertificateArn", "section": "Identity" },
+          { "label": "Domain Name", "source": "/DomainName" },
+          { "label": "Subject", "source": "/Subject" },
+          { "label": "Issuer", "source": "/Issuer" },
+          { "label": "Status", "source": "/Status" },
+          { "label": "Type", "source": "/Type" },
+          { "label": "Serial", "source": "/Serial" },
+          { "label": "Key Algorithm", "source": "/KeyAlgorithm" },
+          { "label": "Signature Alg", "source": "/SignatureAlgorithm" },
+          { "label": "Key Pair Origin", "source": "/CertificateKeyPairOrigin" },
+          { "label": "CA ARN", "source": "/CertificateAuthorityArn" },
+          { "label": "Renewal Eligible", "source": "/RenewalEligibility" },
+
+          { "label": "Subject Alt Names", "source": "/SubjectAlternativeNames", "section": "Domains", "list": true },
+
+          { "label": "Validation", "source": "/DomainValidationOptions", "section": "Domain Validation", "list": true, "item_template": "{DomainName} [{ValidationStatus}] {ValidationMethod} {ResourceRecord/Type} {ResourceRecord/Name} => {ResourceRecord/Value}" },
+
+          { "label": "Created At", "source": "/CreatedAt", "section": "Dates", "transform": "format_epoch_seconds" },
+          { "label": "Issued At", "source": "/IssuedAt", "transform": "format_epoch_seconds" },
+          { "label": "Not Before", "source": "/NotBefore", "transform": "format_epoch_seconds" },
+          { "label": "Not After", "source": "/NotAfter", "transform": "format_epoch_seconds" },
+          { "label": "Revoked At", "source": "/RevokedAt", "transform": "format_epoch_seconds" },
+          { "label": "Revoke Reason", "source": "/RevocationReason" },
+
+          { "label": "Used By", "source": "/InUseBy", "section": "In Use By", "list": true },
+
+          { "label": "Renewal Status", "source": "/RenewalSummary/RenewalStatus", "section": "Renewal" },
+          { "label": "Renewal Reason", "source": "/RenewalSummary/RenewalStatusReason" },
+          { "label": "Renewed At", "source": "/RenewalSummary/UpdatedAt", "transform": "format_epoch_seconds" },
+
+          { "label": "Key Usages", "source": "/KeyUsages", "section": "Key Usage", "list": true, "item_template": "{Name}" },
+          { "label": "Ext Key Usages", "source": "/ExtendedKeyUsages", "list": true, "item_template": "{Name} ({OID})" },
+
+          { "label": "Transparency", "source": "/Options/CertificateTransparencyLoggingPreference", "section": "Options" },
+          { "label": "Export", "source": "/Options/Export" },
+
+          { "label": "Tags", "source": "/Tags", "section": "Tags", "list": true, "item_template": "{Key}: {Value}" }
+        ]
       }
     }
   }
