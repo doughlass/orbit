@@ -2003,6 +2003,111 @@ mod tests {
         }
     }
 
+    /// Secrets Manager list mirrors the console: the full set of columns, but
+    /// only a console-style handful visible by default (the rest opt-in via p).
+    /// Secret Name is locked because describe and every action key off the ARN
+    /// shown in that row, and hiding it would strand a row with no id.
+    #[test]
+    fn secretsmanager_list_follows_the_console_and_locks_the_name() {
+        let r = get_resource("secretsmanager-secrets").expect("secretsmanager-secrets");
+        let headers: Vec<&str> = r.columns.iter().map(|c| c.header.as_str()).collect();
+        let default_visible: Vec<&str> = r
+            .columns
+            .iter()
+            .filter(|c| c.visible)
+            .map(|c| c.header.as_str())
+            .collect();
+        assert_eq!(
+            default_visible,
+            vec!["SECRET NAME", "DESCRIPTION", "LAST RETRIEVED", "CREATED ON"],
+            "the console shows one leaf (name) plus a handful of columns by default"
+        );
+
+        for want in [
+            "DELETED ON",
+            "LAST UPDATED",
+            "LAST ROTATED",
+            "NEXT ROTATION",
+            "MANAGED BY",
+            "TYPE",
+        ] {
+            assert!(
+                headers.contains(&want),
+                "Secrets Manager should carry a {want} column (opt-in via p)"
+            );
+        }
+
+        let locked: Vec<&str> = r
+            .columns
+            .iter()
+            .filter(|c| c.locked)
+            .map(|c| c.header.as_str())
+            .collect();
+        assert_eq!(
+            locked,
+            vec!["SECRET NAME"],
+            "the secret name column is the only non-hideable Secrets Manager column"
+        );
+        let name_col = r.columns.iter().find(|c| c.locked).unwrap();
+        assert_eq!(name_col.json_path, "Name");
+
+        for col in &r.columns {
+            let root = col.json_path.split('.').next().unwrap_or("");
+            assert!(
+                r.field_mappings.contains_key(root),
+                "Secrets Manager column {} json_path root {} is not in field_mappings",
+                col.header,
+                root
+            );
+        }
+    }
+
+    /// Secrets Manager describe is a plain DescribeSecret JSON call (the secret
+    /// object is returned at top level, not wrapped), and its date fields are
+    /// epoch-seconds floats on the wire -- the FormatDuration-free transform the
+    /// Health and ACM resources established.
+    #[test]
+    fn secretsmanager_describe_renders_console_sections_with_epoch_second_dates() {
+        let r = get_resource("secretsmanager-secrets").expect("secretsmanager-secrets");
+        let dc = r.describe_config.as_ref().expect("needs describe_config");
+        assert_eq!(dc.action.as_deref(), Some("DescribeSecret"));
+        assert!(dc.response_path.is_none(), "secret object is at top level");
+
+        let names: Vec<&str> = dc
+            .describe_fields
+            .iter()
+            .map(|f| f.source.as_str())
+            .collect();
+        for want in ["/Name", "/ARN", "/KmsKeyId", "/PrimaryRegion"] {
+            assert!(
+                names.contains(&want),
+                "{want} should be in the Secrets Manager detail view"
+            );
+        }
+
+        for ts in ["/CreatedDate", "/LastAccessedDate", "/LastChangedDate"] {
+            let f = dc
+                .describe_fields
+                .iter()
+                .find(|f| f.source == ts)
+                .unwrap_or_else(|| panic!("{ts} describe field"));
+            assert_eq!(
+                f.transform.as_deref(),
+                Some("format_epoch_seconds"),
+                "{ts} is epoch-seconds on the Secrets Manager wire"
+            );
+        }
+
+        let tags = dc.describe_fields.iter().find(|f| f.source == "/Tags");
+        let tags = tags.expect("tags list field");
+        assert!(tags.list, "/Tags must render as a list");
+        assert_eq!(
+            tags.item_template.as_deref(),
+            Some("{Key}: {Value}"),
+            "tags render as Key: Value"
+        );
+    }
+
     /// An enrichment costs an extra API call per describe, so one whose result
     /// no describe field reads is pure latency the user pays for nothing -- and
     /// a typo between the two (Tags vs TagList) shows as a silently blank row,
