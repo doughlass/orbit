@@ -595,12 +595,16 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
         (inner_area, None)
     };
 
-    // Check if this resource has a formatted describe layout
+    // The formatted layout is keyed to this resource's describe API response.
+    // An action-result view (last_action_display_name set, e.g. GetSecretValue
+    // via x) has a different shape, so it must fall through to the raw JSON
+    // dump and never run the describe fields against the wrong data.
     let describe_fields = app
         .current_resource()
         .and_then(|r| r.describe_config.as_ref())
         .map(|dc| &dc.describe_fields)
-        .filter(|fields| !fields.is_empty());
+        .filter(|fields| !fields.is_empty())
+        .filter(|_| app.last_action_display_name.is_none());
 
     if let Some(fields) = describe_fields {
         if let Some(ref data) = app.describe_data {
