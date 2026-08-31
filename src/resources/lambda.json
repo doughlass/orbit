@@ -58,7 +58,7 @@
         "Handler": { "source": "/Handler", "default": "-" },
         "Role": { "source": "/Role", "default": "-" },
         "Version": { "source": "/Version", "default": "-" },
-        "LastModified": { "source": "/LastModified", "default": "-" }
+        "LastModified": { "source": "/LastModified", "transform": "format_epoch_seconds", "default": "-" }
       },
       "action_configs": {
         "invoke_function": {
@@ -148,8 +148,8 @@
           { "label": "SnapStart",        "source": "/SnapStart/ApplyOn", "section": "SnapStart" },
           { "label": "Optimization",     "source": "/SnapStart/OptimizationStatus" },
 
-          { "label": "Last Modified",    "source": "/LastModified", "section": "Dates" },
-          { "label": "Created",          "source": "/LastModified" }
+          { "label": "Last Modified",    "source": "/LastModified", "transform": "format_epoch_seconds", "section": "Dates" },
+          { "label": "Created",          "source": "/LastModified", "transform": "format_epoch_seconds" }
         ]
       }
     },
@@ -187,7 +187,7 @@
         "LayerArn": { "source": "/LayerArn", "default": "-" },
         "Version": { "source": "/LatestMatchingVersion/Version", "default": "0" },
         "Description": { "source": "/LatestMatchingVersion/Description", "default": "-" },
-        "CreatedDate": { "source": "/LatestMatchingVersion/CreatedDate", "default": "-" },
+        "CreatedDate": { "source": "/LatestMatchingVersion/CreatedDate", "transform": "format_epoch_seconds", "default": "-" },
         "LicenseInfo": { "source": "/LatestMatchingVersion/LicenseInfo", "default": "-" },
         "CompatibleRuntimes": { "source": "/LatestMatchingVersion/CompatibleRuntimes", "transform": "array_to_csv", "default": "-" }
       }
@@ -264,7 +264,7 @@
         "State": { "source": "/State", "default": "-" },
         "Runtime": { "source": "/Runtime", "default": "-" },
         "MemorySize": { "source": "/MemorySize", "default": "0" },
-        "LastModified": { "source": "/LastModified", "default": "-" }
+        "LastModified": { "source": "/LastModified", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

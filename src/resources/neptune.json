@@ -37,7 +37,7 @@
         "MasterUsername": { "source": "/MasterUsername", "default": "-" },
         "Port": { "source": "/Port", "default": "-" },
         "DBClusterArn": { "source": "/DBClusterArn", "default": "-" },
-        "ClusterCreateTime": { "source": "/ClusterCreateTime", "default": "-" }
+        "ClusterCreateTime": { "source": "/ClusterCreateTime", "transform": "format_epoch_seconds", "default": "-" }
       }
     },
     "neptune-instances": {
@@ -77,7 +77,7 @@
         "Engine": { "source": "/Engine", "default": "-" },
         "Endpoint": { "source": "/Endpoint", "default": "-" },
         "DBClusterIdentifier": { "source": "/DBClusterIdentifier", "default": "-" },
-        "InstanceCreateTime": { "source": "/InstanceCreateTime", "default": "-" }
+        "InstanceCreateTime": { "source": "/InstanceCreateTime", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

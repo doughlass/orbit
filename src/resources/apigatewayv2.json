@@ -34,7 +34,7 @@
         "ApiId": { "source": "/ApiId", "default": "-" },
         "ProtocolType": { "source": "/ProtocolType", "default": "-" },
         "ApiEndpoint": { "source": "/ApiEndpoint", "default": "-" },
-        "CreatedDate": { "source": "/CreatedDate", "default": "-" }
+        "CreatedDate": { "source": "/CreatedDate", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

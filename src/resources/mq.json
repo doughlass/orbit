@@ -39,7 +39,7 @@
         "EngineType": { "source": "/EngineType", "default": "-" },
         "DeploymentMode": { "source": "/DeploymentMode", "default": "-" },
         "HostInstanceType": { "source": "/HostInstanceType", "default": "-" },
-        "Created": { "source": "/Created", "default": "-" }
+        "Created": { "source": "/Created", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

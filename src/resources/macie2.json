@@ -34,7 +34,7 @@
         "jobId": { "source": "/jobId", "default": "-" },
         "jobStatus": { "source": "/jobStatus", "default": "-" },
         "jobType": { "source": "/jobType", "default": "-" },
-        "createdAt": { "source": "/createdAt", "default": "-" }
+        "createdAt": { "source": "/createdAt", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

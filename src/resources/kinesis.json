@@ -34,7 +34,7 @@
         "StreamARN": { "source": "/StreamARN", "default": "-" },
         "StreamStatus": { "source": "/StreamStatus", "default": "-" },
         "StreamModeDetails": { "source": "/StreamModeDetails", "default": "-" },
-        "StreamCreationTimestamp": { "source": "/StreamCreationTimestamp", "default": "-" }
+        "StreamCreationTimestamp": { "source": "/StreamCreationTimestamp", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

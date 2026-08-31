@@ -54,8 +54,8 @@
         "StackName": { "source": "/StackName", "default": "-" },
         "StackId": { "source": "/StackId", "default": "-" },
         "StackStatus": { "source": "/StackStatus", "default": "-" },
-        "CreationTime": { "source": "/CreationTime", "default": "-" },
-        "LastUpdatedTime": { "source": "/LastUpdatedTime", "default": "-" },
+        "CreationTime": { "source": "/CreationTime", "transform": "format_epoch_seconds", "default": "-" },
+        "LastUpdatedTime": { "source": "/LastUpdatedTime", "transform": "format_epoch_seconds", "default": "-" },
         "Description": { "source": "/Description", "default": "-" }
       },
       "action_configs": {
@@ -107,7 +107,7 @@
         "ResourceType": { "source": "/ResourceType", "default": "-" },
         "ResourceStatus": { "source": "/ResourceStatus", "default": "-" },
         "ResourceStatusReason": { "source": "/ResourceStatusReason", "default": "-" },
-        "Timestamp": { "source": "/Timestamp", "default": "-" }
+        "Timestamp": { "source": "/Timestamp", "transform": "format_epoch_seconds", "default": "-" }
       }
     },
     "cloudformation-outputs": {
@@ -178,7 +178,7 @@
         "ResourceType": { "source": "/ResourceType", "default": "-" },
         "ResourceStatus": { "source": "/ResourceStatus", "default": "-" },
         "ResourceStatusReason": { "source": "/ResourceStatusReason", "default": "-" },
-        "LastUpdatedTimestamp": { "source": "/LastUpdatedTimestamp", "default": "-" }
+        "LastUpdatedTimestamp": { "source": "/LastUpdatedTimestamp", "transform": "format_epoch_seconds", "default": "-" }
       }
     }
   }

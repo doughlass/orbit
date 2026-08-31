@@ -258,6 +258,7 @@
         },
         "Date": {
           "source": "/Date",
+          "transform": "format_epoch_seconds",
           "default": "-"
         }
       }

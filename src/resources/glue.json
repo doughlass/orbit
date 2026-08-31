@@ -36,7 +36,7 @@
         "Command": { "source": "/Command", "default": "-" },
         "WorkerType": { "source": "/WorkerType", "default": "Standard" },
         "GlueVersion": { "source": "/GlueVersion", "default": "-" },
-        "CreatedOn": { "source": "/CreatedOn", "default": "-" }
+        "CreatedOn": { "source": "/CreatedOn", "transform": "format_epoch_seconds", "default": "-" }
       }
     },
     "glue-databases": {
@@ -69,7 +69,7 @@
       "field_mappings": {
         "Name": { "source": "/Name", "default": "-" },
         "LocationUri": { "source": "/LocationUri", "default": "-" },
-        "CreateTime": { "source": "/CreateTime", "default": "-" }
+        "CreateTime": { "source": "/CreateTime", "transform": "format_epoch_seconds", "default": "-" }
       }
     },
     "glue-crawlers": {

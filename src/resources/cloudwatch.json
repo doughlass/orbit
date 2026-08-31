@@ -123,7 +123,7 @@
         "logGroupArn": { "source": "/arn", "default": "-" },
         "storedBytes": { "source": "/storedBytes", "default": "0" },
         "retentionInDays": { "source": "/retentionInDays", "default": "Never" },
-        "creationTime": { "source": "/creationTime", "default": "-" }
+        "creationTime": { "source": "/creationTime", "transform": "format_epoch_millis", "default": "-" }
       }
     },
     "cloudwatch-log-streams": {

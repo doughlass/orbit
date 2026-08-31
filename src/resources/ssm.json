@@ -34,7 +34,7 @@
         "Name": { "source": "/Name", "default": "-" },
         "Type": { "source": "/Type", "default": "-" },
         "Tier": { "source": "/Tier", "default": "-" },
-        "LastModifiedDate": { "source": "/LastModifiedDate", "default": "-" },
+        "LastModifiedDate": { "source": "/LastModifiedDate", "transform": "format_epoch_seconds", "default": "-" },
         "Description": { "source": "/Description", "default": "-" }
       }
     },

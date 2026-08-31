@@ -43,7 +43,7 @@
         "Scheme": { "source": "/Scheme", "default": "-" },
         "State": { "source": "/State/Code", "default": "-" },
         "VpcId": { "source": "/VpcId", "default": "-" },
-        "CreatedTime": { "source": "/CreatedTime", "default": "-" }
+        "CreatedTime": { "source": "/CreatedTime", "transform": "format_epoch_seconds", "default": "-" }
       },
       "action_configs": {
         "delete_load_balancer": {

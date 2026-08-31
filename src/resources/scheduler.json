@@ -34,7 +34,7 @@
         "Name": { "source": "/Name", "default": "-" },
         "State": { "source": "/State", "default": "-" },
         "GroupName": { "source": "/GroupName", "default": "-" },
-        "LastModificationDate": { "source": "/LastModificationDate", "default": "-" },
+        "LastModificationDate": { "source": "/LastModificationDate", "transform": "format_epoch_seconds", "default": "-" },
         "Target": { "source": "/Target", "default": "-" }
       }
     }

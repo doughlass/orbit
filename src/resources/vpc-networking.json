@@ -216,7 +216,7 @@
           { "label": "VPC ID", "source": "/vpcId" },
           { "label": "Owner ID", "source": "/ownerId" },
           { "label": "Requester managed", "source": "/requesterManaged" },
-          { "label": "Created", "source": "/creationTimestamp" },
+          { "label": "Created", "source": "/creationTimestamp", "transform": "format_epoch_seconds" },
 
           { "label": "IP Address Type", "source": "/ipAddressType", "section": "Configuration" },
           { "label": "DNS Record Type", "source": "/dnsOptions/dnsRecordIpType" },
