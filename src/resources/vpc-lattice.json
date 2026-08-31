@@ -1,0 +1,43 @@
+{
+  "resources": {
+    "vpclattice-services": {
+      "display_name": "VPC Lattice Services",
+      "service": "vpc-lattice",
+      "sdk_method": "list_services",
+      "sdk_method_params": {},
+      "response_path": "vpclattice_services",
+      "id_field": "id",
+      "name_field": "name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "name", "width": 28 },
+        { "header": "STATUS", "json_path": "status", "width": 20, "color_map": "state" },
+        { "header": "DNS", "json_path": "dnsEntry.domainName", "width": 40 },
+        { "header": "CUSTOM DOMAIN", "json_path": "customDomainName", "width": 30 },
+        { "header": "ARN", "json_path": "arn", "width": 46, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/services",
+        "response_root": "/items",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "id": { "source": "/id", "default": "-" },
+        "name": { "source": "/name", "default": "-" },
+        "status": { "source": "/status", "default": "-" },
+        "dnsEntry": { "source": "/dnsEntry", "default": "-" },
+        "customDomainName": { "source": "/customDomainName", "default": "-" },
+        "arn": { "source": "/arn", "default": "-" }
+      }
+    }
+  }
+}

@@ -129,6 +129,22 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        "docdb" => Some(ServiceDefinition {
+            signing_name: "rds",
+            endpoint_prefix: "rds",
+            api_version: "2014-10-31",
+            protocol: Protocol::Query,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "neptune" => Some(ServiceDefinition {
+            signing_name: "rds",
+            endpoint_prefix: "rds",
+            api_version: "2014-10-31",
+            protocol: Protocol::Query,
+            target_prefix: None,
+            is_global: false,
+        }),
         "dynamodb" => Some(ServiceDefinition {
             signing_name: "dynamodb",
             endpoint_prefix: "dynamodb",
@@ -143,6 +159,30 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             api_version: "2014-11-13",
             protocol: Protocol::Json,
             target_prefix: Some("AmazonEC2ContainerServiceV20141113"),
+            is_global: false,
+        }),
+        "guardduty" => Some(ServiceDefinition {
+            signing_name: "guardduty",
+            endpoint_prefix: "guardduty",
+            api_version: "2017-11-28",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "macie2" => Some(ServiceDefinition {
+            signing_name: "macie2",
+            endpoint_prefix: "macie2",
+            api_version: "2020-01-01",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "inspector2" => Some(ServiceDefinition {
+            signing_name: "inspector2",
+            endpoint_prefix: "inspector2",
+            api_version: "2020-06-08",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
             is_global: false,
         }),
         "eks" => Some(ServiceDefinition {
@@ -162,6 +202,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: false,
         }),
+        "kinesis" => Some(ServiceDefinition {
+            signing_name: "kinesis",
+            endpoint_prefix: "kinesis",
+            api_version: "2013-12-02",
+            protocol: Protocol::Json,
+            target_prefix: Some("Kinesis_20131202"),
+            is_global: false,
+        }),
         "cloudformation" => Some(ServiceDefinition {
             signing_name: "cloudformation",
             endpoint_prefix: "cloudformation",
@@ -178,12 +226,35 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("Logs_20140328"),
             is_global: false,
         }),
+        "config" => Some(ServiceDefinition {
+            signing_name: "config",
+            endpoint_prefix: "config",
+            api_version: "2014-11-12",
+            protocol: Protocol::Json,
+            target_prefix: Some("StarlingDoveService"),
+            is_global: false,
+        }),
+        // CloudWatch metrics/alarms. AWS migrated this service off the classic
+        // AWS-Query XML path to a JSON target; the observed wire header is
+        // `X-Amz-Target: GraniteServiceVersion20100801.<Action>` with a
+        // `Content-Type: application/x-amz-json-1.0` body. Verifying this
+        // against the live API is what pinned the target prefix — the older
+        // `CloudWatchService20100801` / `HTTPMonitorService20100801` prefixes
+        // no longer answer.
+        "monitoring" | "cloudwatch" => Some(ServiceDefinition {
+            signing_name: "monitoring",
+            endpoint_prefix: "monitoring",
+            api_version: "2010-08-01",
+            protocol: Protocol::Json,
+            target_prefix: Some("GraniteServiceVersion20100801"),
+            is_global: false,
+        }),
         "sqs" => Some(ServiceDefinition {
             signing_name: "sqs",
             endpoint_prefix: "sqs",
             api_version: "2012-11-05",
-            protocol: Protocol::Query,
-            target_prefix: None,
+            protocol: Protocol::Json,
+            target_prefix: Some("AmazonSQS"),
             is_global: false,
         }),
         "sns" => Some(ServiceDefinition {
@@ -200,6 +271,14 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             api_version: "2017-10-17",
             protocol: Protocol::Json,
             target_prefix: Some("secretsmanager"),
+            is_global: false,
+        }),
+        "securityhub" => Some(ServiceDefinition {
+            signing_name: "securityhub",
+            endpoint_prefix: "securityhub",
+            api_version: "2018-10-26",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
             is_global: false,
         }),
         "ssm" => Some(ServiceDefinition {
@@ -306,12 +385,196 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: Some("AWSCognitoIdentityProviderService"),
             is_global: false,
         }),
+        "cognito-identity" => Some(ServiceDefinition {
+            signing_name: "cognito-identity",
+            endpoint_prefix: "cognito-identity",
+            api_version: "2014-06-30",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSCognitoIdentityService"),
+            is_global: false,
+        }),
         "cloudtrail" => Some(ServiceDefinition {
             signing_name: "cloudtrail",
             endpoint_prefix: "cloudtrail",
             api_version: "2013-11-01",
             protocol: Protocol::Json,
             target_prefix: Some("com.amazonaws.cloudtrail.v20131101.CloudTrail_20131101"),
+            is_global: false,
+        }),
+        "states" => Some(ServiceDefinition {
+            signing_name: "states",
+            endpoint_prefix: "states",
+            api_version: "2016-11-23",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSStepFunctions"),
+            is_global: false,
+        }),
+        "efs" => Some(ServiceDefinition {
+            signing_name: "elasticfilesystem",
+            endpoint_prefix: "elasticfilesystem",
+            api_version: "2015-02-01",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "fsx" => Some(ServiceDefinition {
+            signing_name: "fsx",
+            endpoint_prefix: "fsx",
+            api_version: "2018-03-01",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSSimbaAPIService_v20180301"),
+            is_global: false,
+        }),
+        "firehose" => Some(ServiceDefinition {
+            signing_name: "firehose",
+            endpoint_prefix: "firehose",
+            api_version: "2015-08-04",
+            protocol: Protocol::Json,
+            target_prefix: Some("Firehose_20150804"),
+            is_global: false,
+        }),
+        "datasync" => Some(ServiceDefinition {
+            signing_name: "datasync",
+            endpoint_prefix: "datasync",
+            api_version: "2018-11-09",
+            protocol: Protocol::Json,
+            target_prefix: Some("FmrsService"),
+            is_global: false,
+        }),
+        "transfer" => Some(ServiceDefinition {
+            signing_name: "transfer",
+            endpoint_prefix: "transfer",
+            api_version: "2018-11-05",
+            protocol: Protocol::Json,
+            target_prefix: Some("TransferService"),
+            is_global: false,
+        }),
+        "appmesh" => Some(ServiceDefinition {
+            signing_name: "appmesh",
+            endpoint_prefix: "appmesh",
+            api_version: "2019-01-25",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "sso-admin" => Some(ServiceDefinition {
+            signing_name: "sso",
+            endpoint_prefix: "sso",
+            api_version: "2020-07-20",
+            protocol: Protocol::Json,
+            target_prefix: Some("SWBExternalService"),
+            is_global: false,
+        }),
+        "servicediscovery" => Some(ServiceDefinition {
+            signing_name: "servicediscovery",
+            endpoint_prefix: "servicediscovery",
+            api_version: "2017-03-14",
+            protocol: Protocol::Json,
+            target_prefix: Some("Route53AutoNaming_v20170314"),
+            is_global: false,
+        }),
+        "vpc-lattice" => Some(ServiceDefinition {
+            signing_name: "vpc-lattice",
+            endpoint_prefix: "vpc-lattice",
+            api_version: "2022-11-30",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "route53resolver" => Some(ServiceDefinition {
+            signing_name: "route53resolver",
+            endpoint_prefix: "route53resolver",
+            api_version: "2018-04-01",
+            protocol: Protocol::Json,
+            target_prefix: Some("Route53Resolver"),
+            is_global: false,
+        }),
+        "trustedadvisor" => Some(ServiceDefinition {
+            signing_name: "trustedadvisor",
+            endpoint_prefix: "trustedadvisor",
+            api_version: "2022-09-15",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: true,
+        }),
+        "health" => Some(ServiceDefinition {
+            signing_name: "health",
+            endpoint_prefix: "health",
+            api_version: "2016-08-04",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSHealth_20160804"),
+            is_global: false,
+        }),
+        "resource-groups" => Some(ServiceDefinition {
+            signing_name: "resource-groups",
+            endpoint_prefix: "resource-groups",
+            api_version: "2017-11-27",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "backup" => Some(ServiceDefinition {
+            signing_name: "backup",
+            endpoint_prefix: "backup",
+            api_version: "2018-11-15",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "servicequotas" => Some(ServiceDefinition {
+            signing_name: "servicequotas",
+            endpoint_prefix: "servicequotas",
+            api_version: "2019-06-24",
+            protocol: Protocol::Json,
+            target_prefix: Some("ServiceQuotasV20190624"),
+            is_global: false,
+        }),
+        "appsync" => Some(ServiceDefinition {
+            signing_name: "appsync",
+            endpoint_prefix: "appsync",
+            api_version: "2017-07-25",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "mq" => Some(ServiceDefinition {
+            signing_name: "mq",
+            endpoint_prefix: "mq",
+            api_version: "2017-11-27",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "glue" => Some(ServiceDefinition {
+            signing_name: "glue",
+            endpoint_prefix: "glue",
+            api_version: "2017-03-31",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSGlue"),
+            is_global: false,
+        }),
+        "emr" => Some(ServiceDefinition {
+            signing_name: "elasticmapreduce",
+            endpoint_prefix: "elasticmapreduce",
+            api_version: "2009-03-31",
+            protocol: Protocol::Json,
+            target_prefix: Some("ElasticMapReduce"),
+            is_global: false,
+        }),
+        "scheduler" => Some(ServiceDefinition {
+            signing_name: "scheduler",
+            endpoint_prefix: "scheduler",
+            api_version: "2021-06-30",
+            protocol: Protocol::RestJson,
+            target_prefix: None,
+            is_global: false,
+        }),
+        "shield" => Some(ServiceDefinition {
+            signing_name: "shield",
+            endpoint_prefix: "shield",
+            api_version: "2016-06-02",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSShield_20160616"),
             is_global: false,
         }),
         "autoscaling" => Some(ServiceDefinition {
@@ -357,6 +620,16 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             protocol: Protocol::Json,
             target_prefix: Some("AWSWAF_20190729"),
             is_global: false,
+        }),
+        "waf" => Some(ServiceDefinition {
+            signing_name: "waf",
+            endpoint_prefix: "waf",
+            api_version: "2015-08-24",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSWAF_20150824"),
+            // Classic WAF is served only from waf.amazonaws.com (us-east-1,
+            // region never in the host) -- the same global shape as IAM.
+            is_global: true,
         }),
         "wafv2-global" => Some(ServiceDefinition {
             signing_name: "wafv2",
@@ -554,10 +827,32 @@ impl AwsHttpClient {
 
         let mut headers = HashMap::new();
         headers.insert("X-Amz-Target".to_string(), target_header);
+
+        // The plain JSON-RPC services (DynamoDB, Logs, ECR, ...) all answer
+        // application/x-amz-json-1.1. Three services need the older 1.0 content
+        // type instead:
+        //  - "monitoring" (CloudWatch): also needs the x-amzn-query-mode header
+        //    (Granite endpoint), see below.
+        //  - "states" (Step Functions): a standard awsJson1.0 service whose
+        //    endpoint returns an XML <UnknownOperationException/> when the
+        //    request arrives as 1.1. Verified against the live API.
+        //  - "sqs": a query-compatible JSON service. Without x-amzn-query-mode
+        //    it answers an XML <UnknownOperationException/> to a JSON request;
+        //    with it, the request is accepted. Verified against the live API.
+        let query_mode = service_name == "monitoring" || service_name == "sqs";
+        let json10 = query_mode || service_name == "states";
         headers.insert(
             "Content-Type".to_string(),
-            "application/x-amz-json-1.1".to_string(),
+            if json10 {
+                "application/x-amz-json-1.0"
+            } else {
+                "application/x-amz-json-1.1"
+            }
+            .to_string(),
         );
+        if query_mode {
+            headers.insert("x-amzn-query-mode".to_string(), "true".to_string());
+        }
 
         self.signed_request(&service, "POST", &url, body, Some(headers))
             .await

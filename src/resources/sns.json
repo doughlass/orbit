@@ -10,11 +10,33 @@
       "name_field": "TopicArn",
       "is_global": false,
       "columns": [
-        { "header": "TOPIC ARN", "json_path": "TopicArn", "width": 80 }
+        {
+          "header": "TOPIC ARN",
+          "json_path": "TopicArn",
+          "width": 80
+        }
       ],
-      "sub_resources": [],
+      "sub_resources": [
+        {
+          "shortcut": "s",
+          "display_name": "Subscriptions",
+          "resource_key": "sns-topic-subscriptions",
+          "parent_id_field": "TopicArn",
+          "filter_param": "TopicArn"
+        }
+      ],
       "actions": [
-        { "key": "ctrl+d", "display_name": "Delete Topic", "shortcut": "ctrl+d", "sdk_method": "delete_topic", "confirm": { "message": "Delete SNS topic", "default_yes": false, "destructive": true } }
+        {
+          "key": "ctrl+d",
+          "display_name": "Delete Topic",
+          "shortcut": "ctrl+d",
+          "sdk_method": "delete_topic",
+          "confirm": {
+            "message": "Delete SNS topic",
+            "default_yes": false,
+            "destructive": true
+          }
+        }
       ],
       "api_config": {
         "protocol": "query",
@@ -26,7 +48,10 @@
         }
       },
       "field_mappings": {
-        "TopicArn": { "source": "/TopicArn", "default": "-" }
+        "TopicArn": {
+          "source": "/TopicArn",
+          "default": "-"
+        }
       },
       "action_configs": {
         "delete_topic": {
@@ -36,6 +61,129 @@
           "id_param": "TopicArn"
         }
       }
+    },
+    "sns-subscriptions": {
+      "display_name": "SNS Subscriptions",
+      "service": "sns",
+      "sdk_method": "list_subscriptions",
+      "sdk_method_params": {},
+      "response_path": "subscriptions",
+      "id_field": "SubscriptionArn",
+      "name_field": "Endpoint",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "PROTOCOL",
+          "json_path": "Protocol",
+          "width": 10
+        },
+        {
+          "header": "ENDPOINT",
+          "json_path": "Endpoint",
+          "width": 46
+        },
+        {
+          "header": "TOPIC",
+          "json_path": "TopicArn",
+          "width": 40
+        },
+        {
+          "header": "SUBSCRIPTION ARN",
+          "json_path": "SubscriptionArn",
+          "width": 50
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "ListSubscriptions",
+        "response_root": "/ListSubscriptionsResponse/ListSubscriptionsResult/Subscriptions/member",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/ListSubscriptionsResponse/ListSubscriptionsResult/NextToken"
+        }
+      },
+      "field_mappings": {
+        "Protocol": {
+          "source": "/Protocol",
+          "default": "-"
+        },
+        "Endpoint": {
+          "source": "/Endpoint",
+          "default": "-"
+        },
+        "TopicArn": {
+          "source": "/TopicArn",
+          "default": "-"
+        },
+        "SubscriptionArn": {
+          "source": "/SubscriptionArn",
+          "default": "-"
+        }
+      }
+    },
+    "sns-topic-subscriptions": {
+      "display_name": "Topic Subscriptions",
+      "service": "sns",
+      "sdk_method": "list_subscriptions",
+      "sdk_method_params": {},
+      "response_path": "subscriptions",
+      "id_field": "SubscriptionArn",
+      "name_field": "Endpoint",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "PROTOCOL",
+          "json_path": "Protocol",
+          "width": 10
+        },
+        {
+          "header": "ENDPOINT",
+          "json_path": "Endpoint",
+          "width": 46
+        },
+        {
+          "header": "TOPIC",
+          "json_path": "TopicArn",
+          "width": 40
+        },
+        {
+          "header": "SUBSCRIPTION ARN",
+          "json_path": "SubscriptionArn",
+          "width": 50
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "ListSubscriptionsByTopic",
+        "response_root": "/ListSubscriptionsByTopicResponse/ListSubscriptionsByTopicResult/Subscriptions/member",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/ListSubscriptionsByTopicResponse/ListSubscriptionsByTopicResult/NextToken"
+        }
+      },
+      "field_mappings": {
+        "Protocol": {
+          "source": "/Protocol",
+          "default": "-"
+        },
+        "Endpoint": {
+          "source": "/Endpoint",
+          "default": "-"
+        },
+        "TopicArn": {
+          "source": "/TopicArn",
+          "default": "-"
+        },
+        "SubscriptionArn": {
+          "source": "/SubscriptionArn",
+          "default": "-"
+        }
+      },
+      "requires_parent": true
     }
   }
 }

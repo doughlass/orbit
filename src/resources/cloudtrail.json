@@ -29,6 +29,45 @@
         "IsMultiRegionTrail": { "source": "/IsMultiRegionTrail", "transform": "bool_to_yes_no" },
         "LogFileValidationEnabled": { "source": "/LogFileValidationEnabled", "transform": "bool_to_yes_no" }
       }
+    },
+    "cloudtrail-events": {
+      "display_name": "CloudTrail Events",
+      "service": "cloudtrail",
+      "sdk_method": "lookup_events",
+      "sdk_method_params": {},
+      "response_path": "events",
+      "id_field": "EventId",
+      "name_field": "EventName",
+      "is_global": false,
+      "columns": [
+        { "header": "EVENT TIME", "json_path": "EventTime", "width": 22 },
+        { "header": "EVENT NAME", "json_path": "EventName", "width": 30 },
+        { "header": "SOURCE", "json_path": "EventSource", "width": 28 },
+        { "header": "USERNAME", "json_path": "Username", "width": 30 },
+        { "header": "RO", "json_path": "ReadOnly", "width": 4, "color_map": "bool" }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "LookupEvents",
+        "response_root": "/Events",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 50
+        }
+      },
+      "field_mappings": {
+        "EventId": { "source": "/EventId", "default": "-" },
+        "EventName": { "source": "/EventName", "default": "-" },
+        "EventSource": { "source": "/EventSource", "default": "-" },
+        "EventTime": { "source": "/EventTime", "default": "-" },
+        "Username": { "source": "/Username", "default": "-" },
+        "AccessKeyId": { "source": "/AccessKeyId", "default": "-" },
+        "ReadOnly": { "source": "/ReadOnly", "default": "-" }
+      }
     }
   }
 }

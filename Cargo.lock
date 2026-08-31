@@ -1850,6 +1850,7 @@ dependencies = [
  "aws-credential-types",
  "aws-sigv4",
  "aws-smithy-runtime-api",
+ "base64",
  "chrono",
  "clap",
  "clap_complete",

@@ -1,0 +1,118 @@
+{
+  "resources": {
+    "r53resolver-endpoints": {
+      "display_name": "Resolver Endpoints",
+      "service": "route53resolver",
+      "sdk_method": "list_resolver_endpoints",
+      "sdk_method_params": {},
+      "response_path": "r53resolver_endpoints",
+      "id_field": "Id",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 26 },
+        { "header": "STATUS", "json_path": "Status", "width": 16, "color_map": "state" },
+        { "header": "DIRECTION", "json_path": "Direction", "width": 12 },
+        { "header": "IP COUNT", "json_path": "IpAddressCount", "width": 9 },
+        { "header": "VPC", "json_path": "HostVPCId", "width": 22 },
+        { "header": "ARN", "json_path": "Arn", "width": 46, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListResolverEndpoints",
+        "response_root": "/ResolverEndpoints",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Id": { "source": "/Id", "default": "-" },
+        "Name": { "source": "/Name", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "Direction": { "source": "/Direction", "default": "-" },
+        "IpAddressCount": { "source": "/IpAddressCount", "default": "0" },
+        "HostVPCId": { "source": "/HostVPCId", "default": "-" },
+        "Arn": { "source": "/Arn", "default": "-" }
+      }
+    },
+    "r53resolver-rules": {
+      "display_name": "Resolver Rules",
+      "service": "route53resolver",
+      "sdk_method": "list_resolver_rules",
+      "sdk_method_params": {},
+      "response_path": "r53resolver_rules",
+      "id_field": "Id",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 26 },
+        { "header": "STATUS", "json_path": "Status", "width": 16, "color_map": "state" },
+        { "header": "DOMAIN", "json_path": "DomainName", "width": 26 },
+        { "header": "TYPE", "json_path": "RuleType", "width": 12 },
+        { "header": "ARN", "json_path": "Arn", "width": 46, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListResolverRules",
+        "response_root": "/ResolverRules",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Id": { "source": "/Id", "default": "-" },
+        "Name": { "source": "/Name", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "DomainName": { "source": "/DomainName", "default": "-" },
+        "RuleType": { "source": "/RuleType", "default": "-" },
+        "Arn": { "source": "/Arn", "default": "-" }
+      }
+    },
+    "r53resolver-rule-associations": {
+      "display_name": "Resolver Rule Associations",
+      "service": "route53resolver",
+      "sdk_method": "list_resolver_rule_associations",
+      "sdk_method_params": {},
+      "response_path": "r53resolver_associations",
+      "id_field": "Id",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "STATUS", "json_path": "Status", "width": 14, "color_map": "state" },
+        { "header": "RULE", "json_path": "ResolverRuleId", "width": 34 },
+        { "header": "VPC", "json_path": "VPCId", "width": 22 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListResolverRuleAssociations",
+        "response_root": "/ResolverRuleAssociations",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Id": { "source": "/Id", "default": "-" },
+        "Name": { "source": "/Name", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "ResolverRuleId": { "source": "/ResolverRuleId", "default": "-" },
+        "VPCId": { "source": "/VPCId", "default": "-" }
+      }
+    }
+  }
+}

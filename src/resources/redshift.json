@@ -10,21 +10,89 @@
       "name_field": "ClusterIdentifier",
       "is_global": false,
       "columns": [
-        { "header": "CLUSTER IDENTIFIER", "json_path": "ClusterIdentifier", "width": 25 },
-        { "header": "STATUS", "json_path": "ClusterStatus", "width": 15, "color_map": "state" },
-        { "header": "NODE TYPE", "json_path": "NodeType", "width": 15 },
-        { "header": "NODES", "json_path": "NumberOfNodes", "width": 8 },
-        { "header": "DB NAME", "json_path": "DBName", "width": 15 },
-        { "header": "VERSION", "json_path": "ClusterVersion", "width": 10 }
+        {
+          "header": "CLUSTER IDENTIFIER",
+          "json_path": "ClusterIdentifier",
+          "width": 25
+        },
+        {
+          "header": "STATUS",
+          "json_path": "ClusterStatus",
+          "width": 15,
+          "color_map": "state"
+        },
+        {
+          "header": "NODE TYPE",
+          "json_path": "NodeType",
+          "width": 15
+        },
+        {
+          "header": "NODES",
+          "json_path": "NumberOfNodes",
+          "width": 8
+        },
+        {
+          "header": "DB NAME",
+          "json_path": "DBName",
+          "width": 15
+        },
+        {
+          "header": "VERSION",
+          "json_path": "ClusterVersion",
+          "width": 10
+        }
       ],
       "sub_resources": [
-        { "shortcut": "n", "display_name": "Snapshots", "resource_key": "redshift-snapshots", "parent_id_field": "ClusterIdentifier", "filter_param": "cluster_identifier" }
+        {
+          "shortcut": "n",
+          "display_name": "Snapshots",
+          "resource_key": "redshift-snapshots",
+          "parent_id_field": "ClusterIdentifier",
+          "filter_param": "cluster_identifier"
+        }
       ],
       "actions": [
-        { "key": "s", "display_name": "Resume", "shortcut": "s", "sdk_method": "resume_cluster", "confirm": { "message": "Resume Redshift cluster", "default_yes": false } },
-        { "key": "S", "display_name": "Pause", "shortcut": "S", "sdk_method": "pause_cluster", "confirm": { "message": "Pause Redshift cluster", "default_yes": false } },
-        { "key": "r", "display_name": "Reboot", "shortcut": "r", "sdk_method": "reboot_cluster", "confirm": { "message": "Reboot Redshift cluster", "default_yes": false } },
-        { "key": "ctrl+d", "display_name": "Delete", "shortcut": "ctrl+d", "sdk_method": "delete_cluster", "confirm": { "message": "Delete Redshift cluster", "default_yes": false, "destructive": true } }
+        {
+          "key": "s",
+          "display_name": "Resume",
+          "shortcut": "s",
+          "sdk_method": "resume_cluster",
+          "confirm": {
+            "message": "Resume Redshift cluster",
+            "default_yes": false
+          }
+        },
+        {
+          "key": "S",
+          "display_name": "Pause",
+          "shortcut": "S",
+          "sdk_method": "pause_cluster",
+          "confirm": {
+            "message": "Pause Redshift cluster",
+            "default_yes": false
+          }
+        },
+        {
+          "key": "r",
+          "display_name": "Reboot",
+          "shortcut": "r",
+          "sdk_method": "reboot_cluster",
+          "confirm": {
+            "message": "Reboot Redshift cluster",
+            "default_yes": false
+          }
+        },
+        {
+          "key": "ctrl+d",
+          "display_name": "Delete",
+          "shortcut": "ctrl+d",
+          "sdk_method": "delete_cluster",
+          "confirm": {
+            "message": "Delete Redshift cluster",
+            "default_yes": false,
+            "destructive": true
+          }
+        }
       ],
       "api_config": {
         "protocol": "query",
@@ -38,13 +106,34 @@
         }
       },
       "field_mappings": {
-        "ClusterIdentifier": { "source": "/ClusterIdentifier", "default": "-" },
-        "ClusterStatus": { "source": "/ClusterStatus", "default": "-" },
-        "NodeType": { "source": "/NodeType", "default": "-" },
-        "NumberOfNodes": { "source": "/NumberOfNodes", "default": "0" },
-        "DBName": { "source": "/DBName", "default": "-" },
-        "ClusterVersion": { "source": "/ClusterVersion", "default": "-" },
-        "Endpoint": { "source": "/Endpoint/Address", "default": "-" }
+        "ClusterIdentifier": {
+          "source": "/ClusterIdentifier",
+          "default": "-"
+        },
+        "ClusterStatus": {
+          "source": "/ClusterStatus",
+          "default": "-"
+        },
+        "NodeType": {
+          "source": "/NodeType",
+          "default": "-"
+        },
+        "NumberOfNodes": {
+          "source": "/NumberOfNodes",
+          "default": "0"
+        },
+        "DBName": {
+          "source": "/DBName",
+          "default": "-"
+        },
+        "ClusterVersion": {
+          "source": "/ClusterVersion",
+          "default": "-"
+        },
+        "Endpoint": {
+          "source": "/Endpoint/Address",
+          "default": "-"
+        }
       },
       "action_configs": {
         "resume_cluster": {
@@ -93,15 +182,46 @@
       "name_field": "SnapshotIdentifier",
       "is_global": false,
       "columns": [
-        { "header": "SNAPSHOT ID", "json_path": "SnapshotIdentifier", "width": 35 },
-        { "header": "STATUS", "json_path": "Status", "width": 12, "color_map": "state" },
-        { "header": "TYPE", "json_path": "SnapshotType", "width": 12 },
-        { "header": "CLUSTER", "json_path": "ClusterIdentifier", "width": 20 },
-        { "header": "CREATED", "json_path": "SnapshotCreateTime", "width": 20 }
+        {
+          "header": "SNAPSHOT ID",
+          "json_path": "SnapshotIdentifier",
+          "width": 35
+        },
+        {
+          "header": "STATUS",
+          "json_path": "Status",
+          "width": 12,
+          "color_map": "state"
+        },
+        {
+          "header": "TYPE",
+          "json_path": "SnapshotType",
+          "width": 12
+        },
+        {
+          "header": "CLUSTER",
+          "json_path": "ClusterIdentifier",
+          "width": 20
+        },
+        {
+          "header": "CREATED",
+          "json_path": "SnapshotCreateTime",
+          "width": 20
+        }
       ],
       "sub_resources": [],
       "actions": [
-        { "key": "ctrl+d", "display_name": "Delete Snapshot", "shortcut": "ctrl+d", "sdk_method": "delete_cluster_snapshot", "confirm": { "message": "Delete Redshift snapshot", "default_yes": false, "destructive": true } }
+        {
+          "key": "ctrl+d",
+          "display_name": "Delete Snapshot",
+          "shortcut": "ctrl+d",
+          "sdk_method": "delete_cluster_snapshot",
+          "confirm": {
+            "message": "Delete Redshift snapshot",
+            "default_yes": false,
+            "destructive": true
+          }
+        }
       ],
       "api_config": {
         "protocol": "query",
@@ -118,11 +238,26 @@
         }
       },
       "field_mappings": {
-        "SnapshotIdentifier": { "source": "/SnapshotIdentifier", "default": "-" },
-        "ClusterIdentifier": { "source": "/ClusterIdentifier", "default": "-" },
-        "Status": { "source": "/Status", "default": "-" },
-        "SnapshotType": { "source": "/SnapshotType", "default": "-" },
-        "SnapshotCreateTime": { "source": "/SnapshotCreateTime", "default": "-" }
+        "SnapshotIdentifier": {
+          "source": "/SnapshotIdentifier",
+          "default": "-"
+        },
+        "ClusterIdentifier": {
+          "source": "/ClusterIdentifier",
+          "default": "-"
+        },
+        "Status": {
+          "source": "/Status",
+          "default": "-"
+        },
+        "SnapshotType": {
+          "source": "/SnapshotType",
+          "default": "-"
+        },
+        "SnapshotCreateTime": {
+          "source": "/SnapshotCreateTime",
+          "default": "-"
+        }
       },
       "action_configs": {
         "delete_cluster_snapshot": {
@@ -130,6 +265,204 @@
           "protocol": "query",
           "action": "DeleteClusterSnapshot",
           "id_param": "SnapshotIdentifier"
+        }
+      }
+    },
+    "redshift-parameter-groups": {
+      "display_name": "Redshift Parameter Groups",
+      "service": "redshift",
+      "sdk_method": "describe_cluster_parameter_groups",
+      "sdk_method_params": {},
+      "response_path": "pgroups",
+      "id_field": "ParameterGroupName",
+      "name_field": "ParameterGroupName",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "NAME",
+          "json_path": "ParameterGroupName",
+          "width": 34
+        },
+        {
+          "header": "FAMILY",
+          "json_path": "ParameterGroupFamily",
+          "width": 18
+        },
+        {
+          "header": "DESCRIPTION",
+          "json_path": "Description",
+          "width": 40
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeClusterParameterGroups",
+        "response_root": "/DescribeClusterParameterGroupsResponse/DescribeClusterParameterGroupsResult/ParameterGroups/ClusterParameterGroup",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeClusterParameterGroupsResponse/DescribeClusterParameterGroupsResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "ParameterGroupName": {
+          "source": "/ParameterGroupName",
+          "default": "-"
+        },
+        "ParameterGroupFamily": {
+          "source": "/ParameterGroupFamily",
+          "default": "-"
+        },
+        "Description": {
+          "source": "/Description",
+          "default": "-"
+        }
+      }
+    },
+    "redshift-reserved-nodes": {
+      "display_name": "Redshift Reserved Nodes",
+      "service": "redshift",
+      "sdk_method": "describe_reserved_nodes",
+      "sdk_method_params": {},
+      "response_path": "reserved",
+      "id_field": "ReservedNodeId",
+      "name_field": "ReservedNodeId",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "NODE ID",
+          "json_path": "ReservedNodeId",
+          "width": 20
+        },
+        {
+          "header": "TYPE",
+          "json_path": "NodeType",
+          "width": 20
+        },
+        {
+          "header": "OFFERING",
+          "json_path": "OfferingType",
+          "width": 16
+        },
+        {
+          "header": "STATE",
+          "json_path": "State",
+          "width": 12
+        },
+        {
+          "header": "COUNT",
+          "json_path": "NodeCount",
+          "width": 8
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeReservedNodes",
+        "response_root": "/DescribeReservedNodesResponse/DescribeReservedNodesResult/ReservedNodes/ReservedNode",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeReservedNodesResponse/DescribeReservedNodesResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "ReservedNodeId": {
+          "source": "/ReservedNodeId",
+          "default": "-"
+        },
+        "NodeType": {
+          "source": "/NodeType",
+          "default": "-"
+        },
+        "OfferingType": {
+          "source": "/OfferingType",
+          "default": "-"
+        },
+        "State": {
+          "source": "/State",
+          "default": "-"
+        },
+        "NodeCount": {
+          "source": "/NodeCount",
+          "default": "-"
+        }
+      }
+    },
+    "redshift-events": {
+      "display_name": "Redshift Events",
+      "service": "redshift",
+      "sdk_method": "describe_events",
+      "sdk_method_params": {},
+      "response_path": "events",
+      "id_field": "SourceIdentifier",
+      "name_field": "SourceType",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "SOURCE",
+          "json_path": "SourceIdentifier",
+          "width": 26
+        },
+        {
+          "header": "TYPE",
+          "json_path": "SourceType",
+          "width": 18
+        },
+        {
+          "header": "SEVERITY",
+          "json_path": "Severity",
+          "width": 12
+        },
+        {
+          "header": "MESSAGE",
+          "json_path": "Message",
+          "width": 40
+        },
+        {
+          "header": "DATE",
+          "json_path": "Date",
+          "width": 22
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeEvents",
+        "response_root": "/DescribeEventsResponse/DescribeEventsResult/Events/Event",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeEventsResponse/DescribeEventsResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "SourceIdentifier": {
+          "source": "/SourceIdentifier",
+          "default": "-"
+        },
+        "SourceType": {
+          "source": "/SourceType",
+          "default": "-"
+        },
+        "Severity": {
+          "source": "/Severity",
+          "default": "-"
+        },
+        "Message": {
+          "source": "/Message",
+          "default": "-"
+        },
+        "Date": {
+          "source": "/Date",
+          "default": "-"
         }
       }
     }

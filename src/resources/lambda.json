@@ -24,7 +24,10 @@
         { "header": "VERSION", "json_path": "Version", "width": 10, "visible": false },
         { "header": "MODIFIED", "json_path": "LastModified", "width": 25 }
       ],
-      "sub_resources": [],
+      "sub_resources": [
+        { "shortcut": "a", "display_name": "Aliases", "resource_key": "lambda-aliases", "parent_id_field": "FunctionName", "filter_param": "functionName" },
+        { "shortcut": "v", "display_name": "Versions", "resource_key": "lambda-versions", "parent_id_field": "FunctionName", "filter_param": "functionName" }
+      ],
       "actions": [
         { "key": "i", "display_name": "Invoke", "shortcut": "i", "sdk_method": "invoke_function", "confirm": { "message": "Invoke Lambda function", "default_yes": true } },
         { "key": "ctrl+d", "display_name": "Delete", "shortcut": "ctrl+d", "sdk_method": "delete_function", "confirm": { "message": "Delete Lambda function", "default_yes": false, "destructive": true } }
@@ -148,6 +151,120 @@
           { "label": "Last Modified",    "source": "/LastModified", "section": "Dates" },
           { "label": "Created",          "source": "/LastModified" }
         ]
+      }
+    },
+    "lambda-layers": {
+      "display_name": "Lambda Layers",
+      "service": "lambda",
+      "sdk_method": "list_layers",
+      "sdk_method_params": {},
+      "response_path": "layers",
+      "id_field": "LayerName",
+      "name_field": "LayerName",
+      "is_global": false,
+      "columns": [
+        { "header": "LAYER NAME", "json_path": "LayerName", "width": 30 },
+        { "header": "VERSION", "json_path": "Version", "width": 8 },
+        { "header": "RUNTIMES", "json_path": "CompatibleRuntimes", "width": 30 },
+        { "header": "CREATED", "json_path": "CreatedDate", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/2018-10-31/layers",
+        "response_root": "/Layers",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/NextMarker",
+          "max_results_param": "MaxItems",
+          "max_results": 50
+        }
+      },
+      "field_mappings": {
+        "LayerName": { "source": "/LayerName", "default": "-" },
+        "LayerArn": { "source": "/LayerArn", "default": "-" },
+        "Version": { "source": "/LatestMatchingVersion/Version", "default": "0" },
+        "Description": { "source": "/LatestMatchingVersion/Description", "default": "-" },
+        "CreatedDate": { "source": "/LatestMatchingVersion/CreatedDate", "default": "-" },
+        "LicenseInfo": { "source": "/LatestMatchingVersion/LicenseInfo", "default": "-" },
+        "CompatibleRuntimes": { "source": "/LatestMatchingVersion/CompatibleRuntimes", "transform": "array_to_csv", "default": "-" }
+      }
+    },
+    "lambda-aliases": {
+      "display_name": "Lambda Aliases",
+      "service": "lambda",
+      "sdk_method": "list_aliases",
+      "sdk_method_params": {},
+      "response_path": "aliases",
+      "id_field": "Name",
+      "name_field": "Name",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "ALIAS NAME", "json_path": "Name", "width": 30 },
+        { "header": "VERSION", "json_path": "FunctionVersion", "width": 12 },
+        { "header": "DESCRIPTION", "json_path": "Description", "width": 40 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/2015-03-31/functions/{functionName}/aliases",
+        "response_root": "/Aliases",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/NextMarker",
+          "max_results_param": "MaxItems",
+          "max_results": 50
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "AliasArn": { "source": "/AliasArn", "default": "-" },
+        "FunctionVersion": { "source": "/FunctionVersion", "default": "-" },
+        "Description": { "source": "/Description", "default": "-" }
+      }
+    },
+    "lambda-versions": {
+      "display_name": "Lambda Versions",
+      "service": "lambda",
+      "sdk_method": "list_versions_by_function",
+      "sdk_method_params": {},
+      "response_path": "versions",
+      "id_field": "Version",
+      "name_field": "Version",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "VERSION", "json_path": "Version", "width": 10 },
+        { "header": "STATE", "json_path": "State", "width": 14, "color_map": "state" },
+        { "header": "RUNTIME", "json_path": "Runtime", "width": 14 },
+        { "header": "MODIFIED", "json_path": "LastModified", "width": 25 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/2015-03-31/functions/{functionName}/versions",
+        "response_root": "/Versions",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/NextMarker",
+          "max_results_param": "MaxItems",
+          "max_results": 50
+        }
+      },
+      "field_mappings": {
+        "Version": { "source": "/Version", "default": "-" },
+        "FunctionName": { "source": "/FunctionName", "default": "-" },
+        "State": { "source": "/State", "default": "-" },
+        "Runtime": { "source": "/Runtime", "default": "-" },
+        "MemorySize": { "source": "/MemorySize", "default": "0" },
+        "LastModified": { "source": "/LastModified", "default": "-" }
       }
     }
   }

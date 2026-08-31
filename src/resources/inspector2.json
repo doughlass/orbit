@@ -1,0 +1,41 @@
+{
+  "resources": {
+    "inspector2-findings": {
+      "display_name": "Inspector Findings",
+      "service": "inspector2",
+      "sdk_method": "list_findings",
+      "sdk_method_params": {},
+      "response_path": "findings",
+      "id_field": "findingArn",
+      "name_field": "title",
+      "is_global": false,
+      "columns": [
+        { "header": "SEVERITY", "json_path": "severity", "width": 12, "color_map": "severity" },
+        { "header": "STATUS", "json_path": "status", "width": 12 },
+        { "header": "TYPE", "json_path": "type", "width": 20 },
+        { "header": "TITLE", "json_path": "title", "width": 60 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "POST",
+        "path": "/findings/list",
+        "response_root": "/findings",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "severity": { "source": "/severity", "default": "-" },
+        "findingArn": { "source": "/findingArn", "default": "-" },
+        "status": { "source": "/status", "default": "-" },
+        "type": { "source": "/type", "default": "-" },
+        "title": { "source": "/title", "default": "-" }
+      }
+    }
+  }
+}

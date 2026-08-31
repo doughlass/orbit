@@ -1,0 +1,39 @@
+{
+  "resources": {
+    "config-rules": {
+      "display_name": "Config Rules",
+      "service": "config",
+      "sdk_method": "describe_config_rules",
+      "sdk_method_params": {},
+      "response_path": "config_rules",
+      "id_field": "ConfigRuleName",
+      "name_field": "ConfigRuleName",
+      "is_global": false,
+      "columns": [
+        { "header": "RULE", "json_path": "ConfigRuleName", "width": 44 },
+        { "header": "STATE", "json_path": "ConfigRuleState", "width": 16, "color_map": "state" },
+        { "header": "CREATED BY", "json_path": "CreatedBy", "width": 22 },
+        { "header": "FREQ", "json_path": "MaximumExecutionFrequency", "width": 14 },
+        { "header": "ARN", "json_path": "ConfigRuleArn", "width": 50, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "DescribeConfigRules",
+        "response_root": "/ConfigRules",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken"
+        }
+      },
+      "field_mappings": {
+        "ConfigRuleName": { "source": "/ConfigRuleName", "default": "-" },
+        "ConfigRuleArn": { "source": "/ConfigRuleArn", "default": "-" },
+        "ConfigRuleState": { "source": "/ConfigRuleState", "default": "-" },
+        "CreatedBy": { "source": "/CreatedBy", "default": "-" },
+        "MaximumExecutionFrequency": { "source": "/MaximumExecutionFrequency", "default": "-" }
+      }
+    }
+  }
+}

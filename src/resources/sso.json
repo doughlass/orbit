@@ -1,0 +1,43 @@
+{
+  "resources": {
+    "sso-admin-instances": {
+      "display_name": "Identity Center Instances",
+      "service": "sso-admin",
+      "sdk_method": "list_instances",
+      "sdk_method_params": {},
+      "response_path": "sso_instances",
+      "id_field": "InstanceArn",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 28 },
+        { "header": "OWNER", "json_path": "OwnerAccountId", "width": 16 },
+        { "header": "STATUS", "json_path": "Status", "width": 14, "color_map": "state" },
+        { "header": "PRIMARY REGION", "json_path": "PrimaryRegion", "width": 18 },
+        { "header": "REGIONS", "json_path": "Regions", "width": 26 },
+        { "header": "INSTANCE ARN", "json_path": "InstanceArn", "width": 46, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListInstances",
+        "response_root": "/Instances",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "InstanceArn": { "source": "/InstanceArn", "default": "-" },
+        "OwnerAccountId": { "source": "/OwnerAccountId", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "PrimaryRegion": { "source": "/PrimaryRegion", "default": "-" },
+        "Regions": { "source": "/Regions", "transform": "array_to_csv", "default": "-" }
+      }
+    }
+  }
+}

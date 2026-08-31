@@ -300,6 +300,11 @@ pub struct App {
     pub describe_data: Option<Value>, // Full resource details from describe API
     pub last_action_display_name: Option<String>,
 
+    // A secret value revealed from the describe view. Held only while its
+    // deadlining countdown is live; the value auto-hides when the deadline
+    // passes or the user toggles it off, so it is never left on screen.
+    pub reveal_secret: Option<SecretReveal>,
+
     // Describe search state
     pub describe_search_text: String,
     pub describe_search_active: bool,
@@ -383,6 +388,50 @@ pub struct UpdateInfo {
     pub in_progress: bool,
     /// Set after the update/relaunch is handed off, so the loop can quit.
     pub should_quit: bool,
+}
+
+/// A secret value revealed in the describe view along with when it must
+/// auto-hide. The value is only held while this is live; once the deadline
+/// passes the field is cleared, so the secret never lingers on screen.
+pub struct SecretReveal {
+    pub value: String,
+    pub mode: RevealMode,
+    pub hide_at: std::time::Instant,
+}
+
+/// How a revealed secret value is rendered, mirroring the AWS console's
+/// plaintext / key-value switch.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RevealMode {
+    /// The raw secret string, shown exactly as stored.
+    Plaintext,
+    /// The secret string parsed as a top-level JSON object and shown one
+    /// key per line; a value that is not a JSON object falls back to
+    /// plaintext.
+    KeyValue,
+}
+
+impl SecretReveal {
+    /// True once the auto-hide deadline has passed.
+    fn expired(&self) -> bool {
+        std::time::Instant::now() >= self.hide_at
+    }
+}
+
+/// Pull the human-readable text out of a GetSecretValue response -- its
+/// SecretString if present, otherwise the base64 SecretBinary decoded.
+fn secret_value_text(data: &serde_json::Value) -> Option<String> {
+    if let Some(s) = data.get("SecretString").and_then(|v| v.as_str()) {
+        return Some(s.to_string());
+    }
+    if let Some(b) = data.get("SecretBinary").and_then(|v| v.as_str()) {
+        use base64::Engine;
+        return base64::engine::general_purpose::STANDARD
+            .decode(b)
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok());
+    }
+    None
 }
 
 /// SSM Connect request data
@@ -560,6 +609,7 @@ impl App {
             describe_scroll: 0,
             describe_data: None,
             last_action_display_name: None,
+            reveal_secret: None,
             describe_search_text: String::new(),
             describe_search_active: false,
             describe_match_lines: Vec::new(),
@@ -1376,8 +1426,8 @@ impl App {
             .columns
             .iter()
             .map(|col| match saved {
-                Some(visible) => visible.contains(&col.header),
-                None => col.visible,
+                Some(visible) => col.locked || visible.contains(&col.header),
+                None => col.locked || col.visible,
             })
             .collect();
         self.column_picker_selected = 0;
@@ -1385,16 +1435,28 @@ impl App {
     }
 
     /// Toggle the column under the picker cursor. Refuses to hide the last
-    /// visible column — an empty table is never a useful outcome.
+    /// visible column — an empty table is never a useful outcome — and refuses
+    /// to hide a locked column, whose absence would strand the row's id.
     pub fn column_picker_toggle(&mut self) {
         let idx = self.column_picker_selected;
         if idx >= self.column_picker_toggles.len() {
             return;
         }
-        let visible_count = self.column_picker_toggles.iter().filter(|&&v| v).count();
-        if self.column_picker_toggles[idx] && visible_count <= 1 {
-            self.show_warning("At least one column must stay visible");
-            return;
+        if self.column_picker_toggles[idx] {
+            let locked = self
+                .current_resource()
+                .and_then(|r| r.columns.get(idx))
+                .map(|c| c.locked)
+                .unwrap_or(false);
+            if locked {
+                self.show_warning("The id column cannot be hidden");
+                return;
+            }
+            let visible_count = self.column_picker_toggles.iter().filter(|&&v| v).count();
+            if visible_count <= 1 {
+                self.show_warning("At least one column must stay visible");
+                return;
+            }
         }
         self.column_picker_toggles[idx] = !self.column_picker_toggles[idx];
     }
@@ -1406,13 +1468,21 @@ impl App {
             return;
         };
 
-        let visible: Vec<String> = resource
+        let mut visible: Vec<String> = resource
             .columns
             .iter()
             .zip(&self.column_picker_toggles)
             .filter(|(_, &on)| on)
             .map(|(col, _)| col.header.clone())
             .collect();
+
+        // A locked column can never be hidden, so a hand-edited config that
+        // dropped it is repaired on save rather than silently obeying the edit.
+        for col in &resource.columns {
+            if col.locked && !visible.contains(&col.header) {
+                visible.push(col.header.clone());
+            }
+        }
 
         if visible.is_empty() {
             self.mode = Mode::Normal;
@@ -1431,17 +1501,19 @@ impl App {
     /// Resolve the columns to render for the current resource, paired with each
     /// column's original index so sort state stays pinned to full-list
     /// positions even when columns are hidden. Saved picker preferences win
-    /// over the JSON `visible` flags.
+    /// over the JSON `visible` flags. Locked columns (the id, always) are
+    /// included regardless, so a stale saved preference cannot hide them.
     pub fn effective_columns(&self) -> Vec<(usize, &crate::resource::ColumnDef)> {
         let Some(resource) = self.current_resource() else {
             return Vec::new();
         };
+        let locked = |col: &crate::resource::ColumnDef| col.locked;
         match self.config.column_preferences(&self.current_resource_key) {
             Some(visible) => resource
                 .columns
                 .iter()
                 .enumerate()
-                .filter(|(_, col)| visible.contains(&col.header))
+                .filter(|(_, col)| locked(col) || visible.contains(&col.header))
                 .collect(),
             None => resource
                 .columns
@@ -1671,6 +1743,86 @@ impl App {
                 self.error_message = Some("No value found to copy".to_string());
             }
         }
+    }
+
+    /// Toggle the secret value reveal in the describe view. Fetching the value
+    /// is a read-only GetSecretValue, so it is allowed even in --readonly.
+    /// The value auto-hides when its countdown deadline passes (see
+    /// `expire_revealed_secret`, driven by the main loop each tick) or when
+    /// this is called again to toggle it off.
+    pub async fn toggle_secret_reveal(&mut self) -> Result<()> {
+        if self.reveal_secret.is_some() {
+            self.reveal_secret = None;
+            return Ok(());
+        }
+
+        let Some(resource) = self.current_resource() else {
+            return Ok(());
+        };
+        let Some(item) = self.selected_item() else {
+            self.error_message = Some("No secret selected".to_string());
+            return Ok(());
+        };
+        let id = crate::resource::extract_json_value(item, &resource.id_field);
+        if id == "-" || id.is_empty() {
+            self.error_message = Some("No secret selected".to_string());
+            return Ok(());
+        }
+
+        let data = crate::resource::execute_action_with_result(
+            &resource.service,
+            "get_secret_value",
+            &self.clients,
+            &id,
+        )
+        .await?;
+
+        let value = secret_value_text(&data).unwrap_or_else(|| "—".to_string());
+        let mode = if serde_json::from_str::<serde_json::Value>(&value)
+            .map(|v| v.is_object())
+            .unwrap_or(false)
+        {
+            RevealMode::KeyValue
+        } else {
+            RevealMode::Plaintext
+        };
+        self.reveal_secret = Some(SecretReveal {
+            value,
+            mode,
+            hide_at: std::time::Instant::now() + std::time::Duration::from_secs(10),
+        });
+        Ok(())
+    }
+
+    /// Flip a revealed secret between its plaintext and key/value renderings.
+    /// No-op when no secret is currently revealed.
+    pub fn toggle_secret_reveal_mode(&mut self) {
+        if let Some(reveal) = &mut self.reveal_secret {
+            reveal.mode = match reveal.mode {
+                RevealMode::Plaintext => RevealMode::KeyValue,
+                RevealMode::KeyValue => RevealMode::Plaintext,
+            };
+        }
+    }
+
+    /// Hide a revealed secret value once its 10s deadline has passed. Called
+    /// from the event loop on every tick so the value cannot linger past the
+    /// countdown just because the user stops pressing keys.
+    pub fn expire_revealed_secret(&mut self) {
+        if let Some(reveal) = &self.reveal_secret {
+            if reveal.expired() {
+                self.reveal_secret = None;
+            }
+        }
+    }
+
+    /// Seconds left on a live secret reveal, for the countdown display.
+    pub fn reveal_seconds_left(&self) -> Option<u64> {
+        self.reveal_secret.as_ref().and_then(|r| {
+            r.hide_at
+                .checked_duration_since(std::time::Instant::now())
+                .map(|d| d.as_secs().max(1))
+        })
     }
 
     // =========================================================================
@@ -2575,6 +2727,62 @@ mod tests {
         });
         let result = extract_copyable_value("secretsmanager-secrets", &data);
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn secret_reveal_text_prefers_secret_string_then_decodes_binary() {
+        // Plain-text secret: SecretString wins.
+        let s = serde_json::json!({
+            "Name": "plain",
+            "SecretString": "hello-world",
+        });
+        assert_eq!(secret_value_text(&s).as_deref(), Some("hello-world"));
+
+        // Binary secret: the base64 SecretBinary is decoded to text.
+        let b = serde_json::json!({
+            "Name": "binary",
+            "SecretBinary": "aGVsbG8sIGJpbmFyeQ==", // "hello, binary"
+        });
+        assert_eq!(secret_value_text(&b).as_deref(), Some("hello, binary"));
+
+        // Nothing present yields None.
+        let empty = serde_json::json!({ "Name": "empty" });
+        assert_eq!(secret_value_text(&empty), None);
+    }
+
+    #[test]
+    fn revealed_secret_expires_once_its_deadline_passes() {
+        // A reveal whose deadline is far in the future is not yet expired.
+        let future = SecretReveal {
+            value: "top-secret".to_string(),
+            mode: RevealMode::Plaintext,
+            hide_at: std::time::Instant::now() + std::time::Duration::from_secs(10),
+        };
+        assert!(!future.expired());
+
+        // A reveal whose deadline already passed is expired.
+        let past = SecretReveal {
+            value: "top-secret".to_string(),
+            mode: RevealMode::Plaintext,
+            hide_at: std::time::Instant::now() - std::time::Duration::from_secs(1),
+        };
+        assert!(past.expired());
+    }
+
+    #[test]
+    fn revealed_secret_toggles_between_plaintext_and_key_value() {
+        let reveal = SecretReveal {
+            value: "{\"a\":\"1\",\"b\":\"2\"}".to_string(),
+            mode: RevealMode::KeyValue,
+            hide_at: std::time::Instant::now() + std::time::Duration::from_secs(10),
+        };
+
+        // A value that is a top-level JSON object defaults to key/value.
+        let toggled = match reveal.mode {
+            RevealMode::Plaintext => RevealMode::KeyValue,
+            RevealMode::KeyValue => RevealMode::Plaintext,
+        };
+        assert_eq!(toggled, RevealMode::Plaintext);
     }
 
     // =========================================================================

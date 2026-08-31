@@ -15,8 +15,8 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
-        Table, TableState, Wrap,
+        Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table, TableState, Wrap,
     },
     Frame,
 };
@@ -596,11 +596,15 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
     };
 
     // A resource renders a formatted panel when it declares describe_fields or
-    // an overview banner; otherwise it falls back to the raw JSON dump.
+    // an overview banner; otherwise it falls back to the raw JSON dump. An
+    // action-result view (last_action_display_name set, e.g. GetSecretValue via
+    // x) has a different shape, so it must fall through to the raw JSON dump and
+    // never run the describe fields against the wrong data.
     let describe_config = app
         .current_resource()
         .and_then(|r| r.describe_config.as_ref())
-        .filter(|dc| !dc.describe_fields.is_empty() || dc.overview.is_some());
+        .filter(|dc| !dc.describe_fields.is_empty() || dc.overview.is_some())
+        .filter(|_| app.last_action_display_name.is_none());
 
     if let Some(config) = describe_config {
         if let Some(ref data) = app.describe_data {
@@ -647,6 +651,103 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
             render_describe_search_bar(f, app, search_area);
         }
     }
+
+    // A revealed secret value sits in an overlay above the describe body so
+    // the secret is unmistakably foregrounded while visible, and disappears
+    // entirely when the countdown expires.
+    if app.reveal_secret.is_some() {
+        render_secret_reveal_overlay(f, app, inner_area);
+    }
+}
+
+/// Center a bordered panel over the describe body showing the revealed secret
+/// value, with a live countdown of the remaining seconds before it auto-hides.
+fn render_secret_reveal_overlay(f: &mut Frame, app: &App, area: Rect) {
+    let reveal = app.reveal_secret.as_ref().unwrap();
+    let seconds = app.reveal_seconds_left().unwrap_or(0);
+
+    let mode_label = match reveal.mode {
+        crate::app::RevealMode::Plaintext => "plaintext",
+        crate::app::RevealMode::KeyValue => "key/value",
+    };
+    // A secret string is already its own text; key/value wraps it as one line
+    // and adds a countdown+mode header, so the total is one row per key.
+    let display: String = match reveal.mode {
+        crate::app::RevealMode::KeyValue => match secret_kv_lines(&reveal.value) {
+            Some(pairs) => pairs
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, v))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            None => {
+                // Not a JSON object -- fall back to plaintext per the console.
+                reveal.value.clone()
+            }
+        },
+        crate::app::RevealMode::Plaintext => reveal.value.clone(),
+    };
+
+    let line_count = display.lines().count().clamp(1, 30);
+    let popup_width = (area.width / 2).clamp(40, 80);
+    let max_height = area.height.saturating_sub(4).max(8);
+    let popup_height = (line_count as u16 + 5).clamp(8, max_height);
+
+    let popup_area = Rect {
+        x: area.x + (area.width.saturating_sub(popup_width)) / 2,
+        y: area.y + (area.height.saturating_sub(popup_height)) / 2,
+        width: popup_width,
+        height: popup_height,
+    };
+
+    let title = Span::styled(
+        format!(" Secret value [{mode_label}] - hidden in {}s ", seconds),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    );
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(title);
+
+    let inner = block.inner(popup_area);
+    f.render_widget(Clear, popup_area);
+    f.render_widget(block, popup_area);
+
+    let paragraph = Paragraph::new(display)
+        .wrap(Wrap { trim: false })
+        .scroll((0, 0));
+    f.render_widget(paragraph, inner);
+
+    let hint = Paragraph::new(Span::styled(
+        "  [t key/value | s / Esc to hide now]",
+        Style::default().fg(Color::DarkGray),
+    ))
+    .alignment(Alignment::Center);
+    if popup_height >= 8 {
+        let hint_area = Rect {
+            x: popup_area.x,
+            y: popup_area.y + popup_height - 2,
+            width: popup_area.width,
+            height: 1,
+        };
+        f.render_widget(hint, hint_area);
+    }
+}
+
+/// Parse a secret value as a top-level JSON object and return its entries,
+/// sorted by key for a stable render. None when the value is not a JSON object
+/// (including scalars and arrays), which is the "not key/value" fallback.
+fn secret_kv_lines(value: &str) -> Option<Vec<(String, String)>> {
+    let parsed: serde_json::Value = serde_json::from_str(value).ok()?;
+    let obj = parsed.as_object()?;
+    let mut pairs: Vec<(String, String)> = obj
+        .iter()
+        .map(|(k, v)| (k.clone(), v.to_string()))
+        .collect();
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    Some(pairs)
 }
 
 fn render_formatted_describe(
@@ -706,35 +807,9 @@ fn render_formatted_describe(
     lines
 }
 
-fn value_to_describe_string(value: &Value) -> String {
-    match value {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => n.to_string(),
-        Value::Bool(b) => {
-            if *b {
-                "Yes".to_string()
-            } else {
-                "No".to_string()
-            }
-        }
-        Value::Array(arr) => {
-            let items: Vec<String> = arr.iter().map(value_to_describe_string).collect();
-            items.join(", ")
-        }
-        Value::Object(obj) => {
-            let pairs: Vec<String> = obj
-                .iter()
-                .map(|(k, v)| format!("{}: {}", k, value_to_describe_string(v)))
-                .collect();
-            pairs.join(", ")
-        }
-        Value::Null => "-".to_string(),
-    }
-}
-
-/// A `list` field: its label, then one line per item. An empty list still
-/// prints the label and a dash, so "there are none" cannot be mistaken for
-/// "orbit does not show this".
+/// A list field: its label, then one line per item. An empty list still prints
+/// the label and a dash, so "there are none" cannot be mistaken for "orbit does
+/// not show this".
 fn describe_list_lines(
     field: &crate::resource::protocol::DescribeField,
     value: &Value,
@@ -746,6 +821,11 @@ fn describe_list_lines(
         other => vec![other],
     };
 
+    let label = Line::from(Span::styled(
+        format!("  {:<20}", field.label),
+        Style::default().fg(Color::DarkGray),
+    ));
+
     if items.is_empty() {
         return vec![Line::from(vec![
             Span::styled(
@@ -755,11 +835,6 @@ fn describe_list_lines(
             Span::styled("-", Style::default().fg(Color::White)),
         ])];
     }
-
-    let label = Line::from(Span::styled(
-        format!("  {:<20}", field.label),
-        Style::default().fg(Color::DarkGray),
-    ));
 
     let mut lines = vec![label];
     for item in items {
@@ -800,6 +875,32 @@ fn render_describe_item(template: &str, item: &Value) -> String {
     out.push_str(rest);
 
     out
+}
+
+fn value_to_describe_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => {
+            if *b {
+                "Yes".to_string()
+            } else {
+                "No".to_string()
+            }
+        }
+        Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(value_to_describe_string).collect();
+            items.join(", ")
+        }
+        Value::Object(obj) => {
+            let pairs: Vec<String> = obj
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, value_to_describe_string(v)))
+                .collect();
+            pairs.join(", ")
+        }
+        Value::Null => "-".to_string(),
+    }
 }
 
 /// An ASCII boxed banner heading the formatted describe panel, standing in for
@@ -1348,6 +1449,185 @@ mod tests {
     use ratatui::layout::Rect;
     use ratatui::widgets::{Cell, Row, Table};
     use ratatui::Terminal;
+
+    /// Flattened text of a rendered describe line, for asserting on content
+    /// without caring how it was split into spans.
+    fn describe_lines(
+        fields: &[crate::resource::protocol::DescribeField],
+        data: &serde_json::Value,
+    ) -> Vec<String> {
+        let config = crate::resource::protocol::DescribeConfig {
+            describe_fields: fields.to_vec(),
+            ..Default::default()
+        };
+        super::render_formatted_describe(&config, data)
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    fn describe_field(
+        label: &str,
+        source: &str,
+        section: Option<&str>,
+    ) -> crate::resource::protocol::DescribeField {
+        crate::resource::protocol::DescribeField {
+            label: label.to_string(),
+            source: source.to_string(),
+            transform: None,
+            section: section.map(|s| s.to_string()),
+            list: false,
+            item_template: None,
+        }
+    }
+
+    /// The console groups an instance's fields under headings, and a flat
+    /// 30-field list is unreadable without them. A heading is emitted once, when
+    /// the section changes, not per field.
+    #[test]
+    fn describe_sections_are_emitted_once_above_their_fields() {
+        use serde_json::json;
+
+        let fields = vec![
+            describe_field("Status", "/DBInstanceStatus", Some("Summary")),
+            describe_field("Class", "/DBInstanceClass", Some("Summary")),
+            describe_field("VPC", "/DBSubnetGroup/VpcId", Some("Connectivity")),
+        ];
+        let data = json!({
+            "DBInstanceStatus": "available",
+            "DBInstanceClass": "db.r6g.large",
+            "DBSubnetGroup": { "VpcId": "vpc-0a1b2c3d" },
+        });
+
+        let rendered = describe_lines(&fields, &data);
+        let headings: Vec<&String> = rendered
+            .iter()
+            .filter(|l| l.contains("Summary") || l.contains("Connectivity"))
+            .collect();
+
+        assert_eq!(
+            headings.len(),
+            2,
+            "expected one heading per section, got {:?}",
+            rendered
+        );
+        let summary = rendered.iter().position(|l| l.contains("Summary")).unwrap();
+        let status = rendered
+            .iter()
+            .position(|l| l.contains("available"))
+            .unwrap();
+        let connectivity = rendered
+            .iter()
+            .position(|l| l.contains("Connectivity"))
+            .unwrap();
+        assert!(
+            summary < status && status < connectivity,
+            "heading should precede its own fields: {:?}",
+            rendered
+        );
+    }
+
+    /// Security group rules, cluster members and subnets are tables in the
+    /// console. Joined onto one line they wrap into mush, so a list field gets
+    /// one line per item, shaped by its template.
+    #[test]
+    fn describe_list_fields_render_one_templated_line_per_item() {
+        use serde_json::json;
+
+        let mut field = describe_field("Security Group Rules", "/SecurityGroupRules/item", None);
+        field.list = true;
+        field.item_template = Some(
+            "{isEgress} {ipProtocol} {fromPort}-{toPort} {cidrIpv4}{referencedGroupInfo/groupId}"
+                .to_string(),
+        );
+
+        let data = json!({
+            "SecurityGroupRules": { "item": [
+                { "isEgress": "false", "ipProtocol": "tcp", "fromPort": "27017",
+                  "toPort": "27017", "cidrIpv4": "10.64.80.0/21" },
+                { "isEgress": "false", "ipProtocol": "tcp", "fromPort": "27017",
+                  "toPort": "27017", "referencedGroupInfo": { "groupId": "sg-0fe51082fe28f1fe4" } },
+            ]}
+        });
+
+        let rendered = describe_lines(&field_list(field), &data);
+
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("tcp 27017-27017 10.64.80.0/21")),
+            "expected a CIDR rule line in {:?}",
+            rendered
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("tcp 27017-27017 sg-0fe51082fe28f1fe4")),
+            "expected a referenced-group rule line in {:?}",
+            rendered
+        );
+    }
+
+    /// XML→JSON collapses a one-element list to a bare object. A list field must
+    /// still show that single item rather than nothing at all.
+    #[test]
+    fn describe_list_fields_survive_a_single_element_xml_list_collapsing() {
+        use serde_json::json;
+
+        let mut field = describe_field("Members", "/DBClusterMembers/DBClusterMember", None);
+        field.list = true;
+        field.item_template = Some("{DBInstanceIdentifier} writer={IsClusterWriter}".to_string());
+
+        let data = json!({
+            "DBClusterMembers": { "DBClusterMember": {
+                "DBInstanceIdentifier": "prod-docdb-1", "IsClusterWriter": "true"
+            }}
+        });
+
+        let rendered = describe_lines(&field_list(field), &data);
+
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("prod-docdb-1 writer=true")),
+            "a collapsed single-item list vanished: {:?}",
+            rendered
+        );
+    }
+
+    /// A list with nothing in it must still print its label and a dash. Dropping
+    /// the whole field reads as "orbit does not show this", not "there are none".
+    #[test]
+    fn describe_list_fields_show_a_dash_when_empty() {
+        use serde_json::json;
+
+        let mut field = describe_field("Members", "/DBClusterMembers/DBClusterMember", None);
+        field.list = true;
+        field.item_template = Some("{DBInstanceIdentifier}".to_string());
+
+        let rendered = describe_lines(&field_list(field), &json!({}));
+
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("Members") && l.contains('-')),
+            "expected a labelled dash for an empty list: {:?}",
+            rendered
+        );
+    }
+
+    fn field_list(
+        field: crate::resource::protocol::DescribeField,
+    ) -> Vec<crate::resource::protocol::DescribeField> {
+        vec![field]
+    }
 
     /// The clamp must leave the trailing columns reachable: scrolling right
     /// pins the last columns at the right edge instead of scrolling them all

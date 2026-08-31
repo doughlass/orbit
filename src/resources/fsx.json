@@ -1,0 +1,47 @@
+{
+  "resources": {
+    "fsx-file-systems": {
+      "display_name": "FSx File Systems",
+      "service": "fsx",
+      "sdk_method": "describe_file_systems",
+      "sdk_method_params": {},
+      "response_path": "file_systems",
+      "id_field": "FileSystemId",
+      "name_field": "Tags.Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Tags.Name", "width": 24 },
+        { "header": "ID", "json_path": "FileSystemId", "width": 20 },
+        { "header": "TYPE", "json_path": "FileSystemType", "width": 10 },
+        { "header": "STATE", "json_path": "Lifecycle", "width": 14, "color_map": "state" },
+        { "header": "CAPACITY", "json_path": "StorageCapacity", "width": 10 },
+        { "header": "STORAGE", "json_path": "StorageType", "width": 8 },
+        { "header": "NETWORK", "json_path": "NetworkType", "width": 10 },
+        { "header": "VPC", "json_path": "VpcId", "width": 22 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "DescribeFileSystems",
+        "response_root": "/FileSystems",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 50
+        }
+      },
+      "field_mappings": {
+        "FileSystemId": { "source": "/FileSystemId", "default": "-" },
+        "FileSystemType": { "source": "/FileSystemType", "default": "-" },
+        "Lifecycle": { "source": "/Lifecycle", "default": "-" },
+        "StorageCapacity": { "source": "/StorageCapacity", "default": "-" },
+        "StorageType": { "source": "/StorageType", "default": "-" },
+        "NetworkType": { "source": "/NetworkType", "default": "-" },
+        "VpcId": { "source": "/VpcId", "default": "-" },
+        "Tags": { "source": "/Tags", "transform": "tags_to_map" }
+      }
+    }
+  }
+}

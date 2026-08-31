@@ -7,6 +7,9 @@
       { "value": "ACTIVE", "color": [0, 255, 0] },
       { "value": "healthy", "color": [0, 255, 0] },
       { "value": "in-sync", "color": [0, 255, 0] },
+      { "value": "OK", "color": [0, 255, 0] },
+      { "value": "ALARM", "color": [255, 0, 0] },
+      { "value": "INSUFFICIENT_DATA", "color": [128, 128, 128] },
       { "value": "stopped", "color": [255, 0, 0] },
       { "value": "terminated", "color": [255, 0, 0] },
       { "value": "failed", "color": [255, 0, 0] },
@@ -46,13 +49,39 @@
       { "value": "UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS", "color": [255, 255, 0] },
       { "value": "IMPORT_IN_PROGRESS", "color": [255, 255, 0] },
       { "value": "IMPORT_ROLLBACK_IN_PROGRESS", "color": [255, 255, 0] },
-      { "value": "REVIEW_IN_PROGRESS", "color": [255, 255, 0] }
+      { "value": "REVIEW_IN_PROGRESS", "color": [255, 255, 0] },
+      { "value": "RUNNING", "color": [255, 255, 0] },
+      { "value": "SUCCEEDED", "color": [0, 255, 0] },
+      { "value": "FAILED", "color": [255, 0, 0] },
+      { "value": "TIMED_OUT", "color": [255, 0, 0] },
+      { "value": "ABORTED", "color": [128, 128, 128] },
+      { "value": "AVAILABLE", "color": [0, 255, 0] },
+      { "value": "CREATING", "color": [255, 255, 0] },
+      { "value": "PENDING", "color": [255, 255, 0] },
+      { "value": "DELETING", "color": [255, 255, 0] },
+      { "value": "MISCONFIGURED", "color": [255, 255, 0] },
+      { "value": "DELETED", "color": [255, 0, 0] },
+      { "value": "ENABLED", "color": [0, 255, 0] },
+      { "value": "DISABLED", "color": [128, 128, 128] }
     ],
     "bool": [
       { "value": "true", "color": [0, 255, 255] },
       { "value": "Yes", "color": [0, 255, 255] },
       { "value": "false", "color": [128, 128, 128] },
       { "value": "No", "color": [128, 128, 128] }
+    ],
+    "health_status": [
+      { "value": "upcoming", "color": [255, 128, 0] },
+      { "value": "open", "color": [255, 0, 0] },
+      { "value": "closed", "color": [0, 255, 0] }
+    ],
+    "severity": [
+      { "value": "CRITICAL", "color": [255, 0, 0] },
+      { "value": "HIGH", "color": [255, 128, 0] },
+      { "value": "MEDIUM", "color": [255, 255, 0] },
+      { "value": "LOW", "color": [0, 180, 255] },
+      { "value": "INFORMATIONAL", "color": [128, 128, 128] },
+      { "value": "UNTRIAGED", "color": [128, 128, 128] }
     ]
   },
   "resources": {}

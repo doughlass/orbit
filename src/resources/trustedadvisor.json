@@ -1,0 +1,45 @@
+{
+  "resources": {
+    "trusted-advisor-checks": {
+      "display_name": "Trusted Advisor Checks",
+      "service": "trustedadvisor",
+      "sdk_method": "list_checks",
+      "sdk_method_params": {},
+      "response_path": "ta_checks",
+      "id_field": "id",
+      "name_field": "name",
+      "is_global": true,
+      "columns": [
+        { "header": "CHECK", "json_path": "name", "width": 40 },
+        { "header": "PILLARS", "json_path": "pillars", "width": 20 },
+        { "header": "SERVICES", "json_path": "awsServices", "width": 16 },
+        { "header": "GRANULARITY", "json_path": "checkGranularity", "width": 16 },
+        { "header": "SOURCE", "json_path": "source", "width": 12 },
+        { "header": "ARN", "json_path": "arn", "width": 46, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/v1/checks",
+        "response_root": "/checkSummaries",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "id": { "source": "/id", "default": "-" },
+        "name": { "source": "/name", "default": "-" },
+        "arn": { "source": "/arn", "default": "-" },
+        "pillars": { "source": "/pillars", "transform": "array_to_csv", "default": "-" },
+        "awsServices": { "source": "/awsServices", "transform": "array_to_csv", "default": "-" },
+        "checkGranularity": { "source": "/checkGranularity", "default": "-" },
+        "source": { "source": "/source", "default": "-" }
+      }
+    }
+  }
+}

@@ -72,7 +72,73 @@ pub fn apply_transform(value: &Value, transform: &str) -> Value {
         "route53_record_value" => transform_route53_record_value(value),
         "route53_record_id" => transform_route53_record_id(value),
         "ecr_visibility" => transform_ecr_visibility(value),
+        "taskdef_arn_name" => transform_taskdef_arn_name(value),
+        "taskdef_arn_family" => transform_taskdef_arn_family(value),
+        "taskdef_arn_revision" => transform_taskdef_arn_revision(value),
+        "cloudwatch_latest" => transform_cloudwatch_latest(value),
         _ => value.clone(),
+    }
+}
+
+/// The newest datapoint of a CloudWatch GetMetricStatistics response, formatted
+/// for its unit. CloudWatch makes no promise about datapoint order, so this
+/// picks by timestamp; an empty window stays null rather than becoming a zero
+/// that reads as a real reading.
+fn transform_cloudwatch_latest(value: &Value) -> Value {
+    let datapoints: Vec<&Value> = match value {
+        Value::Array(items) => items.iter().collect(),
+        Value::Object(_) => vec![value],
+        _ => return Value::Null,
+    };
+
+    let latest = datapoints.into_iter().max_by(|a, b| {
+        datapoint_timestamp(a)
+            .partial_cmp(&datapoint_timestamp(b))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let Some(latest) = latest else {
+        return Value::Null;
+    };
+
+    // Whichever statistic was asked for is the only one present.
+    let Some(reading) = ["Average", "Sum", "Maximum", "Minimum", "SampleCount"]
+        .iter()
+        .find_map(|stat| latest.get(stat).and_then(datapoint_number))
+    else {
+        return Value::Null;
+    };
+
+    let unit = latest.get("Unit").and_then(|u| u.as_str()).unwrap_or("");
+
+    Value::String(match unit {
+        "Percent" => format!("{:.2}%", reading),
+        "Count" => format!("{:.0}", reading),
+        "Bytes" => {
+            return transform_format_bytes(&json!(reading.max(0.0) as u64));
+        }
+        "" => format!("{:.2}", reading),
+        other => format!("{:.2} {}", reading, other),
+    })
+}
+
+/// Query mode returns ISO8601 strings, the JSON protocol returns epoch seconds;
+/// both have to order the same way.
+fn datapoint_timestamp(datapoint: &Value) -> f64 {
+    match datapoint.get("Timestamp") {
+        Some(Value::Number(n)) => n.as_f64().unwrap_or(0.0),
+        Some(Value::String(s)) => chrono::DateTime::parse_from_rfc3339(s)
+            .map(|dt| dt.timestamp() as f64)
+            .unwrap_or(0.0),
+        _ => 0.0,
+    }
+}
+
+fn datapoint_number(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.parse::<f64>().ok(),
+        _ => None,
     }
 }
 
@@ -271,6 +337,46 @@ pub fn transform_ecr_visibility(value: &Value) -> Value {
     Value::String(visibility.to_string())
 }
 
+/// Extract the family:revision suffix from a task-definition ARN.
+/// "arn:aws:ecs:eu-west-1:123456789012:task-definition/TPayments:1" -> "TPayments:1"
+pub fn transform_taskdef_arn_name(value: &Value) -> Value {
+    match value {
+        Value::String(s) => {
+            let suffix = s.split("task-definition/").nth(1).unwrap_or("");
+            Value::String(if suffix.is_empty() {
+                s.clone()
+            } else {
+                suffix.to_string()
+            })
+        }
+        _ => value.clone(),
+    }
+}
+
+/// Extract just the family part of a task-definition ARN.
+/// ".../TPayments:1" -> "TPayments"
+pub fn transform_taskdef_arn_family(value: &Value) -> Value {
+    match transform_taskdef_arn_name(value) {
+        Value::String(s) => Value::String(s.split(':').next().unwrap_or(&s).to_string()),
+        other => other,
+    }
+}
+
+/// Extract just the revision part of a task-definition ARN.
+/// ".../TPayments:1" -> "1"
+pub fn transform_taskdef_arn_revision(value: &Value) -> Value {
+    match transform_taskdef_arn_name(value) {
+        Value::String(s) => Value::String(
+            s.rsplit(':')
+                .next()
+                .filter(|r| *r != s)
+                .unwrap_or("-")
+                .to_string(),
+        ),
+        other => other,
+    }
+}
+
 /// Transform array to comma-separated values
 pub fn transform_array_to_csv(value: &Value) -> Value {
     match value {
@@ -306,6 +412,58 @@ pub fn build_response(items: Vec<Value>, response_key: &str, next_token: Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// CloudWatch does not promise datapoint order, and the panel shows one
+    /// number, so the transform picks by timestamp rather than by position.
+    #[test]
+    fn cloudwatch_latest_picks_the_newest_datapoint_not_the_first() {
+        let datapoints = json!([
+            { "Timestamp": 1_787_000_000.0, "Average": 4.1, "Unit": "Percent" },
+            { "Timestamp": 1_787_000_600.0, "Average": 6.34, "Unit": "Percent" },
+            { "Timestamp": 1_787_000_300.0, "Average": 5.2, "Unit": "Percent" },
+        ]);
+
+        assert_eq!(
+            apply_transform(&datapoints, "cloudwatch_latest"),
+            json!("6.34%")
+        );
+    }
+
+    /// The query-mode wire hands timestamps back as ISO8601 strings, so the
+    /// comparison cannot assume numbers.
+    #[test]
+    fn cloudwatch_latest_orders_iso8601_timestamps_too() {
+        let datapoints = json!([
+            { "Timestamp": "2026-08-30T20:05:00Z", "Sum": 51.0, "Unit": "Count" },
+            { "Timestamp": "2026-08-30T19:55:00Z", "Sum": 12.0, "Unit": "Count" },
+        ]);
+
+        assert_eq!(
+            apply_transform(&datapoints, "cloudwatch_latest"),
+            json!("51")
+        );
+    }
+
+    /// A metric with no datapoints in the window (a stopped instance) must not
+    /// invent a zero, which reads as a real reading.
+    #[test]
+    fn cloudwatch_latest_yields_nothing_for_an_empty_window() {
+        assert!(apply_transform(&json!([]), "cloudwatch_latest").is_null());
+        assert!(apply_transform(&Value::Null, "cloudwatch_latest").is_null());
+    }
+
+    /// Byte metrics (FreeableMemory) are unreadable in raw bytes.
+    #[test]
+    fn cloudwatch_latest_formats_byte_metrics_as_bytes() {
+        let datapoints = json!([
+            { "Timestamp": 1_787_000_000.0, "Average": 1_073_741_824.0, "Unit": "Bytes" },
+        ]);
+
+        assert_eq!(
+            apply_transform(&datapoints, "cloudwatch_latest"),
+            json!("1.0 GB")
+        );
+    }
 
     #[test]
     fn test_apply_field_mappings() {
@@ -519,5 +677,27 @@ mod tests {
 
         let result = transform_route53_record_id(&record);
         assert_eq!(result, json!("-#-"));
+    }
+
+    #[test]
+    fn test_transform_taskdef_arn_parts() {
+        let arn = json!("arn:aws:ecs:eu-west-1:123456789012:task-definition/TPayments:3");
+        assert_eq!(transform_taskdef_arn_name(&arn), json!("TPayments:3"));
+        assert_eq!(transform_taskdef_arn_family(&arn), json!("TPayments"));
+        assert_eq!(transform_taskdef_arn_revision(&arn), json!("3"));
+    }
+
+    #[test]
+    fn test_transform_taskdef_arn_unparseable_passes_through() {
+        let not_an_arn = json!("just-a-string");
+        assert_eq!(
+            transform_taskdef_arn_name(&not_an_arn),
+            json!("just-a-string")
+        );
+        assert_eq!(
+            transform_taskdef_arn_family(&not_an_arn),
+            json!("just-a-string")
+        );
+        assert_eq!(transform_taskdef_arn_revision(&not_an_arn), json!("-"));
     }
 }

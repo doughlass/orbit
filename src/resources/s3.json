@@ -14,7 +14,10 @@
         { "header": "CREATED", "json_path": "CreationDate", "width": 25 }
       ],
       "sub_resources": [
-        { "resource_key": "s3-objects", "display_name": "Objects", "shortcut": "o", "parent_id_field": "Name", "filter_param": "bucket_names" }
+        { "resource_key": "s3-objects", "display_name": "Objects", "shortcut": "o", "parent_id_field": "Name", "filter_param": "bucket_names" },
+        { "resource_key": "s3-lifecycle-rules", "display_name": "Lifecycle Rules", "shortcut": "l", "parent_id_field": "Name", "filter_param": "bucket" },
+        { "resource_key": "s3-replication-rules", "display_name": "Replication Rules", "shortcut": "r", "parent_id_field": "Name", "filter_param": "bucket" },
+        { "resource_key": "s3-bucket-policy", "display_name": "Bucket Policy", "shortcut": "p", "parent_id_field": "Name", "filter_param": "bucket" }
       ],
       "enter_sub_resource": "s3-objects",
       "actions": [
@@ -62,6 +65,101 @@
       "actions": [
         { "key": "w", "display_name": "Download Object", "shortcut": "w", "sdk_method": "download_object" }
       ]
+    },
+    "s3-lifecycle-rules": {
+      "display_name": "S3 Lifecycle Rules",
+      "service": "s3",
+      "sdk_method": "get_bucket_lifecycle_configuration",
+      "sdk_method_params": {},
+      "response_path": "lifecycle_rules",
+      "id_field": "ID",
+      "name_field": "ID",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "ID", "json_path": "ID", "width": 30 },
+        { "header": "STATUS", "json_path": "Status", "width": 12, "color_map": "state" },
+        { "header": "FILTER PREFIX", "json_path": "FilterPrefix", "width": 30 },
+        { "header": "EXPIRE DAYS", "json_path": "ExpireDays", "width": 12 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-xml",
+        "method": "GET",
+        "path": "/{bucket}?lifecycle",
+        "response_root": "/LifecycleConfiguration/Rule"
+      },
+      "field_mappings": {
+        "ID": { "source": "/ID", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "FilterPrefix": { "source": "/Filter/Prefix", "default": "-" },
+        "ExpireDays": { "source": "/Expiration/Days", "default": "-" }
+      }
+    },
+    "s3-replication-rules": {
+      "display_name": "S3 Replication Rules",
+      "service": "s3",
+      "sdk_method": "get_bucket_replication",
+      "sdk_method_params": {},
+      "response_path": "replication_rules",
+      "id_field": "ID",
+      "name_field": "ID",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "ID", "json_path": "ID", "width": 30 },
+        { "header": "STATUS", "json_path": "Status", "width": 12, "color_map": "state" },
+        { "header": "PRIORITY", "json_path": "Priority", "width": 9 },
+        { "header": "DESTINATION", "json_path": "Destination", "width": 40 },
+        { "header": "PREFIX", "json_path": "Prefix", "width": 30 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-xml",
+        "method": "GET",
+        "path": "/{bucket}?replication",
+        "response_root": "/ReplicationConfiguration/Rule"
+      },
+      "field_mappings": {
+        "ID": { "source": "/ID", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "Priority": { "source": "/Priority", "default": "-" },
+        "Destination": { "source": "/Destination/Bucket", "default": "-" },
+        "Prefix": { "source": "/Prefix", "default": "-" }
+      }
+    },
+    "s3-bucket-policy": {
+      "display_name": "S3 Bucket Policy",
+      "service": "s3",
+      "sdk_method": "get_bucket_policy",
+      "sdk_method_params": {},
+      "response_path": "bucket_policy",
+      "id_field": "Sid",
+      "name_field": "Sid",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "SID", "json_path": "Sid", "width": 24 },
+        { "header": "EFFECT", "json_path": "Effect", "width": 10 },
+        { "header": "PRINCIPAL", "json_path": "Principal", "width": 40 },
+        { "header": "ACTION", "json_path": "Action", "width": 36 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/{bucket}?policy",
+        "response_root": "/Statement"
+      },
+      "field_mappings": {
+        "Sid": { "source": "/Sid", "default": "-" },
+        "Effect": { "source": "/Effect", "default": "-" },
+        "Principal": { "source": "/Principal/AWS", "transform": "array_to_csv", "default": "-" },
+        "Action": { "source": "/Action", "transform": "array_to_csv", "default": "-" }
+      }
     }
   }
 }

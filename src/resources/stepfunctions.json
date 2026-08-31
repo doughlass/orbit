@@ -1,0 +1,77 @@
+{
+  "resources": {
+    "stepfunctions-state-machines": {
+      "display_name": "Step Functions State Machines",
+      "service": "states",
+      "sdk_method": "list_state_machines",
+      "sdk_method_params": {},
+      "response_path": "state_machines",
+      "id_field": "stateMachineArn",
+      "name_field": "name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "name", "width": 40 },
+        { "header": "TYPE", "json_path": "type", "width": 10 },
+        { "header": "CREATED", "json_path": "creationDate", "width": 22 }
+      ],
+      "sub_resources": [
+        { "shortcut": "e", "display_name": "Executions", "resource_key": "stepfunctions-executions", "parent_id_field": "stateMachineArn", "filter_param": "stateMachineArn" }
+      ],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListStateMachines",
+        "response_root": "/stateMachines",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "name": { "source": "/name", "default": "-" },
+        "stateMachineArn": { "source": "/stateMachineArn", "default": "-" },
+        "type": { "source": "/type", "default": "-" },
+        "creationDate": { "source": "/creationDate", "default": "-" }
+      }
+    },
+    "stepfunctions-executions": {
+      "display_name": "Executions",
+      "service": "states",
+      "sdk_method": "list_executions",
+      "sdk_method_params": {},
+      "response_path": "executions",
+      "id_field": "executionArn",
+      "name_field": "name",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "NAME", "json_path": "name", "width": 45 },
+        { "header": "STATUS", "json_path": "status", "width": 14, "color_map": "state" },
+        { "header": "STARTED", "json_path": "startDate", "width": 22 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListExecutions",
+        "response_root": "/executions",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "name": { "source": "/name", "default": "-" },
+        "executionArn": { "source": "/executionArn", "default": "-" },
+        "stateMachineArn": { "source": "/stateMachineArn", "default": "-" },
+        "status": { "source": "/status", "default": "-" },
+        "startDate": { "source": "/startDate", "default": "-" },
+        "stopDate": { "source": "/stopDate", "default": "-" }
+      }
+    }
+  }
+}

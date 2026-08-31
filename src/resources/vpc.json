@@ -41,6 +41,42 @@
         "InstanceTenancy": { "source": "/instanceTenancy", "default": "-" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
       },
+      "describe_config": {
+        "protocol": "query",
+        "action": "DescribeVpcs",
+        "id_param": "VpcId.1",
+        "response_path": "/DescribeVpcsResponse/vpcSet/item",
+        "enrich_calls": [
+          {
+            "result_field": "FlowLogs",
+            "action": "DescribeFlowLogs",
+            "extract_path": "/DescribeFlowLogsResponse/flowLogSet/item",
+            "filters": [ { "name": "resource-id", "values_source": "/vpcId" } ]
+          },
+          {
+            "result_field": "InternetGateways",
+            "action": "DescribeInternetGateways",
+            "extract_path": "/DescribeInternetGatewaysResponse/internetGatewaySet/item",
+            "filters": [ { "name": "attachment.vpc-id", "values_source": "/vpcId" } ]
+          }
+        ],
+        "describe_fields": [
+          { "label": "VPC ID", "source": "/vpcId", "section": "Identity" },
+          { "label": "State", "source": "/state" },
+          { "label": "Owner ID", "source": "/ownerId" },
+          { "label": "DHCP Options", "source": "/dhcpOptionsId" },
+          { "label": "Default VPC", "source": "/isDefault" },
+          { "label": "Tenancy", "source": "/instanceTenancy" },
+
+          { "label": "IPv4 CIDR Blocks", "source": "/cidrBlockAssociationSet/item", "section": "CIDR Blocks", "list": true, "item_template": "{cidrBlock}" },
+          { "label": "Block Public Access", "source": "/blockPublicAccessStates/internetGatewayBlockMode" },
+
+          { "label": "Flow Logs", "source": "/FlowLogs", "section": "Flow Logs", "list": true, "item_template": "{flowLogId} {flowLogStatus} {trafficType} -> {logGroupName}" },
+          { "label": "Internet Gateways", "source": "/InternetGateways", "section": "Internet Gateways", "list": true, "item_template": "{internetGatewayId}" },
+
+          { "label": "Tags", "source": "/tagSet/item", "section": "Tags", "list": true, "item_template": "{key}={value}" }
+        ]
+      },
       "tag_filter": {
         "enabled": true
       }
@@ -84,6 +120,69 @@
         "AvailabilityZone": { "source": "/availabilityZone", "default": "-" },
         "AvailableIpAddressCount": { "source": "/availableIpAddressCount", "default": "0" },
         "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      },
+      "describe_config": {
+        "protocol": "query",
+        "action": "DescribeSubnets",
+        "id_param": "SubnetId.1",
+        "response_path": "/DescribeSubnetsResponse/subnetSet/item",
+        "enrich_calls": [
+          {
+            "result_field": "FlowLogs",
+            "action": "DescribeFlowLogs",
+            "extract_path": "/DescribeFlowLogsResponse/flowLogSet/item",
+            "filters": [ { "name": "resource-id", "values_source": "/subnetId" } ]
+          },
+          {
+            "result_field": "RouteTable",
+            "action": "DescribeRouteTables",
+            "extract_path": "/DescribeRouteTablesResponse/routeTableSet/item",
+            "filters": [ { "name": "association.subnet-id", "values_source": "/subnetId" } ]
+          },
+          {
+            "result_field": "NetworkAcl",
+            "action": "DescribeNetworkAcls",
+            "extract_path": "/DescribeNetworkAclsResponse/networkAclSet/item",
+            "filters": [ { "name": "association.subnet-id", "values_source": "/subnetId" } ]
+          },
+          {
+            "result_field": "CidrReservationsV4",
+            "action": "GetSubnetCidrReservations",
+            "extract_path": "/GetSubnetCidrReservationsResponse/subnetIpv4CidrReservationSet/item",
+            "params": { "SubnetId": "{resource_id}" }
+          },
+          {
+            "result_field": "CidrReservationsV6",
+            "action": "GetSubnetCidrReservations",
+            "extract_path": "/GetSubnetCidrReservationsResponse/subnetIpv6CidrReservationSet/item",
+            "params": { "SubnetId": "{resource_id}" }
+          }
+        ],
+        "describe_fields": [
+          { "label": "Subnet ID", "source": "/subnetId", "section": "Identity" },
+          { "label": "ARN", "source": "/subnetArn" },
+          { "label": "State", "source": "/state" },
+          { "label": "VPC ID", "source": "/vpcId" },
+          { "label": "Owner ID", "source": "/ownerId" },
+
+          { "label": "IPv4 CIDR", "source": "/cidrBlock", "section": "Configuration" },
+          { "label": "Available IPs", "source": "/availableIpAddressCount" },
+          { "label": "AZ", "source": "/availabilityZone" },
+          { "label": "AZ ID", "source": "/availabilityZoneId" },
+          { "label": "Default for AZ", "source": "/defaultForAz" },
+          { "label": "Auto-assign public IPv4", "source": "/mapPublicIpOnLaunch" },
+          { "label": "Auto-assign IPv6", "source": "/assignIpv6AddressOnCreation" },
+          { "label": "IPv6 native", "source": "/ipv6Native" },
+          { "label": "DNS64", "source": "/enableDns64" },
+
+          { "label": "Flow Logs", "source": "/FlowLogs", "section": "Flow Logs", "list": true, "item_template": "{flowLogId} {flowLogStatus} {trafficType} -> {logGroupName}" },
+          { "label": "Route Table", "source": "/RouteTable", "section": "Route Table", "list": true, "item_template": "{routeTableId}" },
+          { "label": "Network ACL", "source": "/NetworkAcl", "section": "Network ACL", "list": true, "item_template": "{networkAclId}" },
+          { "label": "IPv4", "source": "/CidrReservationsV4", "section": "CIDR Reservations", "list": true, "item_template": "{cidr} {reservationType}" },
+          { "label": "IPv6", "source": "/CidrReservationsV6", "section": "CIDR Reservations", "list": true, "item_template": "{cidr} {reservationType}" },
+
+          { "label": "Tags", "source": "/tagSet/item", "section": "Tags", "list": true, "item_template": "{key}={value}" }
+        ]
       },
       "tag_filter": {
         "enabled": true

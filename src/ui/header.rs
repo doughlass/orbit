@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::app::{App, Mode};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -269,6 +269,14 @@ fn render_keybindings_col1(f: &mut Frame, app: &App, area: Rect) {
         }
 
         b.push(("<?>".to_string(), "Help".to_string()));
+
+        // The secret value is only revealable from its single-page (describe)
+        // view, so advertise the s binding exactly there -- the list never
+        // offers it, keeping the value behind an explicit enter.
+        if app.mode == Mode::Describe && app.current_resource_key == "secretsmanager-secrets" {
+            b.insert(0, ("<s>".to_string(), "Reveal Value".to_string()));
+        }
+
         b
     } else {
         vec![

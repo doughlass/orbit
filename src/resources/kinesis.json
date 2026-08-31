@@ -1,0 +1,41 @@
+{
+  "resources": {
+    "kinesis-streams": {
+      "display_name": "Kinesis Streams",
+      "service": "kinesis",
+      "sdk_method": "list_streams",
+      "sdk_method_params": {},
+      "response_path": "streams",
+      "id_field": "StreamName",
+      "name_field": "StreamName",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "StreamName", "width": 32 },
+        { "header": "STATUS", "json_path": "StreamStatus", "width": 13, "color_map": "state" },
+        { "header": "MODE", "json_path": "StreamModeDetails.StreamMode", "width": 12 },
+        { "header": "CREATED", "json_path": "StreamCreationTimestamp", "width": 22 },
+        { "header": "STREAM ARN", "json_path": "StreamARN", "width": 50, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "action": "ListStreams",
+        "response_root": "/StreamSummaries",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "Limit",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "StreamName": { "source": "/StreamName", "default": "-" },
+        "StreamARN": { "source": "/StreamARN", "default": "-" },
+        "StreamStatus": { "source": "/StreamStatus", "default": "-" },
+        "StreamModeDetails": { "source": "/StreamModeDetails", "default": "-" },
+        "StreamCreationTimestamp": { "source": "/StreamCreationTimestamp", "default": "-" }
+      }
+    }
+  }
+}

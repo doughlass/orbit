@@ -1,0 +1,41 @@
+{
+  "resources": {
+    "apigatewayv2-apis": {
+      "display_name": "API Gateway v2 APIs",
+      "service": "apigateway",
+      "sdk_method": "get_apis",
+      "sdk_method_params": {},
+      "response_path": "apis",
+      "id_field": "ApiId",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 30 },
+        { "header": "TYPE", "json_path": "ProtocolType", "width": 8 },
+        { "header": "ENDPOINT", "json_path": "ApiEndpoint", "width": 60 },
+        { "header": "CREATED", "json_path": "CreatedDate", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/v2/apis",
+        "response_root": "/Items",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "ApiId": { "source": "/ApiId", "default": "-" },
+        "ProtocolType": { "source": "/ProtocolType", "default": "-" },
+        "ApiEndpoint": { "source": "/ApiEndpoint", "default": "-" },
+        "CreatedDate": { "source": "/CreatedDate", "default": "-" }
+      }
+    }
+  }
+}

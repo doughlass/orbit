@@ -1,0 +1,46 @@
+{
+  "resources": {
+    "mq-brokers": {
+      "display_name": "MQ Brokers",
+      "service": "mq",
+      "sdk_method": "list_brokers",
+      "sdk_method_params": {},
+      "response_path": "mq_brokers",
+      "id_field": "BrokerName",
+      "name_field": "BrokerName",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "BrokerName", "width": 26 },
+        { "header": "STATE", "json_path": "BrokerState", "width": 12, "color_map": "state" },
+        { "header": "ENGINE", "json_path": "EngineType", "width": 8 },
+        { "header": "MODE", "json_path": "DeploymentMode", "width": 14 },
+        { "header": "INSTANCE", "json_path": "HostInstanceType", "width": 14 },
+        { "header": "CREATED", "json_path": "Created", "width": 22 },
+        { "header": "BROKER ID", "json_path": "BrokerId", "width": 24, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/v1/brokers",
+        "response_root": "/BrokerSummaries",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "BrokerName": { "source": "/BrokerName", "default": "-" },
+        "BrokerId": { "source": "/BrokerId", "default": "-" },
+        "BrokerState": { "source": "/BrokerState", "default": "-" },
+        "EngineType": { "source": "/EngineType", "default": "-" },
+        "DeploymentMode": { "source": "/DeploymentMode", "default": "-" },
+        "HostInstanceType": { "source": "/HostInstanceType", "default": "-" },
+        "Created": { "source": "/Created", "default": "-" }
+      }
+    }
+  }
+}

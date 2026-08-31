@@ -1,0 +1,36 @@
+{
+  "resources": {
+    "resource-groups": {
+      "display_name": "Resource Groups",
+      "service": "resource-groups",
+      "sdk_method": "list_groups",
+      "sdk_method_params": {},
+      "response_path": "resource_groups",
+      "id_field": "GroupName",
+      "name_field": "GroupName",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "GroupName", "width": 36 },
+        { "header": "DESCRIPTION", "json_path": "Description", "width": 40 },
+        { "header": "OWNER", "json_path": "Owner", "width": 20 },
+        { "header": "DISPLAY NAME", "json_path": "DisplayName", "width": 28 },
+        { "header": "ARN", "json_path": "GroupArn", "width": 50, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "POST",
+        "path": "/groups-list",
+        "response_root": "/GroupIdentifiers"
+      },
+      "field_mappings": {
+        "GroupName": { "source": "/GroupName", "default": "-" },
+        "GroupArn": { "source": "/GroupArn", "default": "-" },
+        "Description": { "source": "/Description", "default": "-" },
+        "Owner": { "source": "/Owner", "default": "-" },
+        "DisplayName": { "source": "/DisplayName", "default": "-" }
+      }
+    }
+  }
+}

@@ -391,6 +391,144 @@
         "enabled": true,
         "hint": "tag:Name=value, instance-state-name=running|stopped"
       }
+    },
+    "ec2-key-pairs": {
+      "display_name": "EC2 Key Pairs",
+      "service": "ec2",
+      "sdk_method": "describe_key_pairs",
+      "sdk_method_params": {},
+      "response_path": "key_pairs",
+      "id_field": "KeyPairId",
+      "name_field": "KeyName",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "KeyName", "width": 30 },
+        { "header": "TYPE", "json_path": "KeyType", "width": 10 },
+        { "header": "FINGERPRINT", "json_path": "KeyFingerprint", "width": 42 },
+        { "header": "CREATED", "json_path": "CreateTime", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeKeyPairs",
+        "response_root": "/DescribeKeyPairsResponse/keySet/item"
+      },
+      "field_mappings": {
+        "KeyPairId": { "source": "/keyPairId", "default": "-" },
+        "KeyName": { "source": "/keyName", "default": "-" },
+        "KeyType": { "source": "/keyType", "default": "-" },
+        "KeyFingerprint": { "source": "/keyFingerprint", "default": "-" },
+        "CreateTime": { "source": "/createTime", "default": "-" },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+    "ec2-launch-templates": {
+      "display_name": "EC2 Launch Templates",
+      "service": "ec2",
+      "sdk_method": "describe_launch_templates",
+      "sdk_method_params": {},
+      "response_path": "launch_templates",
+      "id_field": "LaunchTemplateId",
+      "name_field": "LaunchTemplateName",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "LaunchTemplateName", "width": 28 },
+        { "header": "LATEST", "json_path": "LatestVersionNumber", "width": 8 },
+        { "header": "DEFAULT", "json_path": "DefaultVersionNumber", "width": 8 },
+        { "header": "CREATED", "json_path": "CreateTime", "width": 20 },
+        { "header": "CREATED BY", "json_path": "CreatedBy", "width": 30, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeLaunchTemplates",
+        "response_root": "/DescribeLaunchTemplatesResponse/launchTemplates/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeLaunchTemplatesResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "LaunchTemplateId": { "source": "/launchTemplateId", "default": "-" },
+        "LaunchTemplateName": { "source": "/launchTemplateName", "default": "-" },
+        "LatestVersionNumber": { "source": "/latestVersionNumber", "default": "-" },
+        "DefaultVersionNumber": { "source": "/defaultVersionNumber", "default": "-" },
+        "CreateTime": { "source": "/createTime", "default": "-" },
+        "CreatedBy": { "source": "/createdBy", "default": "-" },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+    "ec2-placement-groups": {
+      "display_name": "EC2 Placement Groups",
+      "service": "ec2",
+      "sdk_method": "describe_placement_groups",
+      "sdk_method_params": {},
+      "response_path": "placement_groups",
+      "id_field": "GroupId",
+      "name_field": "GroupName",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "GroupName", "width": 28 },
+        { "header": "STRATEGY", "json_path": "Strategy", "width": 18 },
+        { "header": "STATE", "json_path": "State", "width": 12, "color_map": "state" },
+        { "header": "GROUP ID", "json_path": "GroupId", "width": 24 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribePlacementGroups",
+        "response_root": "/DescribePlacementGroupsResponse/placementGroupSet/item"
+      },
+      "field_mappings": {
+        "GroupId": { "source": "/groupId", "default": "-" },
+        "GroupName": { "source": "/groupName", "default": "-" },
+        "Strategy": { "source": "/strategy", "default": "-" },
+        "State": { "source": "/state", "default": "-" },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
+    },
+    "ec2-hosts": {
+      "display_name": "Dedicated Hosts",
+      "service": "ec2",
+      "sdk_method": "describe_hosts",
+      "sdk_method_params": {},
+      "response_path": "hosts",
+      "id_field": "HostId",
+      "name_field": "HostId",
+      "is_global": false,
+      "columns": [
+        { "header": "HOST ID", "json_path": "HostId", "width": 18 },
+        { "header": "STATE", "json_path": "State", "width": 12, "color_map": "state" },
+        { "header": "AZ", "json_path": "AvailabilityZone", "width": 14 },
+        { "header": "INSTANCE TYPE", "json_path": "InstanceType", "width": 20 },
+        { "header": "ALLOCATION TIME", "json_path": "AllocationTime", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeHosts",
+        "response_root": "/DescribeHostsResponse/hostSet/item",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeHostsResponse/nextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "HostId": { "source": "/hostId", "default": "-" },
+        "State": { "source": "/state", "default": "-" },
+        "AvailabilityZone": { "source": "/availabilityZone", "default": "-" },
+        "InstanceType": { "source": "/hostProperties/instanceType", "default": "-" },
+        "AllocationTime": { "source": "/allocationTime", "default": "-" },
+        "Tags": { "source": "/tagSet/item", "transform": "tags_to_map" }
+      }
     }
   }
 }

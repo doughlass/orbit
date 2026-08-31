@@ -10,20 +10,84 @@
       "name_field": "DBInstanceIdentifier",
       "is_global": false,
       "columns": [
-        { "header": "DB IDENTIFIER", "json_path": "DBInstanceIdentifier", "width": 25 },
-        { "header": "STATUS", "json_path": "DBInstanceStatus", "width": 15, "color_map": "state" },
-        { "header": "ENGINE", "json_path": "Engine", "width": 15 },
-        { "header": "CLASS", "json_path": "DBInstanceClass", "width": 15 },
-        { "header": "AZ", "json_path": "AvailabilityZone", "width": 15 }
+        {
+          "header": "DB IDENTIFIER",
+          "json_path": "DBInstanceIdentifier",
+          "width": 25
+        },
+        {
+          "header": "STATUS",
+          "json_path": "DBInstanceStatus",
+          "width": 15,
+          "color_map": "state"
+        },
+        {
+          "header": "ENGINE",
+          "json_path": "Engine",
+          "width": 15
+        },
+        {
+          "header": "CLASS",
+          "json_path": "DBInstanceClass",
+          "width": 15
+        },
+        {
+          "header": "AZ",
+          "json_path": "AvailabilityZone",
+          "width": 15
+        }
       ],
       "sub_resources": [
-        { "shortcut": "n", "display_name": "Snapshots", "resource_key": "rds-snapshots", "parent_id_field": "DBInstanceIdentifier", "filter_param": "db_instance_identifier" }
+        {
+          "shortcut": "n",
+          "display_name": "Snapshots",
+          "resource_key": "rds-snapshots",
+          "parent_id_field": "DBInstanceIdentifier",
+          "filter_param": "db_instance_identifier"
+        }
       ],
       "actions": [
-        { "key": "s", "display_name": "Start", "shortcut": "s", "sdk_method": "start_db_instance", "confirm": { "message": "Start RDS instance", "default_yes": false } },
-        { "key": "S", "display_name": "Stop", "shortcut": "S", "sdk_method": "stop_db_instance", "confirm": { "message": "Stop RDS instance", "default_yes": false } },
-        { "key": "r", "display_name": "Reboot", "shortcut": "r", "sdk_method": "reboot_db_instance", "confirm": { "message": "Reboot RDS instance", "default_yes": false } },
-        { "key": "ctrl+d", "display_name": "Delete", "shortcut": "ctrl+d", "sdk_method": "delete_db_instance", "confirm": { "message": "Delete RDS instance", "default_yes": false, "destructive": true } }
+        {
+          "key": "s",
+          "display_name": "Start",
+          "shortcut": "s",
+          "sdk_method": "start_db_instance",
+          "confirm": {
+            "message": "Start RDS instance",
+            "default_yes": false
+          }
+        },
+        {
+          "key": "S",
+          "display_name": "Stop",
+          "shortcut": "S",
+          "sdk_method": "stop_db_instance",
+          "confirm": {
+            "message": "Stop RDS instance",
+            "default_yes": false
+          }
+        },
+        {
+          "key": "r",
+          "display_name": "Reboot",
+          "shortcut": "r",
+          "sdk_method": "reboot_db_instance",
+          "confirm": {
+            "message": "Reboot RDS instance",
+            "default_yes": false
+          }
+        },
+        {
+          "key": "ctrl+d",
+          "display_name": "Delete",
+          "shortcut": "ctrl+d",
+          "sdk_method": "delete_db_instance",
+          "confirm": {
+            "message": "Delete RDS instance",
+            "default_yes": false,
+            "destructive": true
+          }
+        }
       ],
       "api_config": {
         "protocol": "query",
@@ -37,12 +101,30 @@
         }
       },
       "field_mappings": {
-        "DBInstanceIdentifier": { "source": "/DBInstanceIdentifier", "default": "-" },
-        "DBInstanceStatus": { "source": "/DBInstanceStatus", "default": "-" },
-        "Engine": { "source": "/Engine", "default": "-" },
-        "DBInstanceClass": { "source": "/DBInstanceClass", "default": "-" },
-        "AvailabilityZone": { "source": "/AvailabilityZone", "default": "-" },
-        "Endpoint": { "source": "/Endpoint/Address", "default": "-" }
+        "DBInstanceIdentifier": {
+          "source": "/DBInstanceIdentifier",
+          "default": "-"
+        },
+        "DBInstanceStatus": {
+          "source": "/DBInstanceStatus",
+          "default": "-"
+        },
+        "Engine": {
+          "source": "/Engine",
+          "default": "-"
+        },
+        "DBInstanceClass": {
+          "source": "/DBInstanceClass",
+          "default": "-"
+        },
+        "AvailabilityZone": {
+          "source": "/AvailabilityZone",
+          "default": "-"
+        },
+        "Endpoint": {
+          "source": "/Endpoint/Address",
+          "default": "-"
+        }
       },
       "action_configs": {
         "start_db_instance": {
@@ -90,16 +172,51 @@
       "name_field": "DBSnapshotIdentifier",
       "is_global": false,
       "columns": [
-        { "header": "SNAPSHOT ID", "json_path": "DBSnapshotIdentifier", "width": 35 },
-        { "header": "STATUS", "json_path": "Status", "width": 12, "color_map": "state" },
-        { "header": "TYPE", "json_path": "SnapshotType", "width": 12 },
-        { "header": "ENGINE", "json_path": "Engine", "width": 12 },
-        { "header": "SIZE (GB)", "json_path": "AllocatedStorage", "width": 10 },
-        { "header": "CREATED", "json_path": "SnapshotCreateTime", "width": 20 }
+        {
+          "header": "SNAPSHOT ID",
+          "json_path": "DBSnapshotIdentifier",
+          "width": 35
+        },
+        {
+          "header": "STATUS",
+          "json_path": "Status",
+          "width": 12,
+          "color_map": "state"
+        },
+        {
+          "header": "TYPE",
+          "json_path": "SnapshotType",
+          "width": 12
+        },
+        {
+          "header": "ENGINE",
+          "json_path": "Engine",
+          "width": 12
+        },
+        {
+          "header": "SIZE (GB)",
+          "json_path": "AllocatedStorage",
+          "width": 10
+        },
+        {
+          "header": "CREATED",
+          "json_path": "SnapshotCreateTime",
+          "width": 20
+        }
       ],
       "sub_resources": [],
       "actions": [
-        { "key": "ctrl+d", "display_name": "Delete Snapshot", "shortcut": "ctrl+d", "sdk_method": "delete_db_snapshot", "confirm": { "message": "Delete RDS snapshot", "default_yes": false, "destructive": true } }
+        {
+          "key": "ctrl+d",
+          "display_name": "Delete Snapshot",
+          "shortcut": "ctrl+d",
+          "sdk_method": "delete_db_snapshot",
+          "confirm": {
+            "message": "Delete RDS snapshot",
+            "default_yes": false,
+            "destructive": true
+          }
+        }
       ],
       "api_config": {
         "protocol": "query",
@@ -116,13 +233,34 @@
         }
       },
       "field_mappings": {
-        "DBSnapshotIdentifier": { "source": "/DBSnapshotIdentifier", "default": "-" },
-        "DBInstanceIdentifier": { "source": "/DBInstanceIdentifier", "default": "-" },
-        "Status": { "source": "/Status", "default": "-" },
-        "SnapshotType": { "source": "/SnapshotType", "default": "-" },
-        "Engine": { "source": "/Engine", "default": "-" },
-        "AllocatedStorage": { "source": "/AllocatedStorage", "default": "0" },
-        "SnapshotCreateTime": { "source": "/SnapshotCreateTime", "default": "-" }
+        "DBSnapshotIdentifier": {
+          "source": "/DBSnapshotIdentifier",
+          "default": "-"
+        },
+        "DBInstanceIdentifier": {
+          "source": "/DBInstanceIdentifier",
+          "default": "-"
+        },
+        "Status": {
+          "source": "/Status",
+          "default": "-"
+        },
+        "SnapshotType": {
+          "source": "/SnapshotType",
+          "default": "-"
+        },
+        "Engine": {
+          "source": "/Engine",
+          "default": "-"
+        },
+        "AllocatedStorage": {
+          "source": "/AllocatedStorage",
+          "default": "0"
+        },
+        "SnapshotCreateTime": {
+          "source": "/SnapshotCreateTime",
+          "default": "-"
+        }
       },
       "action_configs": {
         "delete_db_snapshot": {
@@ -130,6 +268,302 @@
           "protocol": "query",
           "action": "DeleteDBSnapshot",
           "id_param": "DBSnapshotIdentifier"
+        }
+      }
+    },
+    "rds-aurora-clusters": {
+      "display_name": "Aurora Clusters",
+      "service": "rds",
+      "sdk_method": "describe_db_clusters",
+      "sdk_method_params": {},
+      "response_path": "db_clusters",
+      "id_field": "DBClusterIdentifier",
+      "name_field": "DBClusterIdentifier",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "CLUSTER ID",
+          "json_path": "DBClusterIdentifier",
+          "width": 25
+        },
+        {
+          "header": "STATUS",
+          "json_path": "Status",
+          "width": 12,
+          "color_map": "state"
+        },
+        {
+          "header": "ENGINE",
+          "json_path": "Engine",
+          "width": 12
+        },
+        {
+          "header": "MODE",
+          "json_path": "EngineMode",
+          "width": 10
+        },
+        {
+          "header": "ENDPOINT",
+          "json_path": "Endpoint",
+          "width": 30
+        },
+        {
+          "header": "CREATED",
+          "json_path": "ClusterCreateTime",
+          "width": 20
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeDBClusters",
+        "response_root": "/DescribeDBClustersResponse/DescribeDBClustersResult/DBClusters",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeDBClustersResponse/DescribeDBClustersResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "DBClusterIdentifier": {
+          "source": "/DBClusterIdentifier",
+          "default": "-"
+        },
+        "Status": {
+          "source": "/Status",
+          "default": "-"
+        },
+        "Engine": {
+          "source": "/Engine",
+          "default": "-"
+        },
+        "EngineMode": {
+          "source": "/EngineMode",
+          "default": "provisioned"
+        },
+        "EngineVersion": {
+          "source": "/EngineVersion",
+          "default": "-"
+        },
+        "Endpoint": {
+          "source": "/Endpoint",
+          "default": "-"
+        },
+        "ReaderEndpoint": {
+          "source": "/ReaderEndpoint",
+          "default": "-"
+        },
+        "MasterUsername": {
+          "source": "/MasterUsername",
+          "default": "-"
+        },
+        "Port": {
+          "source": "/Port",
+          "default": "-"
+        },
+        "DBClusterArn": {
+          "source": "/DBClusterArn",
+          "default": "-"
+        },
+        "ClusterCreateTime": {
+          "source": "/ClusterCreateTime",
+          "default": "-"
+        },
+        "Tags": {
+          "source": "/TagList",
+          "transform": "tags_to_map",
+          "default": "-"
+        }
+      }
+    },
+    "rds-parameter-groups": {
+      "display_name": "RDS Parameter Groups",
+      "service": "rds",
+      "sdk_method": "describe_db_parameter_groups",
+      "sdk_method_params": {},
+      "response_path": "pgroups",
+      "id_field": "DBParameterGroupName",
+      "name_field": "DBParameterGroupName",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "NAME",
+          "json_path": "DBParameterGroupName",
+          "width": 34
+        },
+        {
+          "header": "FAMILY",
+          "json_path": "DBParameterGroupFamily",
+          "width": 18
+        },
+        {
+          "header": "DESCRIPTION",
+          "json_path": "Description",
+          "width": 40
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeDBParameterGroups",
+        "response_root": "/DescribeDBParameterGroupsResponse/DescribeDBParameterGroupsResult/DBParameterGroups/DBParameterGroup",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeDBParameterGroupsResponse/DescribeDBParameterGroupsResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "DBParameterGroupName": {
+          "source": "/DBParameterGroupName",
+          "default": "-"
+        },
+        "DBParameterGroupFamily": {
+          "source": "/DBParameterGroupFamily",
+          "default": "-"
+        },
+        "Description": {
+          "source": "/Description",
+          "default": "-"
+        }
+      }
+    },
+    "rds-reserved-instances": {
+      "display_name": "RDS Reserved Instances",
+      "service": "rds",
+      "sdk_method": "describe_reserved_db_instances",
+      "sdk_method_params": {},
+      "response_path": "reserved",
+      "id_field": "ReservedDBInstanceId",
+      "name_field": "ReservedDBInstanceId",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "RESERVATION ID",
+          "json_path": "ReservedDBInstanceId",
+          "width": 24
+        },
+        {
+          "header": "CLASS",
+          "json_path": "DBInstanceClass",
+          "width": 16
+        },
+        {
+          "header": "OFFERING",
+          "json_path": "OfferingType",
+          "width": 16
+        },
+        {
+          "header": "STATE",
+          "json_path": "State",
+          "width": 12
+        },
+        {
+          "header": "COUNT",
+          "json_path": "DBInstanceCount",
+          "width": 8
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeReservedDBInstances",
+        "response_root": "/DescribeReservedDBInstancesResponse/DescribeReservedDBInstancesResult/ReservedDBInstances/ReservedDBInstance",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeReservedDBInstancesResponse/DescribeReservedDBInstancesResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "ReservedDBInstanceId": {
+          "source": "/ReservedDBInstanceId",
+          "default": "-"
+        },
+        "DBInstanceClass": {
+          "source": "/DBInstanceClass",
+          "default": "-"
+        },
+        "OfferingType": {
+          "source": "/OfferingType",
+          "default": "-"
+        },
+        "State": {
+          "source": "/State",
+          "default": "-"
+        },
+        "DBInstanceCount": {
+          "source": "/DBInstanceCount",
+          "default": "-"
+        }
+      }
+    },
+    "rds-events": {
+      "display_name": "RDS Events",
+      "service": "rds",
+      "sdk_method": "describe_events",
+      "sdk_method_params": {},
+      "response_path": "events",
+      "id_field": "SourceIdentifier",
+      "name_field": "SourceType",
+      "is_global": false,
+      "columns": [
+        {
+          "header": "SOURCE",
+          "json_path": "SourceIdentifier",
+          "width": 26
+        },
+        {
+          "header": "TYPE",
+          "json_path": "SourceType",
+          "width": 18
+        },
+        {
+          "header": "MESSAGE",
+          "json_path": "Message",
+          "width": 40
+        },
+        {
+          "header": "DATE",
+          "json_path": "Date",
+          "width": 22
+        }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeEvents",
+        "response_root": "/DescribeEventsResponse/DescribeEventsResult/Events/Event",
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/DescribeEventsResponse/DescribeEventsResult/Marker",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "SourceIdentifier": {
+          "source": "/SourceIdentifier",
+          "default": "-"
+        },
+        "SourceType": {
+          "source": "/SourceType",
+          "default": "-"
+        },
+        "Message": {
+          "source": "/Message",
+          "default": "-"
+        },
+        "Date": {
+          "source": "/Date",
+          "default": "-"
         }
       }
     }
