@@ -5,6 +5,12 @@ All notable changes to orbit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.4](https://github.com/doughlass/orbit/compare/v1.6.3...v1.6.4) - 2026-09-01
+
+### Other
+
+- bump GitHub Actions dependencies ([#73](https://github.com/doughlass/orbit/pull/73))
+
 ## [1.6.3](https://github.com/doughlass/orbit/compare/v1.6.2...v1.6.3) - 2026-09-01
 
 ### Other
