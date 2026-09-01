@@ -31,8 +31,8 @@ pub fn list_profiles() -> Result<Vec<String>> {
                 if line.starts_with('[') && line.ends_with(']') {
                     let section = &line[1..line.len() - 1];
                     // Config file uses "profile <name>" format, except for default
-                    let profile = if section.starts_with("profile ") {
-                        section.strip_prefix("profile ").unwrap().to_string()
+                    let profile = if let Some(p) = section.strip_prefix("profile ") {
+                        p.to_string()
                     } else {
                         section.to_string()
                     };

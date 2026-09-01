@@ -233,18 +233,24 @@ fn sort_items(items: &mut [Value], sort_path: &str, descending: bool, selected: 
         return 0;
     }
 
+    // Extract keys once (single allocation)
     let keys: Vec<String> = items
         .iter()
         .map(|item| extract_json_value(item, sort_path))
         .collect();
 
-    let mut order: Vec<usize> = (0..items.len()).collect();
-    order.sort_by(|&a, &b| compare_cells(&keys[a], &keys[b], descending));
+    // Sort indices by keys (single allocation for indices)
+    let mut indices: Vec<usize> = (0..items.len()).collect();
+    indices.sort_by(|&a, &b| compare_cells(&keys[a], &keys[b], descending));
 
-    let sorted: Vec<Value> = order.iter().map(|&i| items[i].clone()).collect();
+    // Find where the selected index ended up
+    let new_selected = indices.iter().position(|&i| i == selected).unwrap_or(0);
+
+    // Reorder items by collecting in sorted order (single allocation)
+    let sorted: Vec<Value> = indices.into_iter().map(|i| items[i].clone()).collect();
     items.clone_from_slice(&sorted);
 
-    order.iter().position(|&i| i == selected).unwrap_or(0)
+    new_selected
 }
 
 pub struct App {

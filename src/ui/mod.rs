@@ -663,7 +663,9 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
 /// Center a bordered panel over the describe body showing the revealed secret
 /// value, with a live countdown of the remaining seconds before it auto-hides.
 fn render_secret_reveal_overlay(f: &mut Frame, app: &App, area: Rect) {
-    let reveal = app.reveal_secret.as_ref().unwrap();
+    let Some(reveal) = app.reveal_secret.as_ref() else {
+        return;
+    };
     let seconds = app.reveal_seconds_left().unwrap_or(0);
 
     let mode_label = match reveal.mode {

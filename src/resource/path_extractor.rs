@@ -59,7 +59,10 @@ fn extract_by_parts(json: &Value, parts: &[&str]) -> Value {
             if results.is_empty() {
                 Value::Null
             } else if results.len() == 1 {
-                results.into_iter().next().unwrap()
+                let Some(v) = results.into_iter().next() else {
+                    unreachable!("results.len() == 1 checked above")
+                };
+                v
             } else {
                 Value::Array(results)
             }

@@ -77,3 +77,15 @@ tar = "0.4"
 [dev-dependencies]
 dirs = "6.0"
 tempfile = "3.24.0"
+
+[workspace.lints.rust]
+missing_docs = { level = "warn", priority = 10 }
+future_incompatible = { level = "warn", priority = 9 }
+nonstandard_style = { level = "deny", priority = 8 }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = 10 }
+redundant_clone = { level = "deny", priority = 9 }
+needless_collect = { level = "deny", priority = 8 }
+clone_on_copy = { level = "deny", priority = 7 }
+manual_ok_or = { level = "deny", priority = 6 }

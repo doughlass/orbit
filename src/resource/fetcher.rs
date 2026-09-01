@@ -78,11 +78,7 @@ pub async fn fetch_resources_paginated(
                         map.insert(
                             filter_key,
                             Value::Array(
-                                filter
-                                    .values
-                                    .iter()
-                                    .map(|v| Value::String(v.clone()))
-                                    .collect(),
+                                filter.values.iter().cloned().map(Value::String).collect(),
                             ),
                         );
                     }
@@ -91,13 +87,7 @@ pub async fn fetch_resources_paginated(
                         let value = if filter.values.len() == 1 {
                             Value::String(filter.values[0].clone())
                         } else {
-                            Value::Array(
-                                filter
-                                    .values
-                                    .iter()
-                                    .map(|v| Value::String(v.clone()))
-                                    .collect(),
-                            )
+                            Value::Array(filter.values.iter().cloned().map(Value::String).collect())
                         };
                         map.insert(filter.name.clone(), value);
                     }

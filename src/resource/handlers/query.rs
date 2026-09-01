@@ -133,12 +133,12 @@ impl QueryProtocolHandler {
                 let mapped_key = config
                     .param_mapping
                     .get(key)
-                    .cloned()
-                    .unwrap_or_else(|| key.clone());
+                    .map(String::as_str)
+                    .unwrap_or(key);
 
                 match value {
                     Value::String(s) => {
-                        query_params.push((mapped_key, s.clone()));
+                        query_params.push((mapped_key.to_string(), s.clone()));
                     }
                     Value::Array(arr) => {
                         // Handle array params (e.g., InstanceId.1, InstanceId.2)
@@ -150,10 +150,10 @@ impl QueryProtocolHandler {
                         }
                     }
                     Value::Number(n) => {
-                        query_params.push((mapped_key, n.to_string()));
+                        query_params.push((mapped_key.to_string(), n.to_string()));
                     }
                     Value::Bool(b) => {
-                        query_params.push((mapped_key, b.to_string()));
+                        query_params.push((mapped_key.to_string(), b.to_string()));
                     }
                     _ => {}
                 }
