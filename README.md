@@ -47,10 +47,10 @@ cargo build --release
 orbit                               # default profile and region
 orbit --profile prod                # specific profile
 orbit --region eu-west-1            # specific region
-orbit --readonly                    # block all write operations
+orbit --write                       # allow write operations (read-only is the default)
 orbit --demo                        # synthetic data, no AWS connection
 orbit --demo all                    # EC2 + Route53 + CloudFront demo
-orbit --demo ec2-instances,rds      # choose resources to demo
+orbit --demo ec2-instances,cloudfront-distributions   # choose resources to demo
 orbit --log-level debug             # write debug log
 ```
 
@@ -64,15 +64,15 @@ orbit completion fish | source      # add to config.fish
 
 ## Features
 
-- **60+ resource types** across 32 AWS services
+- **160+ resource views** across 60+ AWS services
 - **Keyboard-driven** — vim keys, `:` command mode, `/` filtering
 - **Fuzzy filtering** — client-side, or server-side AWS tag filters where supported
-- **Sortable columns** — click a column header with `j`/`k` to sort
+- **Sortable columns** — move a cursor over column headers with `←`/`→`, sort with `Tab`
 - **Resource actions** — start, stop, terminate EC2 instances, view secret values, SSM shell connect
 - **Data-driven** — every resource type is a JSON definition, no hardcoded keys in Rust
 - **Multi-profile, multi-region** — SSO, role assumption, console login, credential chain
 - **Demo mode** — `--demo` starts instantly with synthetic data for screenshots or testing
-- **Read-only mode** — `--readonly` blocks all mutating operations
+- **Read-only by default** — `--write` is required to enable any mutating operation
 - **Pagination** — large resource lists with `]`/`[` keys
 
 ## Key bindings
@@ -80,14 +80,18 @@ orbit completion fish | source      # add to config.fish
 | Key | Action |
 |-----|--------|
 | `j` `k` `↑` `↓` | Navigate items |
-| `gg` `G` | Jump top / bottom |
+| `gg` / `Home` | Jump to top |
+| `G` / `End` | Jump to bottom |
 | `PgUp` `PgDn` `Ctrl+b` `Ctrl+f` | Page up / down |
 | `]` `[` | Next / previous page |
-| `Enter` | Describe resource or enter sub-resource |
+| `Enter` | Describe resource or drill into sub-resource |
 | `d` | Describe selected resource |
-| `:` | Open resource picker |
+| `J` | JSON view |
+| `:` | Command mode (`:profiles`, `:regions`, or a resource name) |
 | `/` | Filter (fuzzy match or AWS tag filters) |
-| `J` `K` | Sort by column |
+| `←` `→` then `Tab` | Move sort cursor, sort; `Shift+Tab` clears sort |
+| `⇧←` `⇧→` (or `,` `.`) | Scroll table horizontally |
+| `v` | Column visibility picker |
 | `R` | Refresh |
 | `0`–`5` | Quick region switch |
 | `?` | Help |
@@ -100,41 +104,69 @@ Resource-specific actions appear in the help screen (`?`). Examples: `c` connect
 
 | Category | Service | Resources |
 |----------|---------|-----------|
-| **Compute** | EC2 | Instances, Volumes, Snapshots, AMIs |
-| | Lambda | Functions |
-| | ECS | Clusters, Services, Tasks |
-| | EKS | Clusters |
+| **Compute** | EC2 | Instances, VPCs, Subnets, Security Groups, Network ACLs, Route Tables, Internet Gateways, NAT Gateways, Elastic IPs, Network Interfaces, VPC Endpoints, VPC Peering, Transit Gateways, AMIs, EBS Volumes, EBS Snapshots, Launch Templates, Key Pairs, Placement Groups, Dedicated Hosts |
+| | Lambda | Functions, Layers, Aliases, Versions |
+| | ECS | Clusters, Services, Tasks, Task Definitions |
+| | EKS | Clusters, Node Groups, Fargate Profiles, Add-ons |
 | | Auto Scaling | Auto Scaling Groups |
-| **Storage** | S3 | Buckets, Objects |
-| **Database** | RDS | Instances, Snapshots |
+| | Step Functions | State Machines, Executions |
+| **Storage** | S3 | Buckets, Objects, Bucket Policies, Lifecycle Rules, Replication Rules |
+| | EFS | File Systems, Access Points, Mount Targets |
+| | FSx | File Systems |
+| | Backup | Backup Vaults, Backup Plans |
+| **Database** | RDS | Instances, Aurora Clusters, Snapshots, Reserved Instances, Parameter Groups, Events |
 | | DynamoDB | Tables |
-| | ElastiCache | Clusters |
-| | Redshift | Clusters |
-| **Networking** | VPC | VPCs, Subnets, Security Groups, Network ACLs, Route Tables, Internet Gateways, NAT Gateways, Elastic IPs, Network Interfaces, VPC Endpoints, VPC Peering Connections |
-| | ELBv2 | Load Balancers, Listeners, Rules, Target Groups, Targets |
-| | Route 53 | Hosted Zones, Records |
+| | ElastiCache | Clusters, Snapshots, Parameter Groups, Reserved Nodes, Events |
+| | Redshift | Clusters, Snapshots, Reserved Nodes, Parameter Groups, Events |
+| | DocumentDB | Clusters, Instances |
+| | Neptune | Clusters, Instances |
+| | Athena | Workgroups |
+| | EMR | Clusters |
+| | Glue | Jobs, Databases, Crawlers, Triggers |
+| | MSK | Clusters |
+| **Networking** | VPC Lattice | Services |
+| | App Mesh | Meshes |
+| | Cloud Map | Namespaces, Services |
 | | CloudFront | Distributions |
-| | API Gateway | REST APIs |
-| **Security** | IAM | Users, Groups, Roles, Policies, Access Keys |
+| | Route 53 | Hosted Zones, Records |
+| | Route 53 Resolver | Resolver Rules, Rule Associations, Endpoints |
+| | ELB (v2) | Load Balancers, Listeners, Rules, Target Groups, Targets |
+| | API Gateway | REST APIs, HTTP/WebSocket APIs (v2) |
+| | AppSync | APIs |
+| **Security** | IAM | Users, Groups, Roles, Policies, Access Keys, Instance Profiles, SAML Providers, OIDC Providers |
 | | Secrets Manager | Secrets |
-| | KMS | Keys |
+| | KMS | Keys, Aliases, Grants, Key Policies |
 | | ACM | Certificates |
-| | Cognito | User Pools |
-| | WAFv2 | Web ACLs, IP Sets, Rule Groups |
-| **Management** | CloudFormation | Stacks, Stack Events, Stack Outputs |
-| | CloudWatch | Log Groups, Log Streams |
-| | CloudTrail | Trails |
-| | SSM | Parameters |
+| | Cognito | User Pools, Identity Pools, App Clients |
+| | WAF (classic) | Web ACLs, Rules, IP Sets |
+| | WAFv2 | Web ACLs (regional + CloudFront), Rule Groups, IP Sets |
+| | Shield | Protections, Protection Groups |
+| | GuardDuty | Detectors |
+| | Inspector | Findings |
+| | Macie | Classification Jobs |
+| | Security Hub | Standards |
+| **Management** | CloudFormation | Stacks, Stack Events, Stack Outputs, Stack Resources |
+| | CloudWatch | Alarms, Dashboards, Log Groups, Log Streams |
+| | CloudTrail | Trails, Events |
+| | SSM | Parameters, Documents, Managed Instances |
+| | Config | Rules |
+| | Service Quotas | Quotas |
+| | Resource Groups | Groups |
+| | Health | Events |
+| | Trusted Advisor | Checks |
 | **Messaging** | SQS | Queues |
-| | SNS | Topics |
-| | EventBridge | Event Buses, Rules |
+| | SNS | Topics, Subscriptions |
+| | EventBridge | Event Buses, Rules, Schedules |
+| | Amazon MQ | Brokers |
+| **Streaming** | Kinesis | Data Streams |
+| | Data Firehose | Delivery Streams |
 | **Containers** | ECR | Repositories, Images |
 | **DevOps** | CodePipeline | Pipelines |
 | | CodeBuild | Projects |
-| **Analytics** | Athena | Workgroups |
-| | MSK | Clusters |
-
-> Missing a service? [Open an issue](https://github.com/doughlass/orbit/issues/new).
+| **Migration** | Transfer Family | Servers, Users |
+| | DataSync | Tasks |
+| **Identity** | IAM Identity Center | Instances |
+| | STS | Caller Identity |
 
 ## Authentication
 
@@ -158,10 +190,6 @@ For LocalStack: `orbit --endpoint-url http://localhost:4566`.
 | `AWS_CA_BUNDLE` | Corporate SSL certificate bundle |
 
 Logs: `~/Library/Application Support/orbit/orbit.log` (macOS), `~/.config/orbit/orbit.log` (Linux).
-
-## Contributing
-
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Before adding a new AWS service, please [open an issue](https://github.com/doughlass/orbit/issues/new) first.
 
 ## Acknowledgments
 
