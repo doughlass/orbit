@@ -1,3 +1,24 @@
+//! orbit - Terminal UI for AWS
+//!
+//! A terminal-based UI for browsing, inspecting, and managing AWS resources.
+//! Inspired by k9s for Kubernetes, orbit provides a keyboard-driven interface
+//! for navigating AWS services including EC2, S3, IAM, RDS, Lambda, and many more.
+//!
+//! ## Features
+//!
+//! - **Resource browsing**: List and filter AWS resources across services
+//! - **Hierarchical navigation**: Drill down from VPCs to subnets, log groups to streams, etc.
+//! - **Describe views**: Inspect full JSON details of any resource
+//! - **Actions**: Execute common operations (start/stop/terminate instances, etc.)
+//! - **SSO & Console login**: Integrated AWS SSO and console login flows
+//! - **Read-only mode**: Safe browsing with `--readonly` flag
+//! - **Multi-profile/region**: Switch between AWS profiles and regions
+//!
+//! ## Configuration
+//!
+//! Configuration is stored in `~/.config/orbit/config.yaml` and includes
+//! preferred profile, region, and column visibility preferences.
+
 mod app;
 mod aws;
 mod completion;
