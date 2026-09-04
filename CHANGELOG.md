@@ -5,6 +5,12 @@ All notable changes to orbit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.5](https://github.com/doughlass/orbit/compare/v1.6.4...v1.6.5) - 2026-09-04
+
+### Other
+
+- Add Amazon MQ resources and IAM role describe panel with policy drill ([#75](https://github.com/doughlass/orbit/pull/75))
+
 ## [1.6.4](https://github.com/doughlass/orbit/compare/v1.6.3...v1.6.4) - 2026-09-01
 
 ### Other
