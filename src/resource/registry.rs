@@ -2675,6 +2675,93 @@ mod tests {
         assert_eq!(svc.target_prefix, Some("SWBExternalService"));
     }
 
+    /// The role's formatted describe reaches GetRole by RoleName (the row's
+    /// id is the RoleName, not RoleId: GetRole rejects the UUID), then enriches
+    /// with the attached, inline and tag lists. The policy fields are read-only
+    /// for now; the inline policies get their own `i` shortcut list.
+    #[test]
+    fn iam_role_describe_uses_rolename_and_enriches_policies() {
+        let roles = get_resource("iam-roles").expect("iam-roles");
+        assert_eq!(roles.id_field, "RoleName", "GetRole keys on RoleName");
+        let dc = roles
+            .describe_config
+            .as_ref()
+            .expect("iam-roles must have a formatted describe");
+        assert_eq!(dc.action.as_deref(), Some("GetRole"));
+        assert_eq!(dc.id_param.as_deref(), Some("RoleName"));
+
+        let enrich: Vec<_> = dc
+            .enrich_calls
+            .iter()
+            .map(|e| (e.result_field.as_str(), e.action.as_deref().unwrap_or("")))
+            .collect();
+        for (field, action) in [
+            ("AttachedPolicies", "ListAttachedRolePolicies"),
+            ("InlinePolicies", "ListRolePolicies"),
+            ("Tags", "ListRoleTags"),
+        ] {
+            assert!(
+                enrich.contains(&(field, action)),
+                "iam-roles must enrich {field} via {action}"
+            );
+        }
+
+        // The trust policy is URL-encoded on the wire; the describe field must
+        // decode it or the panel shows a wall of %7B/%22.
+        let trust = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.source == "/AssumeRolePolicyDocument")
+            .expect("trust policy field");
+        assert_eq!(
+            trust.transform.as_deref(),
+            Some("url_decode"),
+            "AssumeRolePolicyDocument must be url-decoded"
+        );
+
+        let inline = get_resource("iam-role-inline-policies").expect("iam-role-inline-policies");
+        assert!(inline.requires_parent, "inline policies need a parent role");
+        assert_eq!(
+            inline.api_config.as_ref().unwrap().response_root.as_deref(),
+            Some("/ListRolePoliciesResponse/ListRolePoliciesResult/PolicyNames")
+        );
+        assert!(roles
+            .sub_resources
+            .iter()
+            .any(|s| s.resource_key == "iam-role-inline-policies"));
+
+        // The policy lists are drillable: Enter on an item fetches its
+        // document (managed via ARN, inline via the bare name).
+        let attached = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.source == "/AttachedPolicies")
+            .expect("attached policies field");
+        let attached_drill = attached.drill.as_ref().expect("attached policies drill");
+        assert_eq!(
+            attached_drill.kind,
+            crate::resource::protocol::DrillKind::ManagedPolicyDocument
+        );
+        assert_eq!(
+            attached_drill.item_field, "PolicyArn",
+            "managed drill keys on the policy ARN"
+        );
+        let inline_field = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.source == "/InlinePolicies")
+            .expect("inline policies field");
+        let inline_drill = inline_field.drill.as_ref().expect("inline policies drill");
+        assert_eq!(
+            inline_drill.kind,
+            crate::resource::protocol::DrillKind::InlinePolicyDocument
+        );
+        assert!(
+            inline_drill.item_field.is_empty(),
+            "inline items are bare policy names"
+        );
+    }
+
     /// Identity pools and user-pool app clients both list via the JSON protocol
     /// but from two different services: cognito-identity (AWSCognitoIdentityService)
     /// for pools, and the existing cognito-idp entry for app clients. The app

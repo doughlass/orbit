@@ -76,7 +76,23 @@ pub fn apply_transform(value: &Value, transform: &str) -> Value {
         "taskdef_arn_family" => transform_taskdef_arn_family(value),
         "taskdef_arn_revision" => transform_taskdef_arn_revision(value),
         "cloudwatch_latest" => transform_cloudwatch_latest(value),
+        "url_decode" => transform_url_decode(value),
         _ => value.clone(),
+    }
+}
+
+/// URL-decode a percent-encoded string. IAM wires policy documents
+/// (AssumeRolePolicyDocument, GetRolePolicy.PolicyDocument,
+/// GetPolicyVersion.Document) as RFC 3986 percent-encoded JSON, so a policy
+/// shown raw is a wall of %7B/%22. Decode before display; a value that is not
+/// valid UTF-8 after decoding passes through unchanged rather than erroring.
+fn transform_url_decode(value: &Value) -> Value {
+    match value {
+        Value::String(s) => match urlencoding::decode(s) {
+            Ok(decoded) => Value::String(decoded.into_owned()),
+            Err(_) => value.clone(),
+        },
+        other => other.clone(),
     }
 }
 
@@ -735,5 +751,26 @@ mod tests {
             json!("just-a-string")
         );
         assert_eq!(transform_taskdef_arn_revision(&not_an_arn), json!("-"));
+    }
+
+    #[test]
+    fn test_transform_url_decode_decodes_percent_encoded_policy() {
+        let encoded = json!(
+            "%7B%22Version%22%3A%222012-10-17%22%2C%22Statement%22%3A%5B%7B%22Effect%22%3A%22Allow%22%7D%5D%7D"
+        );
+        let decoded = apply_transform(&encoded, "url_decode");
+        assert_eq!(
+            decoded,
+            json!("{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\"}]}")
+        );
+    }
+
+    #[test]
+    fn test_transform_url_decode_non_string_passes_through() {
+        assert_eq!(
+            apply_transform(&json!({"a": 1}), "url_decode"),
+            json!({"a": 1})
+        );
+        assert_eq!(apply_transform(&json!(42), "url_decode"), json!(42));
     }
 }
