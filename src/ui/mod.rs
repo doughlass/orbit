@@ -1784,6 +1784,248 @@ mod tests {
         );
     }
 
+    /// Route53 records describe from the list row, which is the *mapped* item
+    /// that keeps the raw record under `Raw` (XML-converted JSON: a single-value
+    /// ResourceRecords collapses to a bare object, and an alias record carries
+    /// `AliasTarget` instead of TTL/ResourceRecords). The panel derives Alias and
+    /// Routing Policy by transform and renders everything through the real
+    /// describe_config, with no API call behind it.
+    #[test]
+    fn route53_record_details_render_from_the_list_row() {
+        use serde_json::json;
+
+        let r = crate::resource::get_resource("route53-records").expect("route53-records");
+        assert!(r.describe_from_row, "records describe from the row");
+        let config = r.describe_config.as_ref().expect("describe_config");
+
+        let plain = json!({
+            "RecordId": "www.example.com.#A",
+            "Name": "www.example.com.",
+            "Type": "A",
+            "TTL": "300",
+            "Value": "203.0.113.10",
+            "Raw": {
+                "Name": "www.example.com.",
+                "Type": "A",
+                "TTL": "300",
+                "ResourceRecords": { "ResourceRecord": { "Value": "203.0.113.10" } }
+            }
+        });
+        let rendered = describe_lines(&config.describe_fields, &plain);
+        assert!(
+            rendered.iter().any(|l| l.contains("www.example.com.")),
+            "panel must show the record name: {:?}",
+            rendered
+        );
+        assert!(
+            rendered.iter().any(|l| l.contains("203.0.113.10")),
+            "panel must show the record value: {:?}",
+            rendered
+        );
+        assert!(
+            rendered.iter().any(|l| l.contains("Simple")),
+            "a record with no routing fields is Simple: {:?}",
+            rendered
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.trim().starts_with("Alias") && l.trim().ends_with("No")),
+            "a non-alias record must read Alias No: {:?}",
+            rendered
+        );
+
+        let alias = json!({
+            "RecordId": "alb.example.com.#A",
+            "Name": "alb.example.com.",
+            "Type": "A",
+            "Value": "dualstack.app.example.com.",
+            "Raw": {
+                "Name": "alb.example.com.",
+                "Type": "A",
+                "AliasTarget": {
+                    "HostedZoneId": "Z2ABCDEF123456",
+                    "DNSName": "dualstack.app.example.com.",
+                    "EvaluateTargetHealth": "true"
+                }
+            }
+        });
+        let rendered = describe_lines(&config.describe_fields, &alias);
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("dualstack.app.example.com.")),
+            "panel must show the alias target: {:?}",
+            rendered
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.trim().starts_with("Alias") && l.trim().ends_with("Yes")),
+            "an alias record must read Alias Yes: {:?}",
+            rendered
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("TTL") && l.contains('-')),
+            "an alias record carries no TTL and must show a dash: {:?}",
+            rendered
+        );
+    }
+
+    /// An EC2 instance's detail panel mirrors the console: an overview card
+    /// headed by the Name tag, then grouped sections covering the instance,
+    /// networking, storage, placement and metadata. It renders from the fetched
+    /// list row (describe_from_row), so a typo in a lowerCamelCase wire element
+    /// name shows up here as a missing "-" instead of a silent blank cell.
+    #[test]
+    fn ec2_instance_details_render_a_console_style_formatted_panel() {
+        let r = crate::resource::get_resource("ec2-instances").expect("ec2-instances");
+        let config = r.describe_config.clone().expect("describe_config");
+
+        let row: serde_json::Value = serde_json::from_str(
+            r#"{
+            "InstanceId": "i-0123456789abcdef0",
+            "State": "running",
+            "InstanceType": "m5.large",
+            "PrivateIpAddress": "172.31.27.199",
+            "PublicIpAddress": "52.210.150.98",
+            "Tags": { "Name": "Reporting", "Team": "DB" },
+            "Raw": {
+                "instanceId": "i-0123456789abcdef0",
+                "instanceType": "m5.large",
+                "instanceState": { "code": 16, "name": "running" },
+                "architecture": "x86_64",
+                "platformDetails": "Linux/UNIX",
+                "virtualizationType": "hvm",
+                "hypervisor": "xen",
+                "launchTime": "2022-08-15T11:11:35.000Z",
+                "imageId": "ami-0123456789abcdef0",
+                "placement": {
+                    "availabilityZone": "eu-west-1c",
+                    "availabilityZoneId": "euw1-az2",
+                    "tenancy": "default"
+                },
+                "monitoring": { "state": "enabled" },
+                "privateIpAddress": "172.31.27.199",
+                "ipAddress": "52.210.150.98",
+                "vpcId": "vpc-0123456789abcdef0",
+                "subnetId": "subnet-0123456789abcdef0",
+                "groupSet": {
+                    "item": [
+                        { "groupId": "sg-1327d375", "groupName": "test-remove" },
+                        { "groupId": "sg-fe6da399", "groupName": "DMC-CM-SSH" }
+                    ]
+                },
+                "rootDeviceName": "/dev/sda1",
+                "rootDeviceType": "ebs",
+                "ebsOptimized": true,
+                "blockDeviceMapping": {
+                    "item": [{ "deviceName": "/dev/sda1", "ebs": { "volumeId": "vol-999f9a1e" } }]
+                },
+                "keyName": "whg-deploy",
+                "iamInstanceProfile": { "arn": "arn:aws:iam::259740665173:instance-profile/whg" },
+                "hibernationOptions": { "configured": true },
+                "metadataOptions": { "httpTokens": "required", "httpEndpoint": "enabled" },
+                "enaSupport": true,
+                "usageOperation": "RunInstances",
+                "instanceLifecycle": "spot",
+                "spotInstanceRequestId": "sir-0123456789abcdef0",
+                "stateReason": {
+                    "code": "Client.UserInitiatedShutdown",
+                    "message": "Client.UserInitiatedShutdown: User initiated shutdown"
+                },
+                "tagSet": {
+                    "item": [
+                        { "key": "Name", "value": "Reporting" },
+                        { "key": "Team", "value": "DB" }
+                    ]
+                }
+            }
+        }"#,
+        )
+        .expect("test fixture is valid JSON");
+
+        let rendered: Vec<String> = super::render_formatted_describe(&config, &row)
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+
+        assert!(
+            rendered.iter().any(|l| l.contains("Reporting")),
+            "banner must be headed by the Name tag: {:?}",
+            rendered
+        );
+        assert!(
+            rendered.iter().any(|l| l.contains("running")),
+            "banner chip must show the instance state: {:?}",
+            rendered
+        );
+        for (label, value) in [
+            ("Instance ID", "i-0123456789abcdef0"),
+            ("Instance Type", "m5.large"),
+            ("Architecture", "x86_64"),
+            ("Launch Time", "2022"),
+            ("Private IPv4", "172.31.27.199"),
+            ("Public IPv4", "52.210.150.98"),
+            ("VPC ID", "vpc-0123456789abcdef0"),
+            ("Subnet ID", "subnet-0123456789abcdef0"),
+            ("Root Device Name", "/dev/sda1"),
+            ("Volume IDs", "vol-999f9a1e"),
+            ("IAM Instance Profile", "instance-profile/whg"),
+            ("Availability Zone", "eu-west-1c"),
+            ("IMDSv2", "required"),
+            ("Spot Request ID", "sir-0123456789abcdef0"),
+        ] {
+            assert!(
+                rendered
+                    .iter()
+                    .any(|l| l.contains(label) && l.contains(value)),
+                "panel must show {label} = {value}: {:?}",
+                rendered
+            );
+        }
+        assert!(
+            rendered.iter().any(|l| l.contains("test-remove")),
+            "panel must list the security groups: {:?}",
+            rendered
+        );
+        assert!(
+            rendered.iter().any(|l| l.trim() == "Team=DB"),
+            "tags must render one key=value line per tag: {:?}",
+            rendered
+        );
+        for section in [
+            "Details",
+            "Networking",
+            "Storage",
+            "Access",
+            "Placement",
+            "Status",
+            "Metadata",
+            "Tags",
+        ] {
+            assert!(
+                rendered.iter().any(|l| l.trim() == section),
+                "panel must emit the {section} heading: {:?}",
+                rendered
+            );
+        }
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("EBS Optimized") && l.trim().ends_with("Yes")),
+            "a boolean must read Yes/No, not raw json: {:?}",
+            rendered
+        );
+    }
+
     fn field_list(
         field: crate::resource::protocol::DescribeField,
     ) -> Vec<crate::resource::protocol::DescribeField> {

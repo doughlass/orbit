@@ -764,6 +764,21 @@ impl AwsHttpClient {
         }
     }
 
+    /// Build an S3 endpoint for a bucket. Buckets whose name contains a dot
+    /// (site.example.com) cannot be addressed virtual-hosted-style over HTTPS:
+    /// S3's `*.s3.<region>` wildcard certificate only covers a single label, so
+    /// the TLS handshake to `{bucket}.s3.<region>` fails before any request is
+    /// sent. Fall back to path-style for them — the only form whose hostname the
+    /// certificate actually covers.
+    fn s3_bucket_endpoint(bucket: &str, region: &str) -> String {
+        let domain = Self::endpoint_domain(region);
+        if bucket.contains('.') {
+            format!("https://s3.{}.{}/{}", region, domain, bucket)
+        } else {
+            format!("https://{}.s3.{}.{}", bucket, region, domain)
+        }
+    }
+
     /// Make a Query protocol request (EC2, IAM, RDS, etc.)
     pub async fn query_request(
         &self,
@@ -931,8 +946,7 @@ impl AwsHttpClient {
         let service = get_service("s3").ok_or_else(|| anyhow!("Unknown service: s3"))?;
 
         // Build S3 regional endpoint
-        let domain = Self::endpoint_domain(bucket_region);
-        let endpoint = format!("https://{}.s3.{}.{}", bucket, bucket_region, domain);
+        let endpoint = Self::s3_bucket_endpoint(bucket, bucket_region);
         let url = format!("{}{}", endpoint, path);
         debug!("URL: {}", url);
 
@@ -959,7 +973,11 @@ impl AwsHttpClient {
         }
 
         for domain in domain_candidates {
-            let url = format!("https://{}.s3.{}/", bucket, domain);
+            let url = if bucket.contains('.') {
+                format!("https://s3.{}/{}", domain, bucket)
+            } else {
+                format!("https://{}.s3.{}/", bucket, domain)
+            };
             debug!("Probing bucket {} region via {}", bucket, url);
 
             let response = match self.http_client.head(&url).send().await {
@@ -1328,15 +1346,15 @@ impl AwsHttpClient {
     where
         F: FnMut(u64, Option<u64>) + Send + 'static,
     {
-        let domain = Self::endpoint_domain(bucket_region);
         let encoded_key = key
             .split('/')
             .map(|segment| urlencoding::encode(segment).into_owned())
             .collect::<Vec<_>>()
             .join("/");
         let url = format!(
-            "https://{}.s3.{}.{}/{}",
-            bucket, bucket_region, domain, encoded_key
+            "{}/{}",
+            Self::s3_bucket_endpoint(bucket, bucket_region),
+            encoded_key
         );
 
         let service_name = get_service("s3").ok_or_else(|| anyhow!("Unknown service: s3"))?;
@@ -1481,6 +1499,30 @@ mod tests {
 
     fn client_with_region(region: &str) -> AwsHttpClient {
         AwsHttpClient::new(dummy_credentials(), region, None)
+    }
+
+    #[test]
+    fn dot_named_s3_buckets_use_path_style_addressing() {
+        let url = AwsHttpClient::s3_bucket_endpoint("site.seagle.gli.whg.tech", "eu-west-1");
+        assert_eq!(
+            url,
+            "https://s3.eu-west-1.amazonaws.com/site.seagle.gli.whg.tech"
+        );
+    }
+
+    #[test]
+    fn single_label_s3_buckets_keep_virtual_hosted_addressing() {
+        let url = AwsHttpClient::s3_bucket_endpoint("my-bucket", "eu-west-1");
+        assert_eq!(url, "https://my-bucket.s3.eu-west-1.amazonaws.com");
+    }
+
+    #[test]
+    fn path_style_s3_redirect_location_still_yields_the_region() {
+        let region = super::extract_region_from_s3_url(&format!(
+            "https://s3.us-west-1.amazonaws.com/{}",
+            "site.seagle.gli.whg.tech"
+        ));
+        assert_eq!(region.as_deref(), Some("us-west-1"));
     }
 
     #[test]

@@ -253,6 +253,14 @@ pub struct ResourceDef {
     #[serde(default)]
     pub describe_config: Option<DescribeConfig>,
 
+    /// If true, the selected row already carries the full resource and describe
+    /// renders it directly instead of making another API call. Route53 records
+    /// are the canonical case: ListResourceRecordSets returns every record in
+    /// full, there is no GetResourceRecordSet to refine it, and a re-fetch scoped
+    /// by name/type/setidentifier would be redundant and lossy on pagination.
+    #[serde(default)]
+    pub describe_from_row: bool,
+
     /// Filters configuration
     /// If present and enabled, the resource supports AWS API filtering (Filters: key=value)
     #[serde(default)]
@@ -3251,6 +3259,216 @@ mod tests {
             Some("maxitems"),
             "route53-records max_results_param"
         );
+    }
+
+    /// ListResourceRecordSets returns every record in full and Route53 has no
+    /// GetResourceRecordSet, so describe must not re-fetch: it reads the row
+    /// orbit already has. The row is the *mapped* list item, so the raw record
+    /// must be kept alongside (the `Raw` mapping) and describe_fields path into
+    /// it; the API never returns RoutingPolicy/Alias, so those are derived by
+    /// transform instead.
+    #[test]
+    fn route53_records_describe_from_the_row_already_fetched() {
+        let r = get_resource("route53-records").expect("route53-records");
+        assert!(
+            r.describe_from_row,
+            "records describe from the fetched row, not a re-fetch"
+        );
+        let raw_mapping = r
+            .field_mappings
+            .get("Raw")
+            .expect("records must keep the raw record via the Raw mapping");
+        assert_eq!(
+            raw_mapping.source, "/",
+            "Raw mapping must copy the whole raw record"
+        );
+        let dc = r.describe_config.as_ref().expect("describe_config");
+        assert!(
+            dc.path.is_none() && dc.action.is_none(),
+            "a from-row describe declares no API call"
+        );
+        for (label, source) in [
+            ("Name", "/Raw/Name"),
+            ("Type", "/Raw/Type"),
+            ("TTL", "/Raw/TTL"),
+            ("Set ID", "/Raw/SetIdentifier"),
+            ("Weight", "/Raw/Weight"),
+            ("Failover", "/Raw/Failover"),
+            ("Alias DNS", "/Raw/AliasTarget/DNSName"),
+            ("Alias Zone ID", "/Raw/AliasTarget/HostedZoneId"),
+            ("Country", "/Raw/GeoLocation/CountryCode"),
+            ("CIDR Collection", "/Raw/CidrRoutingConfig/CollectionId"),
+        ] {
+            assert!(
+                dc.describe_fields
+                    .iter()
+                    .any(|f| f.label == label && f.source == source),
+                "records detail must surface {label} from {source}"
+            );
+        }
+        for (label, transform) in [
+            ("Alias", "route53_is_alias"),
+            ("Routing Policy", "route53_routing_policy"),
+        ] {
+            let field = dc
+                .describe_fields
+                .iter()
+                .find(|f| f.label == label)
+                .unwrap_or_else(|| panic!("{label} needs a describe field"));
+            assert_eq!(
+                field.transform.as_deref(),
+                Some(transform),
+                "{label} is derived by transform, not on the wire"
+            );
+        }
+        let values = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.source == "/Raw/ResourceRecords/ResourceRecord")
+            .unwrap_or_else(|| panic!("records detail must list the record values"));
+        assert!(values.list, "values is a multi-value field");
+        assert_eq!(
+            values.item_template.as_deref(),
+            Some("{Value}"),
+            "one templated line per record value"
+        );
+    }
+
+    /// DescribeInstances already returns the full instance in the list, so the
+    /// instance detail panel renders from the fetched row exactly like route53
+    /// records — no second API call. Every describe field and overview path must
+    /// extract against the real wire shape, whose element names are
+    /// lowerCamelCase and do NOT match the PascalCase the AWS CLI prints.
+    #[test]
+    fn ec2_instance_detail_paths_extract_from_the_real_describeinstances_wire_shape() {
+        use serde_json::json;
+
+        let r = get_resource("ec2-instances").expect("ec2-instances");
+        assert!(
+            r.describe_from_row,
+            "instances describe from the fetched row, not a re-fetch"
+        );
+        let raw_mapping = r
+            .field_mappings
+            .get("Raw")
+            .expect("instances must keep the raw instance via the Raw mapping");
+        assert_eq!(
+            raw_mapping.source, "/",
+            "Raw mapping must copy the whole raw instance"
+        );
+        let dc = r.describe_config.as_ref().expect("describe_config");
+        assert!(
+            dc.path.is_none() && dc.action.is_none(),
+            "a from-row describe declares no API call"
+        );
+
+        // A slice of a real DescribeInstances response (eu-west-1c, captured 2026),
+        // covering every element the detail panel reads.
+        let raw = json!({
+            "instanceId": "i-0123456789abcdef0",
+            "instanceType": "m5.large",
+            "instanceState": { "code": 16, "name": "running" },
+            "architecture": "x86_64",
+            "platformDetails": "Linux/UNIX",
+            "virtualizationType": "hvm",
+            "hypervisor": "xen",
+            "launchTime": "2022-08-15T11:11:35.000Z",
+            "imageId": "ami-0123456789abcdef0",
+            "placement": {
+                "availabilityZone": "eu-west-1c",
+                "availabilityZoneId": "euw1-az2",
+                "groupName": "",
+                "tenancy": "default"
+            },
+            "monitoring": { "state": "enabled" },
+            "dnsName": "ec2-52-210-150-98.eu-west-1.compute.amazonaws.com",
+            "privateDnsName": "ip-172-31-27-199.eu-west-1.compute.internal",
+            "ipAddress": "52.210.150.98",
+            "privateIpAddress": "172.31.27.199",
+            "ipv6Addresses": ["2001:db8::1"],
+            "vpcId": "vpc-0123456789abcdef0",
+            "subnetId": "subnet-0123456789abcdef0",
+            "groupSet": {
+                "item": [
+                    { "groupId": "sg-1327d375", "groupName": "test-remove" },
+                    { "groupId": "sg-fe6da399", "groupName": "DMC-CM-SSH" }
+                ]
+            },
+            "rootDeviceName": "/dev/sda1",
+            "rootDeviceType": "ebs",
+            "ebsOptimized": true,
+            "blockDeviceMapping": {
+                "item": [{ "deviceName": "/dev/sda1", "ebs": { "volumeId": "vol-999f9a1e", "status": "attached" } }]
+            },
+            "keyName": "whg-deploy",
+            "iamInstanceProfile": { "arn": "arn:aws:iam::259740665173:instance-profile/whg" },
+            "hibernationOptions": { "configured": true },
+            "metadataOptions": {
+                "httpTokens": "required",
+                "httpEndpoint": "enabled",
+                "httpPutResponseHopLimit": 1,
+                "state": "applied"
+            },
+            "enaSupport": true,
+            "usageOperation": "RunInstances",
+            "outpostArn": "arn:aws:outposts:eu-west-1:259740665173:outpost/op-01234567",
+            "instanceLifecycle": "spot",
+            "spotInstanceRequestId": "sir-0123456789abcdef0",
+            "stateReason": {
+                "code": "Client.UserInitiatedShutdown",
+                "message": "Client.UserInitiatedShutdown: User initiated shutdown"
+            },
+            "tagSet": {
+                "item": [
+                    { "key": "Name", "value": "Reporting" },
+                    { "key": "Team", "value": "DB" }
+                ]
+            }
+        });
+        let row = json!({
+            "InstanceId": "i-0123456789abcdef0",
+            "State": "running",
+            "InstanceType": "m5.large",
+            "PrivateIpAddress": "172.31.27.199",
+            "PublicIpAddress": "52.210.150.98",
+            "Tags": { "Name": "Reporting", "Team": "DB" },
+            "Raw": raw
+        });
+
+        for field in &dc.describe_fields {
+            let v = crate::resource::path_extractor::extract_by_path(&row, &field.source);
+            assert!(
+                !v.is_null(),
+                "ec2-instances describe field {} source {} misses the DescribeInstances wire shape",
+                field.label,
+                field.source
+            );
+        }
+
+        let overview = dc
+            .overview
+            .as_ref()
+            .expect("instances get an overview banner");
+        assert_eq!(overview.title_source, "/Tags/Name");
+        for (label, source) in [
+            ("State", "/State"),
+            ("Type", "/InstanceType"),
+            ("Private IP", "/PrivateIpAddress"),
+            ("Public IP", "/PublicIpAddress"),
+        ] {
+            assert!(
+                overview
+                    .chips
+                    .iter()
+                    .any(|c| c.label == label && c.source == source),
+                "overview chip {label} must read {source}"
+            );
+            let v = crate::resource::path_extractor::extract_by_path(&row, source);
+            assert!(
+                !v.is_null(),
+                "overview chip {label} source {source} misses a mapped field"
+            );
+        }
     }
 
     /// The EC2 networking family, listed explicitly so that dropping one from the JSON

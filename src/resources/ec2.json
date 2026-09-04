@@ -353,7 +353,69 @@
         "Hypervisor": { "source": "/hypervisor", "default": "-" },
         "EnaSupport": { "source": "/enaSupport", "transform": "bool_to_yes_no", "default": "-" },
         "SpotInstanceRequestId": { "source": "/spotInstanceRequestId", "default": "-" },
-        "Operator": { "source": "/operator/name", "default": "-" }
+        "Operator": { "source": "/operator/name", "default": "-" },
+        "Raw": { "source": "/" }
+      },
+      "describe_from_row": true,
+      "describe_config": {
+        "overview": {
+          "title_source": "/Tags/Name",
+          "subtitle_source": "/InstanceId",
+          "chips": [
+            { "label": "State", "source": "/State" },
+            { "label": "Type", "source": "/InstanceType" },
+            { "label": "Private IP", "source": "/PrivateIpAddress" },
+            { "label": "Public IP", "source": "/PublicIpAddress" }
+          ]
+        },
+        "describe_fields": [
+          { "label": "Instance ID", "source": "/Raw/instanceId", "section": "Details" },
+          { "label": "State", "source": "/Raw/instanceState/name", "section": "Details" },
+          { "label": "Instance Type", "source": "/Raw/instanceType", "section": "Details" },
+          { "label": "Architecture", "source": "/Raw/architecture", "section": "Details" },
+          { "label": "Platform", "source": "/Raw/platformDetails", "section": "Details" },
+          { "label": "Virtualization", "source": "/Raw/virtualizationType", "section": "Details" },
+          { "label": "Hypervisor", "source": "/Raw/hypervisor", "section": "Details" },
+          { "label": "Launch Time", "source": "/Raw/launchTime", "transform": "format_epoch_seconds", "section": "Details" },
+          { "label": "AMI", "source": "/Raw/imageId", "section": "Details" },
+
+          { "label": "VPC ID", "source": "/Raw/vpcId", "section": "Networking" },
+          { "label": "Subnet ID", "source": "/Raw/subnetId", "section": "Networking" },
+          { "label": "Private IPv4", "source": "/Raw/privateIpAddress", "section": "Networking" },
+          { "label": "Public IPv4", "source": "/Raw/ipAddress", "section": "Networking" },
+          { "label": "Private DNS", "source": "/Raw/privateDnsName", "section": "Networking" },
+          { "label": "Public DNS", "source": "/Raw/dnsName", "section": "Networking" },
+          { "label": "IPv6 Addresses", "source": "/Raw/ipv6Addresses", "transform": "array_to_csv", "section": "Networking" },
+          { "label": "Security Groups", "source": "/Raw/groupSet/item/groupName", "transform": "array_to_csv", "section": "Networking" },
+
+          { "label": "Root Device Name", "source": "/Raw/rootDeviceName", "section": "Storage" },
+          { "label": "Root Device Type", "source": "/Raw/rootDeviceType", "section": "Storage" },
+          { "label": "EBS Optimized", "source": "/Raw/ebsOptimized", "transform": "bool_to_yes_no", "section": "Storage" },
+          { "label": "Device Names", "source": "/Raw/blockDeviceMapping/item/deviceName", "transform": "array_to_csv", "section": "Storage" },
+          { "label": "Volume IDs", "source": "/Raw/blockDeviceMapping/item/ebs/volumeId", "transform": "array_to_csv", "section": "Storage" },
+
+          { "label": "Key Pair", "source": "/Raw/keyName", "section": "Access" },
+          { "label": "IAM Instance Profile", "source": "/Raw/iamInstanceProfile/arn", "section": "Access" },
+          { "label": "Monitoring", "source": "/Raw/monitoring/state", "section": "Access" },
+
+          { "label": "Availability Zone", "source": "/Raw/placement/availabilityZone", "section": "Placement" },
+          { "label": "Availability Zone ID", "source": "/Raw/placement/availabilityZoneId", "section": "Placement" },
+          { "label": "Tenancy", "source": "/Raw/placement/tenancy", "section": "Placement" },
+
+          { "label": "Instance Lifecycle", "source": "/Raw/instanceLifecycle", "section": "Status" },
+          { "label": "Spot Request ID", "source": "/Raw/spotInstanceRequestId", "section": "Status" },
+          { "label": "State Transition Code", "source": "/Raw/stateReason/code", "section": "Status" },
+          { "label": "State Transition Message", "source": "/Raw/stateReason/message", "section": "Status" },
+
+          { "label": "IMDSv2", "source": "/Raw/metadataOptions/httpTokens", "section": "Metadata" },
+          { "label": "Metadata Endpoint", "source": "/Raw/metadataOptions/httpEndpoint", "section": "Metadata" },
+          { "label": "Hibernation", "source": "/Raw/hibernationOptions/configured", "transform": "bool_to_yes_no", "section": "Metadata" },
+          { "label": "ENA Support", "source": "/Raw/enaSupport", "transform": "bool_to_yes_no", "section": "Metadata" },
+          { "label": "Usage Operation", "source": "/Raw/usageOperation", "section": "Metadata" },
+          { "label": "Outpost ARN", "source": "/Raw/outpostArn", "section": "Metadata" },
+
+          { "label": "Tags", "source": "/Raw/tagSet/item", "list": true, "item_template": "{key}={value}", "section": "Tags" }
+        ]
       },
       "action_configs": {
         "start_instance": {
@@ -380,12 +442,6 @@
           "action": "TerminateInstances",
           "id_param": "InstanceId.1"
         }
-      },
-      "describe_config": {
-        "protocol": "query",
-        "action": "DescribeInstances",
-        "id_param": "InstanceId.1",
-        "response_path": "/DescribeInstancesResponse/reservationSet/item/instancesSet/item"
       },
       "filters_config": {
         "enabled": true,
