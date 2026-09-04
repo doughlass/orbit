@@ -556,6 +556,60 @@ fn describe_title(resource_display_name: &str, action_display_name: Option<&str>
     }
 }
 
+/// Render the fetched policy-document drill view: a fixed header naming the
+/// policy, then the document as a scrollable, wrap-enabled paragraph. The
+/// header stays anchored while the body scrolls.
+fn render_drill_document(f: &mut Frame, app: &App, area: Rect) {
+    let Some(drill) = app.drill_data.as_ref() else {
+        return;
+    };
+
+    let header_lines = if drill.label.is_empty() { 2 } else { 3 };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(header_lines as u16), Constraint::Min(1)])
+        .split(area);
+    let header_area = chunks[0];
+    let content_area = chunks[1];
+
+    let mut header: Vec<Line> = vec![Line::from(Span::styled(
+        " Policy Document ",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    ))];
+    if !drill.label.is_empty() {
+        header.push(Line::from(Span::styled(
+            format!("  {}", drill.label),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )));
+    }
+    header.push(Line::from(""));
+    let header_para = Paragraph::new(header);
+    f.render_widget(header_para, header_area);
+
+    let lines: Vec<Line> = drill
+        .document
+        .lines()
+        .map(|l| {
+            Line::from(Span::styled(
+                l.to_string(),
+                Style::default().fg(Color::White),
+            ))
+        })
+        .collect();
+    let total = lines.len();
+    let max_scroll = total.saturating_sub(content_area.height as usize);
+    let scroll = app.drill_scroll.min(max_scroll);
+
+    let paragraph = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .scroll((scroll as u16, 0));
+    f.render_widget(paragraph, content_area);
+}
+
 fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
     let json = app
         .selected_item_json()
@@ -583,6 +637,13 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
     let inner_area = block.inner(area);
     f.render_widget(block, area);
 
+    // A fetched policy document replaces the whole describe body. It is drawn
+    // inside the same outer block so exit is visually "above" the describe.
+    if app.drill_data.is_some() {
+        render_drill_document(f, app, inner_area);
+        return;
+    }
+
     // Split inner area for search bar if search is active or has text
     let show_search = app.describe_search_active || !app.describe_search_text.is_empty();
     let (content_area, search_area) = if show_search {
@@ -608,11 +669,25 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
 
     if let Some(config) = describe_config {
         if let Some(ref data) = app.describe_data {
-            let lines = render_formatted_describe(config, data);
+            let mut lines = render_formatted_describe(config, data);
             let total_lines = lines.len();
             let visible_lines = content_area.height as usize;
             let max_scroll = total_lines.saturating_sub(visible_lines);
             let scroll = app.describe_scroll.min(max_scroll);
+
+            // Highlight the drillable list item under the describe cursor so
+            // the user can see which document Enter will open.
+            if let Some(target) = app
+                .describe_drill_targets()
+                .get(app.describe_cursor)
+                .filter(|t| t.line < lines.len())
+            {
+                if let Some(Line { spans, .. }) = lines.get_mut(target.line) {
+                    for span in spans {
+                        span.style = span.style.add_modifier(Modifier::REVERSED).fg(Color::Black);
+                    }
+                }
+            }
 
             let paragraph = Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
@@ -756,7 +831,32 @@ fn render_formatted_describe(
     config: &crate::resource::protocol::DescribeConfig,
     data: &Value,
 ) -> Vec<Line<'static>> {
+    describe_layout(config, data).0
+}
+
+/// Collect the drillable items of a formatted describe, in the order they
+/// render, so the describe cursor and the highlight in the renderer walk the
+/// same list. Splitting this out of `describe_layout` would let the two drift;
+/// they share the one pass below.
+pub fn collect_describe_drill_targets(
+    config: &crate::resource::protocol::DescribeConfig,
+    data: &Value,
+) -> Vec<crate::resource::protocol::DescribeDrillTarget> {
+    describe_layout(config, data).1
+}
+
+/// Build the formatted describe panel in a single pass, recording both the
+/// rendered lines and, for each drillable list item, the line it renders on
+/// and the item value the drill should fetch.
+fn describe_layout(
+    config: &crate::resource::protocol::DescribeConfig,
+    data: &Value,
+) -> (
+    Vec<Line<'static>>,
+    Vec<crate::resource::protocol::DescribeDrillTarget>,
+) {
     let mut lines: Vec<Line> = vec![];
+    let mut targets: Vec<crate::resource::protocol::DescribeDrillTarget> = vec![];
 
     if let Some(overview) = &config.overview {
         lines.extend(render_overview_banner(overview, data));
@@ -790,8 +890,45 @@ fn render_formatted_describe(
         };
 
         if field.list {
-            lines.extend(describe_list_lines(field, &value));
-            continue;
+            // A drillable list item each carry the wire to fetch their
+            // document. Inline the item loop so we can record the line each
+            // one renders on; `describe_list_lines` cannot report that.
+            let drill = field
+                .drill
+                .as_ref()
+                .map(|d| (d, field.item_template.as_deref()));
+            match drill {
+                Some((drill, item_template)) => {
+                    let items = value_to_items(&value);
+                    if items.is_empty() {
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                format!("  {:<20}", field.label),
+                                Style::default().fg(Color::DarkGray),
+                            ),
+                            Span::styled("-", Style::default().fg(Color::White)),
+                        ]));
+                        continue;
+                    }
+                    let label = describe_list_label(field);
+                    lines.push(label);
+                    for item in items {
+                        lines.push(describe_list_item_line(item_template, item));
+                        targets.push(crate::resource::protocol::DescribeDrillTarget {
+                            field_label: field.label.clone(),
+                            item: item.clone(),
+                            config: drill.clone(),
+                            line: lines.len() - 1,
+                            hint: describe_list_item_text(item_template, item),
+                        });
+                    }
+                    continue;
+                }
+                None => {
+                    lines.extend(describe_list_lines(field, &value));
+                    continue;
+                }
+            }
         }
 
         let display = value_to_describe_string(&value);
@@ -806,7 +943,7 @@ fn render_formatted_describe(
     }
 
     lines.push(Line::from(""));
-    lines
+    (lines, targets)
 }
 
 /// A list field: its label, then one line per item. An empty list still prints
@@ -816,17 +953,7 @@ fn describe_list_lines(
     field: &crate::resource::protocol::DescribeField,
     value: &Value,
 ) -> Vec<Line<'static>> {
-    // XML→JSON collapses a one-element list to a bare object.
-    let items: Vec<&Value> = match value {
-        Value::Array(items) => items.iter().collect(),
-        Value::Null => vec![],
-        other => vec![other],
-    };
-
-    let label = Line::from(Span::styled(
-        format!("  {:<20}", field.label),
-        Style::default().fg(Color::DarkGray),
-    ));
+    let items = value_to_items(value);
 
     if items.is_empty() {
         return vec![Line::from(vec![
@@ -838,18 +965,49 @@ fn describe_list_lines(
         ])];
     }
 
-    let mut lines = vec![label];
+    let mut lines = vec![describe_list_label(field)];
     for item in items {
-        let text = match field.item_template.as_deref() {
-            Some(template) => render_describe_item(template, item),
-            None => value_to_describe_string(item),
-        };
-        lines.push(Line::from(Span::styled(
-            format!("    {}", text.trim()),
-            Style::default().fg(Color::White),
-        )));
+        lines.push(describe_list_item_line(
+            field.item_template.as_deref(),
+            item,
+        ));
     }
     lines
+}
+
+/// A bare list value as its items, keeping the XML→JSON collapse rule: a
+/// single-element list arrives as a bare object rather than an array.
+fn value_to_items(value: &Value) -> Vec<&Value> {
+    match value {
+        Value::Array(items) => items.iter().collect(),
+        Value::Null => vec![],
+        other => vec![other],
+    }
+}
+
+/// The header line a list field prints above its items (or "-" when empty).
+fn describe_list_label(field: &crate::resource::protocol::DescribeField) -> Line<'static> {
+    Line::from(Span::styled(
+        format!("  {:<20}", field.label),
+        Style::default().fg(Color::DarkGray),
+    ))
+}
+
+/// The rendered text of one list item.
+fn describe_list_item_text(item_template: Option<&str>, item: &Value) -> String {
+    match item_template {
+        Some(template) => render_describe_item(template, item),
+        None => value_to_describe_string(item),
+    }
+}
+
+/// One item's rendered line, indented under its list header.
+fn describe_list_item_line(item_template: Option<&str>, item: &Value) -> Line<'static> {
+    let text = describe_list_item_text(item_template, item);
+    Line::from(Span::styled(
+        format!("    {}", text.trim()),
+        Style::default().fg(Color::White),
+    ))
 }
 
 /// Fill `{key}` / `{nested/key}` from one list item. A key the item lacks
@@ -1487,6 +1645,7 @@ mod tests {
             section: section.map(|s| s.to_string()),
             list: false,
             item_template: None,
+            drill: None,
         }
     }
 
@@ -1629,6 +1788,50 @@ mod tests {
         field: crate::resource::protocol::DescribeField,
     ) -> Vec<crate::resource::protocol::DescribeField> {
         vec![field]
+    }
+
+    /// A drillable list field surfaces each item as a target whose line points
+    /// at that item's rendered row, so the describe cursor can highlight it and
+    /// Enter can fetch its document. A plain (non-drillable) list contributes
+    /// no targets.
+    #[test]
+    fn drillable_list_fields_produce_targets_at_their_item_lines() {
+        use crate::resource::protocol::{DrillConfig, DrillKind};
+        use serde_json::json;
+
+        let mut attached = describe_field("Attached", "/AttachedPolicies", Some("Policies"));
+        attached.list = true;
+        attached.item_template = Some("{PolicyName}".to_string());
+        attached.drill = Some(DrillConfig {
+            kind: DrillKind::ManagedPolicyDocument,
+            item_field: "PolicyArn".to_string(),
+        });
+
+        let mut plain = describe_field("Plain", "/PlainList", Some("Policies"));
+        plain.list = true;
+
+        let config = crate::resource::protocol::DescribeConfig {
+            describe_fields: vec![attached, plain],
+            ..Default::default()
+        };
+        let data = json!({
+            "AttachedPolicies": [
+                { "PolicyName": "a", "PolicyArn": "arn:1" },
+                { "PolicyName": "b", "PolicyArn": "arn:2" },
+            ],
+            "PlainList": [1, 2],
+        });
+
+        let targets = super::collect_describe_drill_targets(&config, &data);
+        assert_eq!(targets.len(), 2, "only the drillable field yields targets");
+        assert_eq!(targets[0].hint, "a");
+        assert_eq!(
+            targets[0].item,
+            json!({ "PolicyName": "a", "PolicyArn": "arn:1" })
+        );
+        assert_eq!(targets[1].hint, "b");
+        // The two items render on consecutive lines: header line then item 0.
+        assert_eq!(targets[1].line, targets[0].line + 1);
     }
 
     /// The clamp must leave the trailing columns reachable: scrolling right

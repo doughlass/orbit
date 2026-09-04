@@ -275,6 +275,63 @@ pub struct DescribeField {
     /// rules carry `cidrIpv4` *or* `referencedGroupInfo` and never both.
     #[serde(default)]
     pub item_template: Option<String>,
+
+    /// When present, this list field is drillable: the panel's cursor walks
+    /// its items and Enter fetches and shows the document for the selected
+    /// one in a dedicated view. Both the 1-call inline chain (GetRolePolicy)
+    /// and the 2-call managed chain (GetPolicy -> GetPolicyVersion) are
+    /// expressible as a `kind`; the *item* side (which list is drillable and
+    /// which field of the item keys the API) stays data.
+    #[serde(default)]
+    pub drill: Option<DrillConfig>,
+}
+
+/// A drillable list field's fetch behaviour: which wire may the cursor hit to
+/// turn a selected list item into a document. Rust keeps the mechanics (the
+/// calls vary too much to flatten into JSON templates); the JSON only says
+/// which kind and which item field to read, the same split as `transform`.
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DrillKind {
+    /// GetRolePolicy(RoleName, PolicyName) -> PolicyDocument (URL-encoded).
+    #[default]
+    InlinePolicyDocument,
+    /// GetPolicy(PolicyArn) for the default version, then
+    /// GetPolicyVersion(PolicyArn, VersionId) -> Document (URL-encoded).
+    ManagedPolicyDocument,
+}
+
+/// Configuration for a drillable list field.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct DrillConfig {
+    /// Which wire mechanics to run when a list item is selected. Controls the
+    /// API calls, so it determines how many items must line up and in what
+    /// order; only it can vary per policy kind.
+    #[serde(default)]
+    pub kind: DrillKind,
+
+    /// Path into a list item that names the policy. Empty means the item is a
+    /// bare string (ListRolePolicies' `<member>` list), so the item itself is
+    /// the name. A dotted path like "PolicyArn" reads a field of an object
+    /// item (ListAttachedRolePolicies' `{PolicyName, PolicyArn}` members).
+    #[serde(default)]
+    pub item_field: String,
+}
+
+/// One selectable item of a drillable describe list, with where it sits in the
+/// rendered panel so the cursor can both walk it and keep it in view.
+#[derive(Debug, Clone)]
+pub struct DescribeDrillTarget {
+    /// The list field the item lives under.
+    pub field_label: String,
+    /// The raw list item, passed verbatim to the drill fetcher.
+    pub item: Value,
+    /// How to fetch this item's document.
+    pub config: DrillConfig,
+    /// Zero-based line in the formatted panel where this item's row renders.
+    pub line: usize,
+    /// The display text of the row, used as the drill view's header.
+    pub hint: String,
 }
 
 /// Configuration for describe operation (single resource details)

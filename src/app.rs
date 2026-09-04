@@ -75,6 +75,19 @@ pub struct ParentContext {
     pub saved_selected: usize,
 }
 
+/// An open drill view: a policy document fetched from a drillable describe
+/// list item. The describe panel is still the thing "behind" it; leaving the
+/// drill restores `describe_scroll` so the user lands where they left off.
+#[derive(Debug, Clone)]
+pub struct DescribeDrill {
+    /// Header shown above the document, e.g. the policy name.
+    pub label: String,
+    /// The fetched, decoded policy document text.
+    pub document: String,
+    /// describe_scroll at the moment the drill opened, restored on exit.
+    pub return_scroll: usize,
+}
+
 /// AWS API Filters for server-side filtering
 /// Supports key=value pairs like: architecture=arm64, owner=amazon, tag:Environment=prod
 #[derive(Debug, Clone, Default)]
@@ -316,6 +329,11 @@ pub struct App {
     pub describe_search_active: bool,
     pub describe_match_lines: Vec<usize>, // Line numbers containing matches
     pub describe_current_match: usize,    // Index into match_lines
+
+    // Policy-document drill from a drillable describe list field.
+    pub describe_cursor: usize, // Index into the flattened drill targets
+    pub drill_data: Option<DescribeDrill>, // An open policy-document view
+    pub drill_scroll: usize,    // Scroll within the open drill view
 
     // Auto-refresh
     pub last_refresh: std::time::Instant,
@@ -620,6 +638,9 @@ impl App {
             describe_search_active: false,
             describe_match_lines: Vec::new(),
             describe_current_match: 0,
+            describe_cursor: 0,
+            drill_data: None,
+            drill_scroll: 0,
             last_refresh: std::time::Instant::now(),
             config,
             last_key_press: None,
@@ -1184,6 +1205,120 @@ impl App {
         self.describe_scroll = total.saturating_sub(visible_lines);
     }
 
+    /// The drillable list items of the current describe, in render order.
+    /// Empty when the resource declares no drillable fields or there is no
+    /// describe payload yet.
+    pub fn describe_drill_targets(&self) -> Vec<crate::resource::protocol::DescribeDrillTarget> {
+        let Some(data) = &self.describe_data else {
+            return vec![];
+        };
+        let Some(res) = get_resource(&self.current_resource_key) else {
+            return vec![];
+        };
+        let Some(dc) = &res.describe_config else {
+            return vec![];
+        };
+        crate::ui::collect_describe_drill_targets(dc, data)
+    }
+
+    /// Move the drill cursor over the drillable list items, keeping the
+    /// selected row in view by nudging the describe scroll.
+    pub fn describe_drill_cursor_move(&mut self, down: bool) {
+        let targets = self.describe_drill_targets();
+        if targets.is_empty() {
+            return;
+        }
+        if down {
+            if self.describe_cursor + 1 < targets.len() {
+                self.describe_cursor += 1;
+            }
+        } else {
+            self.describe_cursor = self.describe_cursor.saturating_sub(1);
+        }
+
+        let line = targets[self.describe_cursor].line;
+        let visible: usize = 40;
+        let max_scroll = self.describe_max_scroll();
+        if line < self.describe_scroll {
+            self.describe_scroll = line.saturating_sub(visible / 2);
+        } else if line >= self.describe_scroll + visible {
+            self.describe_scroll = (line - visible + 1).min(max_scroll);
+        }
+    }
+
+    /// Fetch and open the document for the drillable item under the cursor,
+    /// remembering the describe scroll to restore on exit.
+    pub async fn enter_drill_mode(&mut self) -> Result<()> {
+        let targets = self.describe_drill_targets();
+        if targets.is_empty() {
+            return Ok(());
+        }
+        let target = &targets[self.describe_cursor.min(targets.len() - 1)];
+        let id_field = self
+            .current_resource()
+            .map(|r| r.id_field.clone())
+            .unwrap_or_default();
+        let Some(item) = self.selected_item() else {
+            return Ok(());
+        };
+        let resource_id = extract_json_value(item, &id_field);
+        if resource_id == "-" || resource_id.is_empty() {
+            return Ok(());
+        }
+
+        match crate::resource::drill_policy_document(
+            &self.clients,
+            &target.config,
+            &resource_id,
+            &target.item,
+        )
+        .await
+        {
+            Ok(document) => {
+                self.drill_data = Some(DescribeDrill {
+                    label: if target.hint.is_empty() {
+                        target.field_label.clone()
+                    } else {
+                        target.hint.clone()
+                    },
+                    document,
+                    return_scroll: self.describe_scroll,
+                });
+                self.drill_scroll = 0;
+                self.error_message = None;
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to fetch policy document: {e}"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Close the open drill view and return to the describe panel at the scroll
+    /// the user left it at.
+    pub fn exit_drill_mode(&mut self) {
+        if let Some(drill) = self.drill_data.take() {
+            self.describe_scroll = drill.return_scroll;
+        }
+        self.drill_scroll = 0;
+    }
+
+    /// Scroll the open drill document view.
+    pub fn drill_scroll_move(&mut self, down: bool) {
+        let total = self
+            .drill_data
+            .as_ref()
+            .map(|d| d.document.lines().count() + 2)
+            .unwrap_or(0);
+        let visible: usize = 40;
+        let max_scroll = total.saturating_sub(visible);
+        if down {
+            self.drill_scroll = self.drill_scroll.saturating_add(1).min(max_scroll);
+        } else {
+            self.drill_scroll = self.drill_scroll.saturating_sub(1);
+        }
+    }
+
     /// Clear describe search
     pub fn clear_describe_search(&mut self) {
         self.describe_search_text.clear();
@@ -1538,6 +1673,9 @@ impl App {
         self.mode = Mode::Describe;
         self.describe_scroll = 0;
         self.describe_data = None;
+        self.describe_cursor = 0;
+        self.drill_data = None;
+        self.drill_scroll = 0;
 
         // Get the selected item's ID
         if let Some(item) = self.selected_item().cloned() {
@@ -1709,6 +1847,9 @@ impl App {
         self.mode = Mode::Normal;
         self.pending_action = None;
         self.describe_data = None; // Clear describe data when exiting
+        self.drill_data = None;
+        self.drill_scroll = 0;
+        self.describe_cursor = 0;
         self.last_action_display_name = None;
     }
 

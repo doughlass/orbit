@@ -503,6 +503,47 @@ async fn handle_describe_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
     // Page size for PageUp/PageDown and Ctrl+b/Ctrl+f
     const PAGE_SIZE: usize = 20;
 
+    // Policy-document drill view: the describe panel is replaced by the fetched
+    // document, so scrolling moves through it and Esc/q/d close it back to the
+    // describe panel before any normal exit logic runs.
+    if app.drill_data.is_some() {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('d') => {
+                app.exit_drill_mode();
+            }
+            KeyCode::Char('j') | KeyCode::Down => app.drill_scroll_move(true),
+            KeyCode::Char('k') | KeyCode::Up => app.drill_scroll_move(false),
+            KeyCode::PageDown | KeyCode::Char('f')
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                for _ in 0..PAGE_SIZE {
+                    app.drill_scroll_move(true);
+                }
+            }
+            KeyCode::PageUp | KeyCode::Char('b')
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                for _ in 0..PAGE_SIZE {
+                    app.drill_scroll_move(false);
+                }
+            }
+            KeyCode::Char('g') | KeyCode::Home => app.drill_scroll = 0,
+            KeyCode::Char('G') | KeyCode::End => {
+                let total = app
+                    .drill_data
+                    .as_ref()
+                    .map(|d| d.document.lines().count() + 2)
+                    .unwrap_or(0);
+                app.drill_scroll = total.saturating_sub(40);
+            }
+            _ => {}
+        }
+        return Ok(false);
+    }
+
+    // The describe panel walks the drillable list items with the cursor when
+    // the resource declares any; otherwise j/k scroll as before.
+    let has_drill_targets = !app.describe_drill_targets().is_empty();
     match key.code {
         KeyCode::Esc => {
             if !app.describe_search_text.is_empty() {
@@ -515,6 +556,12 @@ async fn handle_describe_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
         KeyCode::Char('q') | KeyCode::Char('d') => {
             app.clear_describe_search();
             app.exit_mode();
+        }
+        // Open the document for the drillable item under the cursor.
+        KeyCode::Enter if has_drill_targets => {
+            if let Err(e) = app.enter_drill_mode().await {
+                tracing::warn!("drill failed: {e}");
+            }
         }
         // Start search with '/'
         KeyCode::Char('/') => {
@@ -542,7 +589,14 @@ async fn handle_describe_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
         KeyCode::PageUp => {
             app.describe_scroll_up(PAGE_SIZE);
         }
-        // Single line navigation
+        // Single line navigation: move the drill cursor when the resource has
+        // drillable items, otherwise plain scroll.
+        KeyCode::Char('j') | KeyCode::Down if has_drill_targets => {
+            app.describe_drill_cursor_move(true);
+        }
+        KeyCode::Char('k') | KeyCode::Up if has_drill_targets => {
+            app.describe_drill_cursor_move(false);
+        }
         KeyCode::Char('j') | KeyCode::Down => {
             app.describe_scroll_down(1);
         }

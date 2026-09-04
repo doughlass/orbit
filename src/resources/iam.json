@@ -6,7 +6,7 @@
       "sdk_method": "list_users",
       "sdk_method_params": {},
       "response_path": "users",
-      "id_field": "UserId",
+      "id_field": "UserName",
       "name_field": "UserName",
       "is_global": true,
       "columns": [
@@ -269,7 +269,7 @@
       "sdk_method": "list_roles",
       "sdk_method_params": {},
       "response_path": "roles",
-      "id_field": "RoleId",
+      "id_field": "RoleName",
       "name_field": "RoleName",
       "is_global": true,
       "columns": [
@@ -299,6 +299,13 @@
           "shortcut": "p",
           "display_name": "Attached Policies",
           "resource_key": "iam-role-policies",
+          "parent_id_field": "RoleName",
+          "filter_param": "role_name"
+        },
+        {
+          "shortcut": "i",
+          "display_name": "Inline Policies",
+          "resource_key": "iam-role-inline-policies",
           "parent_id_field": "RoleName",
           "filter_param": "role_name"
         }
@@ -346,7 +353,90 @@
         "protocol": "query",
         "action": "GetRole",
         "id_param": "RoleName",
-        "response_path": "/GetRoleResponse/GetRoleResult/Role"
+        "response_path": "/GetRoleResponse/GetRoleResult/Role",
+        "enrich_calls": [
+          {
+            "result_field": "AttachedPolicies",
+            "action": "ListAttachedRolePolicies",
+            "params": { "RoleName": "{/RoleName}" },
+            "extract_path": "/ListAttachedRolePoliciesResponse/ListAttachedRolePoliciesResult/AttachedPolicies/member"
+          },
+          {
+            "result_field": "InlinePolicies",
+            "action": "ListRolePolicies",
+            "params": { "RoleName": "{/RoleName}" },
+            "extract_path": "/ListRolePoliciesResponse/ListRolePoliciesResult/PolicyNames/member"
+          },
+          {
+            "result_field": "Tags",
+            "action": "ListRoleTags",
+            "params": { "RoleName": "{/RoleName}" },
+            "extract_path": "/ListRoleTagsResponse/ListRoleTagsResult/Tags/member"
+          }
+        ],
+        "describe_fields": [
+          { "label": "Role Name",    "source": "/RoleName",    "section": "Role" },
+          { "label": "Role ID",      "source": "/RoleId",      "section": "Role" },
+          { "label": "ARN",          "source": "/Arn",         "section": "Role" },
+          { "label": "Path",         "source": "/Path",        "section": "Role" },
+          { "label": "Description",  "source": "/Description", "section": "Role" },
+          { "label": "Created",      "source": "/CreateDate",  "transform": "format_epoch_seconds", "section": "Role" },
+          { "label": "Max Duration", "source": "/MaxSessionDuration", "section": "Role" },
+          { "label": "Trust Policy", "source": "/AssumeRolePolicyDocument", "transform": "url_decode", "section": "Trust Policy" },
+          {
+            "label": "Attached Policies",
+            "source": "/AttachedPolicies",
+            "section": "Policies",
+            "list": true,
+            "item_template": "{PolicyName}",
+            "drill": {
+              "kind": "managed_policy_document",
+              "item_field": "PolicyArn"
+            }
+          },
+          {
+            "label": "Inline Policies",
+            "source": "/InlinePolicies",
+            "section": "Policies",
+            "list": true,
+            "drill": {
+              "kind": "inline_policy_document",
+              "item_field": ""
+            }
+          },
+          { "label": "Tags", "source": "/Tags", "section": "Tags", "list": true, "item_template": "{Key}={Value}" }
+        ]
+      }
+    },
+    "iam-role-inline-policies": {
+      "display_name": "IAM Inline Policies",
+      "service": "iam",
+      "sdk_method": "list_role_policies",
+      "sdk_method_params": {},
+      "response_path": "inline_policies",
+      "id_field": "PolicyName",
+      "name_field": "PolicyName",
+      "is_global": true,
+      "requires_parent": true,
+      "columns": [
+        { "header": "POLICY NAME", "json_path": "PolicyName", "width": 28 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "ListRolePolicies",
+        "response_root": "/ListRolePoliciesResponse/ListRolePoliciesResult/PolicyNames",
+        "param_mapping": { "role_name": "RoleName" },
+        "pagination": {
+          "input_token": "Marker",
+          "output_token": "/ListRolePoliciesResponse/ListRolePoliciesResult/Marker",
+          "max_results_param": "MaxItems",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "PolicyName": { "source": "", "default": "-" }
       }
     },
     "iam-role-policies": {
