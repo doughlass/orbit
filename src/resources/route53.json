@@ -76,7 +76,39 @@
         "Name": { "source": "/Name", "default": "-" },
         "Type": { "source": "/Type", "default": "-" },
         "TTL": { "source": "/TTL", "default": "-" },
-        "Value": { "source": "/", "transform": "route53_record_value" }
+        "Value": { "source": "/", "transform": "route53_record_value" },
+        "Raw": { "source": "/" }
+      },
+      "describe_from_row": true,
+      "describe_config": {
+        "describe_fields": [
+          { "label": "Name", "source": "/Raw/Name", "section": "Record" },
+          { "label": "Type", "source": "/Raw/Type", "section": "Record" },
+          { "label": "Alias", "source": "/Raw", "transform": "route53_is_alias", "section": "Record" },
+          { "label": "TTL", "source": "/Raw/TTL", "section": "Record" },
+
+          { "label": "Routing Policy", "source": "/Raw", "transform": "route53_routing_policy", "section": "Routing Policy" },
+          { "label": "Set ID", "source": "/Raw/SetIdentifier", "section": "Routing Policy" },
+          { "label": "Weight", "source": "/Raw/Weight", "section": "Routing Policy" },
+          { "label": "Region", "source": "/Raw/Region", "section": "Routing Policy" },
+          { "label": "Failover", "source": "/Raw/Failover", "section": "Routing Policy" },
+          { "label": "Multi-Value", "source": "/Raw/MultiValueAnswer", "transform": "bool_to_yes_no", "section": "Routing Policy" },
+          { "label": "Health Check", "source": "/Raw/HealthCheckId", "section": "Routing Policy" },
+          { "label": "Traffic Policy ID", "source": "/Raw/TrafficPolicyInstanceId", "section": "Routing Policy" },
+
+          { "label": "Alias DNS", "source": "/Raw/AliasTarget/DNSName", "section": "Alias Target" },
+          { "label": "Alias Zone ID", "source": "/Raw/AliasTarget/HostedZoneId", "section": "Alias Target" },
+          { "label": "Alias Health", "source": "/Raw/AliasTarget/EvaluateTargetHealth", "transform": "bool_to_yes_no", "section": "Alias Target" },
+
+          { "label": "Continent", "source": "/Raw/GeoLocation/ContinentCode", "section": "Geo Location" },
+          { "label": "Country", "source": "/Raw/GeoLocation/CountryCode", "section": "Geo Location" },
+          { "label": "Subdivision", "source": "/Raw/GeoLocation/SubdivisionCode", "section": "Geo Location" },
+
+          { "label": "CIDR Collection", "source": "/Raw/CidrRoutingConfig/CollectionId", "section": "CIDR Routing" },
+          { "label": "CIDR Location", "source": "/Raw/CidrRoutingConfig/LocationName", "section": "CIDR Routing" },
+
+          { "label": "Values", "source": "/Raw/ResourceRecords/ResourceRecord", "list": true, "item_template": "{Value}" }
+        ]
       }
     }
   }

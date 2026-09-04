@@ -71,6 +71,8 @@ pub fn apply_transform(value: &Value, transform: &str) -> Value {
         "private_zone_to_type" => transform_private_zone_to_type(value),
         "route53_record_value" => transform_route53_record_value(value),
         "route53_record_id" => transform_route53_record_id(value),
+        "route53_is_alias" => transform_route53_is_alias(value),
+        "route53_routing_policy" => transform_route53_routing_policy(value),
         "ecr_visibility" => transform_ecr_visibility(value),
         "taskdef_arn_name" => transform_taskdef_arn_name(value),
         "taskdef_arn_family" => transform_taskdef_arn_family(value),
@@ -166,6 +168,41 @@ fn transform_route53_record_id(value: &Value) -> Value {
     let record_type = value.get("Type").and_then(|v| v.as_str()).unwrap_or("-");
 
     Value::String(format!("{}#{}", name, record_type))
+}
+
+/// Transform Route53 record to "Yes"/"No": is this an alias target. The API has
+/// no Alias flag; the presence of an AliasTarget element is the discriminator.
+fn transform_route53_is_alias(value: &Value) -> Value {
+    Value::String(
+        if value.get("AliasTarget").is_some() {
+            "Yes"
+        } else {
+            "No"
+        }
+        .to_string(),
+    )
+}
+
+/// Transform a Route53 record to its routing policy name. The API never returns
+/// a RoutingPolicy element — the console derives it from which routing field
+/// the record carries, and so does this. A record with none is Simple. AWS
+/// forbids mixing routing types, so the order only matters for malformed
+/// records; TrafficPolicyInstanceId wins because it is the rarest.
+fn transform_route53_routing_policy(value: &Value) -> Value {
+    let policy = [
+        ("TrafficPolicyInstanceId", "Traffic policy"),
+        ("CidrRoutingConfig", "IP-based"),
+        ("Region", "Latency"),
+        ("Failover", "Failover"),
+        ("MultiValueAnswer", "Multivalue answer"),
+        ("GeoLocation", "Geolocation"),
+        ("Weight", "Weighted"),
+    ]
+    .iter()
+    .find(|(key, _)| value.get(*key).is_some())
+    .map(|(_, name)| *name)
+    .unwrap_or("Simple");
+    Value::String(policy.to_string())
 }
 
 /// Transform Route53 PrivateZone boolean to "Public"/"Private"
@@ -536,6 +573,39 @@ mod tests {
         assert_eq!(result["State"], "running");
     }
 
+    /// Route53 records describe from the row orbit already fetched, but the row
+    /// is the *mapped* item and mapping discards everything not in field_mappings.
+    /// apply_field_mappings must keep the raw record under the `Raw` key or the
+    /// describe panel loses the values/alias/routing detail below Name/Type/TTL.
+    #[test]
+    fn route53_records_keep_the_raw_record_under_the_raw_key() {
+        let r = crate::resource::get_resource("route53-records").expect("route53-records");
+        let raw_record = json!({
+            "Name": "www.example.com.",
+            "Type": "A",
+            "TTL": "300",
+            "ResourceRecords": {
+                "ResourceRecord": [
+                    { "Value": "203.0.113.10" },
+                    { "Value": "203.0.113.11" }
+                ]
+            },
+            "AliasTarget": {
+                "DNSName": "dualstack.app.example.com.",
+                "HostedZoneId": "Z2ABCDEF123456"
+            }
+        });
+
+        let row = apply_field_mappings(&raw_record, &r.field_mappings);
+        assert_eq!(
+            row["Raw"], raw_record,
+            "the full raw record must survive mapping for the describe panel"
+        );
+        assert_eq!(row["Name"], "www.example.com.");
+        assert_eq!(row["Type"], "A");
+        assert_eq!(row["Value"], "dualstack.app.example.com.");
+    }
+
     #[test]
     fn test_apply_field_mappings_with_default() {
         let item = json!({
@@ -729,6 +799,58 @@ mod tests {
 
         let result = transform_route53_record_id(&record);
         assert_eq!(result, json!("-#-"));
+    }
+
+    #[test]
+    fn test_transform_route53_is_alias() {
+        assert_eq!(
+            transform_route53_is_alias(&json!({})),
+            json!("No"),
+            "a plain record is not an alias"
+        );
+        assert_eq!(
+            transform_route53_is_alias(&json!({
+                "AliasTarget": { "DNSName": "dualstack.app.example.com." }
+            })),
+            json!("Yes"),
+            "presence of AliasTarget is the discriminator"
+        );
+    }
+
+    /// Route53 never returns a RoutingPolicy element; the console derives it
+    /// from whichever routing field the record carries. A record with none is
+    /// Simple, and each routing field maps to its policy name.
+    #[test]
+    fn test_transform_route53_routing_policy_derives_from_the_routing_field() {
+        let simple = json!({ "Name": "example.com.", "Type": "A" });
+        assert_eq!(transform_route53_routing_policy(&simple), json!("Simple"));
+
+        assert_eq!(
+            transform_route53_routing_policy(&json!({ "Weight": "50" })),
+            json!("Weighted")
+        );
+        assert_eq!(
+            transform_route53_routing_policy(&json!({ "Region": "eu-west-1" })),
+            json!("Latency")
+        );
+        assert_eq!(
+            transform_route53_routing_policy(&json!({ "Failover": "PRIMARY" })),
+            json!("Failover")
+        );
+        assert_eq!(
+            transform_route53_routing_policy(&json!({ "MultiValueAnswer": "true" })),
+            json!("Multivalue answer")
+        );
+        assert_eq!(
+            transform_route53_routing_policy(&json!({ "GeoLocation": { "CountryCode": "US" } })),
+            json!("Geolocation")
+        );
+        assert_eq!(
+            transform_route53_routing_policy(&json!({
+                "CidrRoutingConfig": { "CollectionId": "08522efe-6b6a-4a7b-99a9-1fb91d4d8f99" }
+            })),
+            json!("IP-based")
+        );
     }
 
     #[test]

@@ -337,7 +337,9 @@ pub struct DescribeDrillTarget {
 /// Configuration for describe operation (single resource details)
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct DescribeConfig {
-    /// Protocol to use
+    /// Protocol to use. Omitted for `describe_from_row` resources, which render
+    /// the already-fetched row and never make an API call.
+    #[serde(default)]
     pub protocol: ApiProtocol,
 
     /// Service name override

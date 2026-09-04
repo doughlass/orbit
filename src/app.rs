@@ -1680,6 +1680,13 @@ impl App {
         // Get the selected item's ID
         if let Some(item) = self.selected_item().cloned() {
             if let Some(resource_def) = self.current_resource() {
+                // A describe_from_row resource ships its full record in the list
+                // fetch (Route53 has no GetResourceRecordSet), so describe is the
+                // row itself, not a redundant re-fetch.
+                if resource_def.describe_from_row {
+                    self.describe_data = Some(item);
+                    return;
+                }
                 // Check if this resource has a detail_sdk_method defined
                 if let Some(ref detail_method) = resource_def.detail_sdk_method {
                     // Build params from item data based on detail_sdk_method_params
