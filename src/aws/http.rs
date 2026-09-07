@@ -297,6 +297,24 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: true,
         }),
+        // Cost Explorer (ce) is a JSON-RPC service. Its endpoint is a globally
+        // hosted us-east-1 service; the budgets API shares the same shape.
+        "budgets" => Some(ServiceDefinition {
+            signing_name: "budgets",
+            endpoint_prefix: "budgets",
+            api_version: "2016-10-20",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSBudgetServiceGateway"),
+            is_global: true,
+        }),
+        "ce" => Some(ServiceDefinition {
+            signing_name: "ce",
+            endpoint_prefix: "ce",
+            api_version: "2017-10-25",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSInsightsIndexService"),
+            is_global: true,
+        }),
         "apigateway" => Some(ServiceDefinition {
             signing_name: "apigateway",
             endpoint_prefix: "apigateway",
@@ -742,6 +760,10 @@ impl AwsHttpClient {
                 )),
                 "cloudfront" => Ok(format!("https://cloudfront.{}", domain)),
                 "route53" => Ok(format!("https://route53.{}", domain)),
+                // ce (Cost Explorer) and budgets answer only from a fixed global
+                // host, like IAM, never a per-region one.
+                "ce" => Ok(format!("https://ce.{}", domain)),
+                "budgets" => Ok(format!("https://budgets.{}", domain)),
                 // Global only in the sense that CLOUDFRONT-scope objects are served
                 // from one place; the host still carries that region.
                 "wafv2" => Ok(format!("https://wafv2.{}.{}", region, domain)),
