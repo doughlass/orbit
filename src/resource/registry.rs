@@ -20,6 +20,7 @@ const RESOURCE_FILES: &[&str] = &[
     include_str!("../resources/athena.json"),
     include_str!("../resources/autoscaling.json"),
     include_str!("../resources/backup.json"),
+    include_str!("../resources/billing.json"),
     include_str!("../resources/cloudformation.json"),
     include_str!("../resources/cloudfront.json"),
     include_str!("../resources/cloudtrail.json"),
@@ -4200,6 +4201,76 @@ mod tests {
                 "lambda-functions column {} json_path {} has no field_mapping",
                 col.header,
                 col.json_path
+            );
+        }
+    }
+
+    /// The billing resources all speak the JSON-RPC wire (X-Amz-Target) so
+    /// their resource service must resolve to the ce/budgets service entries,
+    /// which carry the Amazon targets the live APIs demand. Pin each key so a
+    /// "service": "ce" typo or a dropped entry surfaces at startup.
+    #[test]
+    fn billing_resources_resolve_to_ce_and_budgets_targets() {
+        for (key, service_name, target) in [
+            ("billing-budgets", "budgets", "AWSBudgetServiceGateway"),
+            ("billing-cost-categories", "ce", "AWSInsightsIndexService"),
+            ("billing-anomaly-monitors", "ce", "AWSInsightsIndexService"),
+            ("billing-cost-anomalies", "ce", "AWSInsightsIndexService"),
+        ] {
+            let s = get_resource(key).unwrap_or_else(|| panic!("{}", key));
+            let api = s
+                .api_config
+                .as_ref()
+                .unwrap_or_else(|| panic!("{key} has api_config"));
+            assert_eq!(
+                api.protocol,
+                crate::resource::protocol::ApiProtocol::Json,
+                "{key} must use the JSON-RPC protocol"
+            );
+            let service = crate::aws::http::get_service(service_name)
+                .unwrap_or_else(|| panic!("{key} resolves missing service {service_name}"));
+            assert_eq!(service.target_prefix, Some(target));
+            assert!(
+                service.is_global,
+                "{service_name} is served from a single global host"
+            );
+            assert_eq!(
+                api.action.as_deref().map(str::to_string),
+                Some(match key {
+                    "billing-budgets" => "DescribeBudgets".to_string(),
+                    "billing-cost-categories" => "ListCostCategoryDefinitions".to_string(),
+                    "billing-anomaly-monitors" => "GetAnomalyMonitors".to_string(),
+                    _ => "GetAnomalies".to_string(),
+                })
+            );
+        }
+    }
+
+    /// Every billing resource id_field and name_field must be mapped, and the
+    /// DateInterval/AccountId that only resolve at request time must live in
+    /// static_params so the template resolver sees them.
+    #[test]
+    fn billing_resources_templates_and_ids_are_wired() {
+        for (key, has_template) in [
+            ("billing-budgets", true),
+            ("billing-cost-categories", false),
+            ("billing-anomaly-monitors", false),
+            ("billing-cost-anomalies", true),
+        ] {
+            let s = get_resource(key).unwrap_or_else(|| panic!("{}", key));
+            for field in [&s.id_field, &s.name_field] {
+                assert!(
+                    s.field_mappings.contains_key(field.as_str()),
+                    "{key} {field} must be in field_mappings"
+                );
+            }
+            let api = s.api_config.as_ref().expect("api_config");
+            assert_eq!(
+                api.static_params
+                    .values()
+                    .any(|v| v.to_string().contains("{{")),
+                has_template,
+                "{key} template presence mismatch"
             );
         }
     }

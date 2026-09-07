@@ -1,0 +1,182 @@
+{
+  "resources": {
+    "billing-budgets": {
+      "display_name": "Budgets",
+      "service": "budgets",
+      "sdk_method": "describe_budgets",
+      "sdk_method_params": {},
+      "response_path": "budgets",
+      "id_field": "BudgetName",
+      "name_field": "BudgetName",
+      "is_global": false,
+      "columns": [
+        { "header": "BUDGET", "json_path": "BudgetName", "width": 28 },
+        { "header": "TYPE", "json_path": "BudgetType", "width": 22 },
+        { "header": "PERIOD", "json_path": "TimeUnit", "width": 10 },
+        { "header": "LIMIT", "json_path": "Limit", "width": 12 },
+        { "header": "ACTUAL", "json_path": "Actual", "width": 12 },
+        { "header": "FORECAST", "json_path": "Forecasted", "width": 14 },
+        { "header": "LAST UPDATED", "json_path": "LastUpdatedTime", "width": 22 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "service_name": "budgets",
+        "action": "DescribeBudgets",
+        "response_root": "/Budgets",
+        "static_params": {
+          "AccountId": "{{account_id}}"
+        },
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/NextToken",
+          "max_results_param": "MaxResults",
+          "max_results": 1000
+        }
+      },
+      "field_mappings": {
+        "BudgetName": { "source": "/BudgetName", "default": "-" },
+        "BudgetType": { "source": "/BudgetType", "default": "-" },
+        "TimeUnit": { "source": "/TimeUnit", "default": "-" },
+        "Limit": { "source": "/BudgetLimit/Amount", "transform": "format_money", "default": "-" },
+        "Actual": { "source": "/CalculatedSpend/ActualSpend/Amount", "transform": "format_money", "default": "-" },
+        "Forecasted": { "source": "/CalculatedSpend/ForecastedSpend/Amount", "transform": "format_money", "default": "-" },
+        "LastUpdatedTime": { "source": "/LastUpdatedTime", "transform": "format_epoch_millis", "default": "-" }
+      }
+    },
+    "billing-cost-categories": {
+      "display_name": "Cost Categories",
+      "service": "ce",
+      "sdk_method": "list_cost_category_definitions",
+      "sdk_method_params": {},
+      "response_path": "cost_categories",
+      "id_field": "Name",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "CATEGORY", "json_path": "Name", "width": 28 },
+        { "header": "DEFAULT", "json_path": "DefaultValue", "width": 16 },
+        { "header": "RULES", "json_path": "NumberOfRules", "width": 7 },
+        { "header": "STATUS", "json_path": "ProcessingStatus", "width": 14, "color_map": "category_status" },
+        { "header": "EFFECTIVE FROM", "json_path": "EffectiveStart", "width": 18 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "service_name": "ce",
+        "action": "ListCostCategoryDefinitions",
+        "response_root": "/CostCategoryReferences",
+        "pagination": {
+          "input_token": "NextPageToken",
+          "output_token": "/NextPageToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/Name", "default": "-" },
+        "CostCategoryArn": { "source": "/CostCategoryArn", "default": "-" },
+        "DefaultValue": { "source": "/DefaultValue", "default": "-" },
+        "NumberOfRules": { "source": "/NumberOfRules", "default": "-" },
+        "ProcessingStatus": { "source": "/ProcessingStatus", "transform": "category_status", "default": "APPLIED" },
+        "EffectiveStart": { "source": "/EffectiveStart", "default": "-" },
+        "EffectiveEnd": { "source": "/EffectiveEnd", "default": "-" }
+      }
+    },
+    "billing-anomaly-monitors": {
+      "display_name": "Anomaly Monitors",
+      "service": "ce",
+      "sdk_method": "get_anomaly_monitors",
+      "sdk_method_params": {},
+      "response_path": "anomaly_monitors",
+      "id_field": "MonitorName",
+      "name_field": "MonitorName",
+      "is_global": false,
+      "preserve_order": true,
+      "columns": [
+        { "header": "MONITOR", "json_path": "MonitorName", "width": 30 },
+        { "header": "TYPE", "json_path": "MonitorType", "width": 12, "color_map": "monitor_type" },
+        { "header": "DIMENSION", "json_path": "MonitorDimension", "width": 20 },
+        { "header": "SCOPE", "json_path": "Scope", "width": 22 },
+        { "header": "CREATED", "json_path": "CreationDate", "width": 20 },
+        { "header": "LAST UPDATED", "json_path": "LastUpdatedDate", "width": 20 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "service_name": "ce",
+        "action": "GetAnomalyMonitors",
+        "response_root": "/AnomalyMonitors",
+        "pagination": {
+          "input_token": "NextPageToken",
+          "output_token": "/NextPageToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "MonitorName": { "source": "/MonitorName", "default": "-" },
+        "MonitorArn": { "source": "/MonitorArn", "default": "-" },
+        "MonitorType": { "source": "/MonitorType", "default": "-" },
+        "MonitorDimension": { "source": "/MonitorDimension", "default": "-" },
+        "Scope": { "source": "/MonitorSpecification/And/SERVICE", "transform": "array_to_csv", "default": "-" },
+        "CreationDate": { "source": "/CreationDate", "transform": "format_epoch_millis", "default": "-" },
+        "LastUpdatedDate": { "source": "/LastUpdatedDate", "transform": "format_epoch_millis", "default": "-" },
+        "LastEvaluatedDate": { "source": "/LastEvaluatedDate", "transform": "format_epoch_millis", "default": "-" }
+      }
+    },
+    "billing-cost-anomalies": {
+      "display_name": "Cost Anomalies",
+      "service": "ce",
+      "sdk_method": "get_anomalies",
+      "sdk_method_params": {},
+      "response_path": "anomalies",
+      "id_field": "AnomalyId",
+      "name_field": "AnomalyStartDate",
+      "is_global": false,
+      "preserve_order": true,
+      "columns": [
+        { "header": "START", "json_path": "AnomalyStartDate", "width": 12 },
+        { "header": "END", "json_path": "AnomalyEndDate", "width": 12 },
+        { "header": "AFFECTED", "json_path": "Affected", "width": 26 },
+        { "header": "IMPACT", "json_path": "TotalImpact", "width": 11 },
+        { "header": "SCORE", "json_path": "CurrentScore", "width": 7, "color_map": "score" },
+        { "header": "MONITOR", "json_path": "MonitorName", "width": 24 },
+        { "header": "FEEDBACK", "json_path": "Feedback", "width": 16, "color_map": "feedback" }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "json",
+        "service_name": "ce",
+        "action": "GetAnomalies",
+        "response_root": "/Anomalies",
+        "static_params": {
+          "DateInterval": {
+            "Start": "{{today-30d}}",
+            "End": "{{today}}"
+          }
+        },
+        "pagination": {
+          "input_token": "NextPageToken",
+          "output_token": "/NextPageToken",
+          "max_results_param": "MaxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "AnomalyId": { "source": "/AnomalyId", "default": "-" },
+        "AnomalyStartDate": { "source": "/AnomalyStartDate", "transform": "format_date_only", "default": "-" },
+        "AnomalyEndDate": { "source": "/AnomalyEndDate", "transform": "format_date_only", "default": "-" },
+        "Affected": { "source": "/RootCauses", "transform": "anomaly_scope", "default": "-" },
+        "TotalImpact": { "source": "/Impact/TotalImpact", "transform": "format_money", "default": "-" },
+        "CurrentScore": { "source": "/AnomalyScore/CurrentScore", "transform": "format_percent", "default": "-" },
+        "MonitorName": { "source": "/MonitorArn", "transform": "arn_tail", "default": "-" },
+        "Feedback": { "source": "/Feedback", "default": "NOT_REVIEWED" }
+      }
+    }
+  }
+}
