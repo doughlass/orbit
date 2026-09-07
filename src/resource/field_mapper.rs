@@ -65,6 +65,12 @@ pub fn apply_transform(value: &Value, transform: &str) -> Value {
         "format_bytes" => transform_format_bytes(value),
         "format_epoch_millis" => transform_format_epoch_millis(value),
         "format_epoch_seconds" => transform_format_epoch_seconds(value),
+        "format_date_only" => transform_format_date_only(value),
+        "format_money" => transform_format_money(value),
+        "format_percent" => transform_format_percent(value),
+        "arn_tail" => transform_arn_tail(value),
+        "anomaly_scope" => transform_anomaly_scope(value),
+        "category_status" => transform_category_status(value),
         "bool_to_yes_no" => transform_bool_to_yes_no(value),
         "array_to_csv" => transform_array_to_csv(value),
         "first_item" => transform_first_item(value),
@@ -383,6 +389,163 @@ pub fn transform_format_epoch_seconds(value: &Value) -> Value {
         .unwrap_or_else(|| "-".to_string());
 
     Value::String(formatted)
+}
+
+/// The billing APIs (Cost Explorer GetAnomalies, Budgets) hand dates back as
+/// ISO-8601 date-time strings and epoch values. Full-timestamp formatting is
+/// far too wide for a table cell, so reduce to "YYYY-MM-DD" — anomalies span
+/// whole calendar days rather than instants.
+pub fn transform_format_date_only(value: &Value) -> Value {
+    use chrono::TimeZone;
+
+    let dt = match value {
+        Value::String(s) => match chrono::DateTime::parse_from_rfc3339(s) {
+            Ok(dt) => dt.with_timezone(&chrono::Utc),
+            Err(_) => {
+                if let Ok(secs) = s.parse::<i64>() {
+                    if secs <= 0 {
+                        return Value::String("-".to_string());
+                    }
+                    let Some(dt) = chrono::Utc.timestamp_opt(secs, 0).single() else {
+                        return Value::String("-".to_string());
+                    };
+                    dt
+                } else {
+                    return Value::String("-".to_string());
+                }
+            }
+        },
+        Value::Number(n) => {
+            let secs = (n.as_f64().unwrap_or(0.0) as i64) / 1000;
+            if secs <= 0 {
+                return Value::String("-".to_string());
+            }
+            let Some(dt) = chrono::Utc.timestamp_opt(secs, 0).single() else {
+                return Value::String("-".to_string());
+            };
+            dt
+        }
+        _ => return Value::String("-".to_string()),
+    };
+
+    Value::String(dt.format("%Y-%m-%d").to_string())
+}
+
+/// Format a numeric spend amount, stripping noise. The budgets/CE APIs carry
+/// amounts as strings and doubles with floating-point residue
+/// ("3.0700000000000003", 1.0000000000000004e-2). A monetary column should
+/// read "$3.07", not the raw residue.
+pub fn transform_format_money(value: &Value) -> Value {
+    let amount: f64 = match value {
+        Value::Number(n) => n.as_f64().unwrap_or(0.0),
+        Value::String(s) => match s.parse::<f64>() {
+            Ok(v) => v,
+            Err(_) => return Value::String(s.clone()),
+        },
+        _ => return Value::String("-".to_string()),
+    };
+
+    let cents = (amount * 100.0).round() as i64;
+    if cents == 0 {
+        return Value::String("$0.00".to_string());
+    }
+    // Drop redundant cents for whole-dollar figures ("$12" not "$12.00").
+    if cents.abs() % 100 == 0 {
+        Value::String(format!("${}", cents / 100))
+    } else {
+        Value::String(format!("${}.{:02}", cents / 100, cents.abs() % 100))
+    }
+}
+
+/// An anomaly score is a double on a 0-100 scale. Round to whole and keep the
+/// trailing "%" so the SCORE column reads "63%" rather than "63.294812...".
+pub fn transform_format_percent(value: &Value) -> Value {
+    let raw: f64 = match value {
+        Value::Number(n) => n.as_f64().unwrap_or(0.0),
+        Value::String(s) => match s.parse::<f64>() {
+            Ok(v) => v,
+            Err(_) => return Value::String("-".to_string()),
+        },
+        _ => return Value::String("-".to_string()),
+    };
+
+    let rounded = raw.round();
+    if rounded <= 0.0 {
+        Value::String("-".to_string())
+    } else {
+        Value::String(format!("{:.0}%", rounded))
+    }
+}
+
+/// The final segment of an ARN, for columns that would otherwise overflow with
+/// the full "arn:aws:ce:us-east-1:123456789012:anomalymonitor/uuid" path. An
+/// ARN's tail is unique inside an account (both IDs and monitor names are the
+/// last path segment), so it is safe to display alone.
+pub fn transform_arn_tail(value: &Value) -> Value {
+    match value {
+        Value::String(s) => {
+            let tail = s.rsplit('/').next().unwrap_or(s);
+            Value::String(tail.to_string())
+        }
+        other => other.clone(),
+    }
+}
+
+/// Compact the CE anomaly "affected" description. The DimensionValue alone
+/// only names the dimension, not what was affected; the RootCauses carry
+/// Service/Region/LinkedAccount per outcome. Render the most specific useful
+/// summary: linked-account name if present, else service names.
+pub fn transform_anomaly_scope(value: &Value) -> Value {
+    let causes = match value {
+        Value::Array(arr) => arr.clone(),
+        Value::Object(_) => vec![value.clone()],
+        _ => return Value::String("-".to_string()),
+    };
+
+    let mut services: Vec<String> = vec![];
+    let mut accounts: Vec<String> = vec![];
+
+    for cause in causes {
+        if let Some(service) = cause.get("Service").and_then(|v| v.as_str()) {
+            if !service.is_empty() && !services.contains(&service.to_string()) {
+                services.push(service.to_string());
+            }
+        }
+        if let Some(name) = cause.get("LinkedAccountName").and_then(|v| v.as_str()) {
+            if !name.is_empty() && !accounts.contains(&name.to_string()) {
+                accounts.push(name.to_string());
+            }
+        }
+    }
+
+    if !accounts.is_empty() {
+        Value::String(accounts.join(", "))
+    } else if !services.is_empty() {
+        Value::String(services.join(", "))
+    } else {
+        Value::String("-".to_string())
+    }
+}
+
+/// Reduce a CostCategoryReference ProcessingStatus to its strongest state
+/// (APPLIED beats PROCESSING — a partially applied category still lists as
+/// PROCESSING until everything settles), so the STATUS column has one value
+/// the color map can match instead of a comma-joined mess.
+pub fn transform_category_status(value: &Value) -> Value {
+    let statuses = match value {
+        Value::Array(arr) => arr.clone(),
+        Value::Object(_) => vec![value.clone()],
+        _ => return Value::String("-".to_string()),
+    };
+
+    let has_processing = statuses
+        .iter()
+        .any(|s| s.get("Status").and_then(|v| v.as_str()) == Some("PROCESSING"));
+    Value::String(if has_processing {
+        "PROCESSING".to_string()
+    } else {
+        "APPLIED".to_string()
+    })
 }
 
 /// Transform boolean to Yes/No string
@@ -894,5 +1057,94 @@ mod tests {
             json!({"a": 1})
         );
         assert_eq!(apply_transform(&json!(42), "url_decode"), json!(42));
+    }
+
+    /// Budgets/CE carry amounts as strings with floating-point residue
+    /// ("3.0700000000000003"); the money formatter must not show the residue.
+    #[test]
+    fn format_money_strips_floating_point_residue() {
+        assert_eq!(
+            transform_format_money(&json!("3.0700000000000003")),
+            json!("$3.07")
+        );
+        assert_eq!(transform_format_money(&json!(42.0)), json!("$42"));
+        assert_eq!(transform_format_money(&json!("0.0012345")), json!("$0.00"));
+        assert_eq!(transform_format_money(&json!("bogus")), json!("bogus"));
+    }
+
+    /// Anomaly scores are doubles on a 0-100 scale; the SCORE column reads the
+    /// rounded whole plus a percent sign, not raw double residue.
+    #[test]
+    fn format_percent_rounds_anomaly_scores() {
+        assert_eq!(transform_format_percent(&json!(63.2)), json!("63%"));
+        assert_eq!(transform_format_percent(&json!(0.2)), json!("-"));
+        assert_eq!(transform_format_percent(&json!("nope")), json!("-"));
+    }
+
+    /// CE anomaly dates arrive as ISO-8601 date-times; the table shows the
+    /// calendar day, both so the width stays sane and because an anomaly is a
+    /// day-wide window, not an instant.
+    #[test]
+    fn format_date_only_reduces_iso_dates_to_calendar_days() {
+        assert_eq!(
+            transform_format_date_only(&json!("2026-08-02T00:00:00Z")),
+            json!("2026-08-02")
+        );
+        assert_eq!(
+            transform_format_date_only(&json!(1_785_628_800_000i64)),
+            json!("2026-08-02")
+        );
+        assert_eq!(transform_format_date_only(&json!("garbage")), json!("-"));
+    }
+
+    /// Monitor ARNs are unreasonably wide for a table; the last path segment
+    /// is unique within an account and is what the console shows.
+    #[test]
+    fn arn_tail_keeps_the_readable_part_of_an_arn() {
+        assert_eq!(
+            transform_arn_tail(&json!(
+                "arn:aws:ce:us-east-1:123456789012:anomalymonitor/9f9e8d8a-3f3e-4e4e-8e8e-1f1f1f1f1f1f"
+            )),
+            json!("9f9e8d8a-3f3e-4e4e-8e8e-1f1f1f1f1f1f")
+        );
+    }
+
+    /// RootCauses is a per-shape list; the AFFECTED column summarises it as
+    /// linked-account names when present, else the affected services.
+    #[test]
+    fn anomaly_scope_prefers_account_names_then_services() {
+        assert_eq!(
+            transform_anomaly_scope(&json!([
+                { "Service": "Amazon Elastic Compute Cloud - Compute", "LinkedAccountName": "prod" },
+                { "Service": "Amazon Simple Storage Service", "LinkedAccountName": "prod" }
+            ])),
+            json!("prod")
+        );
+        assert_eq!(
+            transform_anomaly_scope(&json!([
+                { "Service": "Amazon S3", "Region": "eu-west-1", "UsageType": "DataTransfer" }
+            ])),
+            json!("Amazon S3")
+        );
+        assert_eq!(transform_anomaly_scope(&json!("-")), json!("-"));
+    }
+
+    /// CostCategoryReference.ProcessingStatus is a list; the STATUS column
+    /// needs one value the color map matches. PROCESSING wins while a category
+    /// is half-applied.
+    #[test]
+    fn category_status_reduces_to_applied_or_processing() {
+        assert_eq!(
+            transform_category_status(&json!([{ "Status": "APPLIED" }])),
+            json!("APPLIED")
+        );
+        assert_eq!(
+            transform_category_status(&json!([
+                { "Status": "APPLIED" },
+                { "Status": "PROCESSING" }
+            ])),
+            json!("PROCESSING")
+        );
+        assert_eq!(transform_category_status(&json!([])), json!("APPLIED"));
     }
 }
