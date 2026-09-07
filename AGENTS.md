@@ -190,6 +190,15 @@ own match arm for exactly this. Check before you reuse `is_global: true`.
 the single easiest mistake in these files and it looks identical to "the account
 has none of these". Always confirm the root against a real response.
 
+**`{{account_id}}` and `{{today-Nd}}` resolve at request time, JSON protocol only.**
+Budgets `DescribeBudgets` requires the account id as a plain param, and Cost
+Explorer `GetAnomalies` needs a rolling 30-day `DateInterval` — neither can be a
+static value. The JSON handler (`src/resource/handlers/json.rs`) fetches
+`GetCallerIdentity` once, caches it, and substitutes the placeholders anywhere
+in the body before signing (WebTargeters with a literal `{{` are sent as-is, so
+this stays out of the query/rest handlers). The date window being stable across
+a paginated fetch is pinned by `resolve_templates_stable_across_two_resolutions`.
+
 **Pagination is not universal.** `DescribeAddresses` has no paginator and
 rejects `MaxResults`/`NextToken` with `InvalidParameterCombination`, so copying
 a neighbour's pagination block yields zero rows. Check the botocore model for
@@ -300,7 +309,7 @@ of the *request*, not of the render.
 ### Before every commit
 
 ```bash
-cargo test --quiet                              # currently 201 tests, all green
+cargo test --quiet                              # currently 338 tests, all green
 cargo clippy --all-targets -- -D warnings       # must be silent
 cargo fmt --check
 ```
@@ -341,8 +350,8 @@ Match the surrounding code. Specifics that are consistent throughout:
 - No CloudWatch alarms — needs a `monitoring` service entry in `http.rs`.
 - No CloudTrail `LookupEvents`.
 - The `elb` (classic) service is registered in `http.rs` but has no resources.
-- The new VPC networking resources have no `sub_resources` wiring, deliberately:
-  the obvious shortcut letters all collide with global keys.
+- Cost anomaly monitors' `Scope` row renders only SERVICE names from
+  `MonitorSpecification/And`, ignoring REGION / USAGE_TYPE / HOSTED_RESOURCES.
 - Column widths are fixed percentages per resource and most do not sum to 100.
   ratatui compresses them proportionally, which the layout code now measures
   accurately. Content-aware auto-fit is unimplemented.
