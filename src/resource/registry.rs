@@ -365,6 +365,39 @@ pub fn get_color_for_value(color_map_name: &str, value: &str) -> Option<[u8; 3]>
         .map(|c| c.color)
 }
 
+// =============================================================================
+// Dashboards (composite pages, e.g. billing)
+// =============================================================================
+
+static DASHBOARD_FILES: &[&str] = &[include_str!("../resources/dashboards.json")];
+
+static DASHBOARDS: OnceLock<HashMap<String, super::dashboard::DashboardDef>> = OnceLock::new();
+
+/// Get the dashboard registry (loads from embedded JSON on first access).
+/// A malformed dashboard definition is a startup panic, matching how resource
+/// JSON failures behave: fail loudly rather than lose a panel silently.
+pub fn get_dashboards() -> &'static HashMap<String, super::dashboard::DashboardDef> {
+    DASHBOARDS.get_or_init(|| {
+        let mut all = HashMap::new();
+        for content in DASHBOARD_FILES {
+            let parsed: super::dashboard::DashboardFile = serde_json::from_str(content)
+                .unwrap_or_else(|e| panic!("Failed to parse embedded dashboard JSON: {e}"));
+            all.extend(parsed.dashboards);
+        }
+        all
+    })
+}
+
+/// Get a dashboard definition by key (e.g. "billing")
+pub fn get_dashboard(key: &str) -> Option<&'static super::dashboard::DashboardDef> {
+    get_dashboards().get(key)
+}
+
+/// All dashboard keys, for command autocomplete
+pub fn all_dashboard_keys() -> Vec<&'static str> {
+    get_dashboards().keys().map(|k| k.as_str()).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4273,5 +4306,135 @@ mod tests {
                 "{key} template presence mismatch"
             );
         }
+    }
+
+    /// Dashboard panels must declare exactly the fetches their Rust computor
+    /// reads: a missing fetch would surface as an error panel, an extra one
+    /// would be silent definition rot.
+    #[test]
+    fn billing_dashboard_panels_declare_required_fetches() {
+        let def = get_dashboard("billing").expect("billing dashboard registered");
+        assert_eq!(
+            def.display_name, "Billing Overview",
+            "billing display_name drifted"
+        );
+        assert_eq!(def.panels.len(), 4, "billing must have its four panels");
+        for panel in &def.panels {
+            let required = panel.kind.required_fetches();
+            for name in required {
+                assert!(
+                    panel.fetches.contains_key(*name),
+                    "panel '{}' kind {:?} is missing the '{}' fetch",
+                    panel.title,
+                    panel.kind,
+                    name
+                );
+            }
+            for (name, fetch) in &panel.fetches {
+                assert!(
+                    required.contains(&name.as_str()),
+                    "panel '{}' declares fetch '{}' which its kind never reads",
+                    panel.title,
+                    name
+                );
+                assert!(
+                    crate::aws::http::get_service(&fetch.service).is_some(),
+                    "panel '{}' fetch '{}' uses unregistered service '{}'",
+                    panel.title,
+                    name,
+                    fetch.service
+                );
+            }
+        }
+    }
+
+    /// Dashboard date windows lean on the template resolver; a placeholder
+    /// typo would be sent literally to AWS and fail opaquely. Every {{...}}
+    /// in a dashboard static_params must match a known template name.
+    #[test]
+    fn billing_dashboard_templates_are_known_placeholders() {
+        let known = [
+            "{{account_id}}",
+            "{{month_start}}",
+            "{{prev_month_start}}",
+            "{{prev_month_end}}",
+            "{{next_month_start}}",
+        ];
+        let def = get_dashboard("billing").expect("billing dashboard registered");
+        for panel in &def.panels {
+            for (name, fetch) in &panel.fetches {
+                let json = fetch.static_params.to_string();
+                for part in json.split("{{").skip(1) {
+                    let template = format!("{{{{{}", part.split("}}").next().unwrap_or(""));
+                    let template = if part.contains("}}") {
+                        template + "}}"
+                    } else {
+                        template
+                    };
+                    assert!(
+                        known.contains(&template.as_str())
+                            || template.starts_with("{{today")
+                            || template.starts_with("{{month_start-"),
+                        "panel '{}' fetch '{}' uses unknown template {}",
+                        panel.title,
+                        name,
+                        template
+                    );
+                }
+            }
+        }
+    }
+
+    /// GetAnomalies' DateInterval is AnomalyDateInterval on the wire: its
+    /// members are StartDate/EndDate, not Start/End (which is what
+    /// GetCostAndUsage uses). The server answers "Value null at
+    /// 'dateInterval.startDate'" to Start/End — a message that reads like the
+    /// params were missing entirely. Pin the member names for every
+    /// GetAnomalies caller.
+    #[test]
+    fn get_anomalies_date_interval_uses_start_date_and_end_date() {
+        let mut checked = 0;
+        let def = get_dashboard("billing").expect("billing dashboard registered");
+        for panel in &def.panels {
+            for fetch in panel.fetches.values() {
+                if fetch.action != "GetAnomalies" {
+                    continue;
+                }
+                let interval = fetch
+                    .static_params
+                    .get("DateInterval")
+                    .unwrap_or_else(|| panic!("GetAnomalies fetch needs DateInterval"));
+                assert!(
+                    interval.get("StartDate").is_some(),
+                    "GetAnomalies DateInterval must use StartDate, got {interval}"
+                );
+                assert!(
+                    interval.get("EndDate").is_some(),
+                    "GetAnomalies DateInterval must use EndDate, got {interval}"
+                );
+                assert!(
+                    interval.get("Start").is_none() && interval.get("End").is_none(),
+                    "GetAnomalies DateInterval must not use GetCostAndUsage's Start/End names"
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked >= 1, "no GetAnomalies fetch found to pin");
+    }
+
+    /// Same wire-shape pin for the billing-cost-anomalies list resource.
+    #[test]
+    fn billing_cost_anomalies_resource_uses_anomaly_date_members() {
+        let s = get_resource("billing-cost-anomalies").expect("billing-cost-anomalies resource");
+        let api = s.api_config.as_ref().expect("api_config");
+        assert_eq!(api.action.as_deref(), Some("GetAnomalies"));
+        let interval = api
+            .static_params
+            .get("DateInterval")
+            .unwrap_or_else(|| panic!("billing-cost-anomalies needs a DateInterval"));
+        assert!(
+            interval.get("StartDate").is_some() && interval.get("EndDate").is_some(),
+            "billing-cost-anomalies DateInterval must use StartDate/EndDate, got {interval}"
+        );
     }
 }

@@ -34,9 +34,30 @@ async fn handle_key_event(app: &mut App, key: KeyEvent) -> Result<bool> {
         Mode::SsoLogin => handle_sso_login_mode(app, key).await,
         Mode::ConsoleLogin => handle_console_login_mode(app, key).await,
         Mode::LogTail => handle_log_tail_mode(app, key).await,
+        Mode::Dashboard => handle_dashboard_mode(app, key),
         Mode::ColumnPicker => handle_column_picker_mode(app, key),
         Mode::Update => handle_update_mode(app, key).await,
     }
+}
+
+/// Dashboard pages scroll (they may exceed one screen on small terminals) and
+/// close with Esc/q back to the resource list.
+fn handle_dashboard_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => app.close_dashboard(),
+        KeyCode::Char('j') | KeyCode::Down => {
+            if let Some(state) = app.dashboard_state.as_mut() {
+                state.scroll = state.scroll.saturating_add(1);
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            if let Some(state) = app.dashboard_state.as_mut() {
+                state.scroll = state.scroll.saturating_sub(1);
+            }
+        }
+        _ => {}
+    }
+    Ok(false)
 }
 
 // Default region shortcuts (used when no recent history)

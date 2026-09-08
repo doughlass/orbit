@@ -1,5 +1,6 @@
 mod column_picker;
 mod command_box;
+mod dashboard;
 mod dialog;
 mod header;
 mod help;
@@ -49,6 +50,9 @@ pub fn render(f: &mut Frame, app: &App) {
         }
         Mode::LogTail => {
             render_log_tail_view(f, app, chunks[1]);
+        }
+        Mode::Dashboard => {
+            dashboard::render(f, app, chunks[1]);
         }
         _ => {
             render_main_content(f, app, chunks[1]);

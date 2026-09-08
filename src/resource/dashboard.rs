@@ -1,0 +1,782 @@
+//! Billing dashboards: composite pages assembled from several API calls.
+//!
+//! A dashboard is a new kind of view (unlike the one-resource-per-list views)
+//! driven by its own JSON definition: each panel declares named fetches and a
+//! `kind` selects a Rust renderer/computor. Adding a dashboard needs no new
+//! Rust; the four kinds here are capabilities, the same split the resource
+//! JSONs use for transforms.
+
+use crate::aws::client::AwsClients;
+use crate::resource::handlers::get_protocol_handler;
+use crate::resource::protocol::{ApiConfig, ApiProtocol};
+use anyhow::Result;
+use chrono::Datelike;
+use serde::Deserialize;
+use serde_json::Value;
+use std::collections::HashMap;
+
+// =============================================================================
+// Definition (parsed from dashboards JSON)
+// =============================================================================
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DashboardFile {
+    pub dashboards: HashMap<String, DashboardDef>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DashboardDef {
+    pub display_name: String,
+    #[serde(default)]
+    pub panels: Vec<DashboardPanel>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DashboardPanel {
+    pub kind: PanelKind,
+    pub title: String,
+    #[serde(default)]
+    pub fetches: HashMap<String, PanelFetch>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanelKind {
+    CostSummary,
+    CostMonitor,
+    CostBreakdown,
+    TopTrends,
+}
+
+impl PanelKind {
+    /// The named fetches a kind's computor reads. A missing or extra name is
+    /// a definition error — fail loudly rather than render an empty panel.
+    pub fn required_fetches(&self) -> &'static [&'static str] {
+        match self {
+            PanelKind::CostSummary => &["mtd", "last_month", "forecast"],
+            PanelKind::CostMonitor => &["budgets", "anomalies"],
+            PanelKind::CostBreakdown => &["monthly_by_service"],
+            PanelKind::TopTrends => &["monthly_by_service"],
+        }
+    }
+}
+
+// `deny_unknown_fields` on the definition structs so a misspelled panel key
+// fails at startup instead of silently dropping a widget.
+impl<'de> Deserialize<'de> for PanelKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "cost_summary" => Ok(PanelKind::CostSummary),
+            "cost_monitor" => Ok(PanelKind::CostMonitor),
+            "cost_breakdown" => Ok(PanelKind::CostBreakdown),
+            "top_trends" => Ok(PanelKind::TopTrends),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &[
+                    "cost_summary",
+                    "cost_monitor",
+                    "cost_breakdown",
+                    "top_trends",
+                ],
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PanelFetch {
+    pub service: String,
+    pub action: String,
+    #[serde(default)]
+    pub static_params: Value,
+    #[serde(default)]
+    pub response_root: Option<String>,
+}
+
+// =============================================================================
+// Panel output (computed data the UI renders)
+// =============================================================================
+
+#[derive(Debug, Clone)]
+pub enum PanelData {
+    Stats(Vec<StatItem>),
+    Monitor(MonitorData),
+    Breakdown(BreakdownData),
+    Trends(Vec<TrendRow>),
+    Error(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct StatItem {
+    pub label: String,
+    pub value: String,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MonitorData {
+    pub budgets_line: String,
+    pub anomalies_line: String,
+    /// True when a budget is over or anomalies exist; renders red.
+    pub alert: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct BreakdownData {
+    /// One row per month, oldest first.
+    pub months: Vec<MonthRow>,
+    /// Service names, index == colour index used by MonthRow segments.
+    pub legend: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MonthRow {
+    pub label: String,
+    pub total: f64,
+    /// (legend index, amount) pairs, amounts sum to `total`.
+    pub segments: Vec<(usize, f64)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrendRow {
+    pub service: String,
+    pub delta: f64,
+    /// Percent change when the base month is non-zero.
+    pub pct: Option<f64>,
+}
+
+// =============================================================================
+// Fetch + compute
+// =============================================================================
+
+/// Run every panel of a dashboard and return the computed data aligned with
+/// `def.panels`. A failing fetch degrades its own panel to `PanelData::Error`
+/// so one throttled call does not blank the page.
+pub async fn fetch_dashboard(def: &DashboardDef, clients: &AwsClients) -> Vec<PanelData> {
+    let mut out = Vec::with_capacity(def.panels.len());
+    for panel in &def.panels {
+        out.push(run_panel(panel, clients).await);
+    }
+    out
+}
+
+async fn run_panel(panel: &DashboardPanel, clients: &AwsClients) -> PanelData {
+    let mut responses: HashMap<String, Value> = HashMap::new();
+    for name in panel.kind.required_fetches() {
+        let Some(fetch) = panel.fetches.get(*name) else {
+            return PanelData::Error(format!(
+                "panel '{}' kind {:?} is missing its '{}' fetch",
+                panel.title, panel.kind, name
+            ));
+        };
+        match run_fetch(fetch, clients).await {
+            Ok(v) => {
+                responses.insert(name.to_string(), v);
+            }
+            Err(e) => return PanelData::Error(format!("{}: {e}", panel.title)),
+        }
+    }
+    match panel.kind {
+        PanelKind::CostSummary => compute_cost_summary(&responses),
+        PanelKind::CostMonitor => compute_cost_monitor(&responses),
+        PanelKind::CostBreakdown => compute_breakdown(&responses),
+        PanelKind::TopTrends => compute_trends(&responses),
+    }
+}
+
+async fn run_fetch(fetch: &PanelFetch, clients: &AwsClients) -> Result<Value> {
+    // ApiConfig stores static params as a map; the JSON definition carries an
+    // object, so convert (a non-object is an error — fail loudly).
+    let static_params: HashMap<String, Value> = match fetch.static_params.clone() {
+        Value::Object(map) => map.into_iter().collect(),
+        Value::Null => HashMap::new(),
+        other => {
+            return Err(anyhow::anyhow!(
+                "{}.{} static_params must be an object, got {other}",
+                fetch.service,
+                fetch.action
+            ))
+        }
+    };
+    let config = ApiConfig {
+        protocol: ApiProtocol::Json,
+        service_name: Some(fetch.service.clone()),
+        action: Some(fetch.action.clone()),
+        static_params,
+        ..Default::default()
+    };
+    let handler = get_protocol_handler(ApiProtocol::Json);
+    let raw = handler
+        .execute(
+            clients,
+            &fetch.service,
+            &config,
+            &Value::Object(Default::default()),
+        )
+        .await?;
+    let parsed: Value = serde_json::from_str(&raw)
+        .map_err(|e| anyhow::anyhow!("bad JSON from {}: {e}", fetch.action))?;
+    Ok(match &fetch.response_root {
+        Some(p) => parsed.pointer(p).cloned().unwrap_or(Value::Null),
+        None => parsed,
+    })
+}
+
+/// Cost Explorer amounts arrive as strings ("354237.04000000004"); parse
+/// tolerantly and treat anything unreadable as zero rather than NaN-poisoning
+/// the sums.
+fn amount(v: Option<&Value>) -> f64 {
+    v.and_then(|v| match v {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.parse::<f64>().ok(),
+        _ => None,
+    })
+    .unwrap_or(0.0)
+}
+
+fn compute_cost_summary(responses: &HashMap<String, Value>) -> PanelData {
+    let Some(mtd_rows) = responses.get("mtd").and_then(|v| v.as_array()) else {
+        return PanelData::Error("cost summary: no mtd results".into());
+    };
+    let mtd_total = amount(
+        mtd_rows
+            .first()
+            .and_then(|r| r.pointer("/Total/UnblendedCost/Amount")),
+    );
+
+    let Some(last_rows) = responses.get("last_month").and_then(|v| v.as_array()) else {
+        return PanelData::Error("cost summary: no last-month results".into());
+    };
+    // Daily rows: sum the days up to today's day-of-month for "same period",
+    // all rows for the full month. Day-of-month alignment is what the console
+    // means by "same time period" (Aug 1-8 vs Sep 1-8).
+    let today_day = chrono::Utc::now().day() as i64;
+    let mut same_period = 0.0;
+    let mut last_total = 0.0;
+    for row in last_rows {
+        let day = row
+            .pointer("/TimePeriod/Start")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.get(8..10))
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0);
+        let cost = amount(row.pointer("/Total/UnblendedCost/Amount"));
+        last_total += cost;
+        if day <= today_day {
+            same_period += cost;
+        }
+    }
+
+    // response_root is /Total, so this value is the Total object itself.
+    // GetCostForecast rejects a Start earlier than today and its amount
+    // already matches the console's "Total forecasted cost for current
+    // month" (measured live), so it is used as-is — no MTD double-add.
+    let forecast_month = amount(responses.get("forecast").and_then(|v| v.pointer("/Amount")));
+
+    let pct = |a: f64, b: f64| -> Option<String> {
+        if b.abs() < 0.005 {
+            return None;
+        }
+        let p = (a - b) / b * 100.0;
+        if p.abs() < 0.5 {
+            return None;
+        }
+        let arrow = if p > 0.0 { "↑" } else { "↓" };
+        Some(format!("{arrow} {:.0}% vs", p.abs()))
+    };
+
+    PanelData::Stats(vec![
+        StatItem {
+            label: "Month-to-date cost".into(),
+            value: money(mtd_total),
+            note: pct(mtd_total, same_period).map(|n| format!("{n} last month same period")),
+        },
+        StatItem {
+            label: "Last month, same period".into(),
+            value: money(same_period),
+            note: None,
+        },
+        StatItem {
+            label: "Forecast, current month".into(),
+            value: money(forecast_month),
+            note: pct(forecast_month, last_total).map(|n| format!("{n} last month total")),
+        },
+        StatItem {
+            label: "Last month's total".into(),
+            value: money(last_total),
+            note: None,
+        },
+    ])
+}
+
+fn compute_cost_monitor(responses: &HashMap<String, Value>) -> PanelData {
+    let budgets = responses
+        .get("budgets")
+        .and_then(|v| v.pointer("/Budgets"))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let over: Vec<&str> = budgets
+        .iter()
+        .filter(|b| {
+            let limit = amount(b.pointer("/BudgetLimit/Amount"));
+            let actual = amount(b.pointer("/CalculatedSpend/ActualSpend/Amount"));
+            let forecasted = amount(b.pointer("/CalculatedSpend/ForecastedSpend/Amount"));
+            limit > 0.0 && (actual > limit || forecasted > limit)
+        })
+        .filter_map(|b| b.pointer("/BudgetName").and_then(|v| v.as_str()))
+        .collect();
+
+    let anomalies = responses
+        .get("anomalies")
+        .and_then(|v| v.pointer("/Anomalies"))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let anomaly_count = anomalies.len();
+    let anomaly_impact: f64 = anomalies
+        .iter()
+        .map(|a| amount(a.pointer("/Impact/TotalImpact")))
+        .sum();
+
+    let budgets_line = if budgets.is_empty() {
+        "No budgets created".to_string()
+    } else if over.is_empty() {
+        format!("{} budget(s), none over limit", budgets.len())
+    } else {
+        format!(
+            "{} budget(s) over limit or forecast: {}",
+            over.len(),
+            over.join(", ")
+        )
+    };
+    let anomalies_line = if anomaly_count == 0 {
+        "No anomalies this month".to_string()
+    } else {
+        format!(
+            "{} anomaly(ies) detected (MTD), {} impact",
+            anomaly_count,
+            money(anomaly_impact)
+        )
+    };
+
+    PanelData::Monitor(MonitorData {
+        budgets_line,
+        anomalies_line,
+        alert: !over.is_empty() || anomaly_count > 0,
+    })
+}
+
+/// Reduce GetCostAndUsage ResultsByTime (monthly, grouped by SERVICE) into
+/// month rows plus a top-N legend with an "Others" bucket.
+type MonthlyRows = (Vec<(String, Vec<(String, f64)>)>, Vec<(String, f64)>);
+
+fn monthly_rows(results: &Value) -> MonthlyRows {
+    let mut months: Vec<(String, Vec<(String, f64)>)> = Vec::new();
+    let mut totals: HashMap<String, f64> = HashMap::new();
+    for row in results.as_array().cloned().unwrap_or_default() {
+        let start = row
+            .pointer("/TimePeriod/Start")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let mut groups: Vec<(String, f64)> = Vec::new();
+        for g in row
+            .pointer("/Groups")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+        {
+            let key = g
+                .pointer("/Keys/0")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            let cost = amount(g.pointer("/Metrics/UnblendedCost/Amount"));
+            if cost.abs() < 0.005 {
+                continue;
+            }
+            *totals.entry(key.clone()).or_default() += cost;
+            groups.push((key, cost));
+        }
+        months.push((month_label(&start), groups));
+    }
+    let mut ranked: Vec<(String, f64)> = totals
+        .into_iter()
+        // Negative totals are credits/refunds, not spend categories: they
+        // belong to no legend row (their segments are invisible anyway) and
+        // would otherwise crowd out real services. The month total rows still
+        // include them, so the bars stay honest.
+        .filter(|(_, total)| *total > 0.0)
+        .collect();
+    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    (months, ranked)
+}
+
+fn compute_breakdown(responses: &HashMap<String, Value>) -> PanelData {
+    let Some(results) = responses.get("monthly_by_service") else {
+        return PanelData::Error("cost breakdown: no monthly results".into());
+    };
+    let (months, ranked) = monthly_rows(results);
+    if months.is_empty() {
+        return PanelData::Error("cost breakdown: no months returned".into());
+    }
+    // Top five services get their own colour; everything else — long tail and
+    // credits alike — folds into one "Others" amount, the way the console does.
+    let top: Vec<String> = ranked.iter().take(5).map(|(s, _)| s.clone()).collect();
+    let mut legend = top.clone();
+    let has_others = ranked.len() > 5;
+    if has_others {
+        legend.push("Others".into());
+    }
+    let rows = months
+        .into_iter()
+        .map(|(label, groups)| {
+            let total: f64 = groups.iter().map(|(_, c)| c).sum();
+            // Accumulate into one slot per legend entry plus a fold slot for
+            // everything else (long tail and credits alike). The fold slot is
+            // only kept when an "Others" legend entry exists.
+            let mut per_index = vec![0.0; top.len() + 1];
+            for (name, cost) in groups {
+                let idx = top.iter().position(|t| *t == name).unwrap_or(top.len());
+                per_index[idx] += cost;
+            }
+            let mut segments: Vec<(usize, f64)> = per_index
+                .iter()
+                .enumerate()
+                .filter(|(_, cost)| cost.abs() >= 0.005)
+                .map(|(idx, cost)| (idx, *cost))
+                .collect();
+            segments.sort_by_key(|(idx, _)| *idx);
+            if !has_others {
+                segments.retain(|(idx, _)| *idx < top.len());
+            }
+            MonthRow {
+                label,
+                total,
+                segments,
+            }
+        })
+        .collect();
+    PanelData::Breakdown(BreakdownData {
+        months: rows,
+        legend,
+    })
+}
+
+fn compute_trends(responses: &HashMap<String, Value>) -> PanelData {
+    let Some(results) = responses.get("monthly_by_service") else {
+        return PanelData::Error("top trends: no monthly results".into());
+    };
+    let (months, _) = monthly_rows(results);
+    if months.len() < 2 {
+        return PanelData::Error("top trends: need at least two months".into());
+    }
+    // The console compares the last two complete months, so a row for the
+    // in-progress month (its label is the current month name) is dropped
+    // before diffing.
+    let now_month = month_name(chrono::Utc::now().month());
+    let last_is_partial = months
+        .last()
+        .map(|(label, _)| label.starts_with(now_month))
+        .unwrap_or(false);
+    let (base_month, recent_month) = if last_is_partial && months.len() >= 3 {
+        (&months[months.len() - 3], &months[months.len() - 2])
+    } else {
+        (&months[months.len() - 2], &months[months.len() - 1])
+    };
+
+    let mut base_map: HashMap<&str, f64> = HashMap::new();
+    for (name, cost) in &base_month.1 {
+        base_map.insert(name.as_str(), *cost);
+    }
+    let mut recent_map: HashMap<&str, f64> = HashMap::new();
+    for (name, cost) in &recent_month.1 {
+        recent_map.insert(name.as_str(), *cost);
+    }
+    let mut rows: Vec<TrendRow> = Vec::new();
+    for (name, recent_cost) in &recent_map {
+        let base_cost = base_map.get(name).copied().unwrap_or(0.0);
+        let delta = recent_cost - base_cost;
+        if delta.abs() < 0.005 {
+            continue;
+        }
+        let pct = if base_cost.abs() > 0.005 {
+            // Base magnitude keeps the sign of the delta on the percentage:
+            // against a negative base (credits) a plain division would report
+            // a cost decrease as a positive percent, which reads backwards.
+            Some(delta / base_cost.abs() * 100.0)
+        } else {
+            None
+        };
+        rows.push(TrendRow {
+            service: name.to_string(),
+            delta,
+            pct,
+        });
+    }
+    for (name, base_cost) in &base_map {
+        if !recent_map.contains_key(name) && base_cost.abs() >= 0.005 {
+            rows.push(TrendRow {
+                service: name.to_string(),
+                delta: -base_cost,
+                pct: Some(-100.0),
+            });
+        }
+    }
+    rows.sort_by(|a, b| {
+        b.delta
+            .abs()
+            .partial_cmp(&a.delta.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    rows.truncate(10);
+    PanelData::Trends(rows)
+}
+
+fn money(v: f64) -> String {
+    match crate::resource::field_mapper::transform_format_money(&Value::from(v)) {
+        Value::String(s) => s,
+        _ => "-".to_string(),
+    }
+}
+
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+fn month_name(m: u32) -> &'static str {
+    MONTHS[(m as usize - 1).min(11)]
+}
+
+/// "2026-09-01" (TimePeriod.Start) -> "Sep 2026".
+fn month_label(start: &str) -> String {
+    if start.len() >= 7 {
+        if let Ok(m) = start[5..7].parse::<u32>() {
+            if (1..=12).contains(&m) {
+                return format!("{} {}", month_name(m), &start[..4]);
+            }
+        }
+    }
+    start.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// A GetCostAndUsage ResultsByTime fixture: one monthly MTD row and a
+    /// daily previous month (3 rows), plus a GetCostForecast total.
+    fn fixture_summary_responses() -> HashMap<String, Value> {
+        HashMap::from([
+            (
+                "mtd".to_string(),
+                json!([{
+                    "TimePeriod": { "Start": "2026-09-01", "End": "2026-10-01" },
+                    "Total": { "UnblendedCost": { "Amount": "354237.04", "Unit": "USD" } }
+                }]),
+            ),
+            (
+                "last_month".to_string(),
+                json!([
+                    { "TimePeriod": { "Start": "2026-08-01" },
+                      "Total": { "UnblendedCost": { "Amount": "40000" } } },
+                    { "TimePeriod": { "Start": "2026-08-08" },
+                      "Total": { "UnblendedCost": { "Amount": "50000" } } },
+                    { "TimePeriod": { "Start": "2026-08-20" },
+                      "Total": { "UnblendedCost": { "Amount": "74484.01" } } }
+                ]),
+            ),
+            (
+                // Post-extraction: response_root is /Total, so the value is
+                // the Total object itself.
+                "forecast".to_string(),
+                json!({ "Amount": "288683.53", "Unit": "USD" }),
+            ),
+        ])
+    }
+
+    /// The summary panel must produce the four console stats, with the
+    /// "same period" slice counting only days up to today's day-of-month and
+    /// the forecast taken straight from GetCostForecast (its amount already
+    /// covers the month total, measured live against the console).
+    #[test]
+    fn cost_summary_computes_the_four_console_stats() {
+        let data = compute_cost_summary(&fixture_summary_responses());
+        let PanelData::Stats(items) = data else {
+            panic!("summary must compute Stats, got {data:?}");
+        };
+        let values: Vec<&str> = items.iter().map(|s| s.value.as_str()).collect();
+        assert_eq!(
+            values,
+            vec!["$354,237.04", "$90,000", "$288,683.53", "$164,484.01"],
+            "mtd / same-period / forecast / last-month-total"
+        );
+        let mtd_note = items[0].note.clone().unwrap_or_default();
+        assert!(
+            mtd_note.contains("last month same period"),
+            "the MTD stat must compare against the same period: {mtd_note}"
+        );
+        let forecast_note = items[2].note.clone().unwrap_or_default();
+        assert!(
+            forecast_note.contains("last month total"),
+            "the forecast stat must compare against last month's total: {forecast_note}"
+        );
+    }
+
+    /// Budgets with actual or forecasted spend past the limit are flagged,
+    /// and anomaly count plus summed impact make up the second line.
+    #[test]
+    fn cost_monitor_flags_over_budgets_and_sums_anomaly_impact() {
+        let responses = HashMap::from([
+            (
+                "budgets".to_string(),
+                json!({ "Budgets": [
+                    { "BudgetName": "prod", "BudgetLimit": { "Amount": "1000", "Unit": "USD" },
+                      "CalculatedSpend": {
+                          "ActualSpend": { "Amount": "1200" },
+                          "ForecastedSpend": { "Amount": "3000" } } },
+                    { "BudgetName": "dev", "BudgetLimit": { "Amount": "1000", "Unit": "USD" },
+                      "CalculatedSpend": {
+                          "ActualSpend": { "Amount": "10" },
+                          "ForecastedSpend": { "Amount": "20" } } }
+                ] }),
+            ),
+            (
+                "anomalies".to_string(),
+                json!({ "Anomalies": [
+                    { "Impact": { "TotalImpact": "100.5" } },
+                    { "Impact": { "TotalImpact": "-0.5" } }
+                ] }),
+            ),
+        ]);
+        let data = compute_cost_monitor(&responses);
+        let PanelData::Monitor(m) = data else {
+            panic!("monitor must compute Monitor, got {data:?}");
+        };
+        assert!(
+            m.alert,
+            "an over-limit budget and anomalies must trip the alert"
+        );
+        assert!(
+            m.budgets_line.contains("prod") && !m.budgets_line.contains("dev"),
+            "only the over-limit budget is named: {}",
+            m.budgets_line
+        );
+        assert!(
+            m.anomalies_line.contains("2 anomaly") && m.anomalies_line.contains("$100"),
+            "anomaly line must count and sum impact: {}",
+            m.anomalies_line
+        );
+    }
+
+    /// An account with no budgets and no anomalies renders the "setup
+    /// required" style message without an alert.
+    #[test]
+    fn cost_monitor_reports_setup_required_when_empty() {
+        let responses = HashMap::from([
+            ("budgets".to_string(), json!({ "Budgets": [] })),
+            ("anomalies".to_string(), json!({ "Anomalies": [] })),
+        ]);
+        let data = compute_cost_monitor(&responses);
+        let PanelData::Monitor(m) = data else {
+            panic!("monitor must compute Monitor, got {data:?}");
+        };
+        assert!(
+            !m.alert,
+            "nothing over budget and no anomalies is not an alert"
+        );
+        assert_eq!(m.budgets_line, "No budgets created");
+    }
+
+    /// A six-month grouped fixture: months oldest-first, top five services
+    /// ranked by spend across the window, the tail folded into Others.
+    fn fixture_six_month_results() -> Value {
+        json!([
+            { "TimePeriod": { "Start": "2026-04-01" },
+              "Groups": [
+                { "Keys": ["Amazon S3"], "Metrics": { "UnblendedCost": { "Amount": "10" } } },
+                { "Keys": ["EC2"], "Metrics": { "UnblendedCost": { "Amount": "90" } } }
+              ] },
+            { "TimePeriod": { "Start": "2026-05-01" },
+              "Groups": [
+                { "Keys": ["Amazon S3"], "Metrics": { "UnblendedCost": { "Amount": "10" } } },
+                { "Keys": ["EC2"], "Metrics": { "UnblendedCost": { "Amount": "110" } } }
+              ] },
+            { "TimePeriod": { "Start": "2026-06-01" },
+              "Groups": [
+                { "Keys": ["EC2"], "Metrics": { "UnblendedCost": { "Amount": "100" } } }
+              ] }
+        ])
+    }
+
+    /// Breakdown must label months from TimePeriod.Start and rank services
+    /// by spend across the whole window for the legend.
+    #[test]
+    fn cost_breakdown_labels_months_and_ranks_services() {
+        let responses = HashMap::from([(
+            "monthly_by_service".to_string(),
+            fixture_six_month_results(),
+        )]);
+        let data = compute_breakdown(&responses);
+        let PanelData::Breakdown(b) = data else {
+            panic!("breakdown must compute Breakdown, got {data:?}");
+        };
+        assert_eq!(b.months.len(), 3);
+        assert_eq!(b.months[0].label, "Apr 2026");
+        assert_eq!(
+            b.legend[0], "EC2",
+            "EC2 has the most spend across the window"
+        );
+        assert_eq!(b.legend[1], "Amazon S3");
+        assert_eq!(b.months[0].total, 100.0);
+    }
+
+    /// Trends diff the last two complete months (a partial current month row
+    /// is dropped) and order by absolute delta.
+    #[test]
+    fn top_trends_deltas_the_last_two_complete_months() {
+        let mut results = fixture_six_month_results();
+        // A partial September row that must be ignored by the diff.
+        results.as_array_mut().unwrap().push(json!({
+            "TimePeriod": { "Start": "2026-09-01" },
+            "Groups": [
+                { "Keys": ["EC2"], "Metrics": { "UnblendedCost": { "Amount": "5" } } }
+            ]
+        }));
+        let responses = HashMap::from([("monthly_by_service".to_string(), results)]);
+        let data = compute_trends(&responses);
+        let PanelData::Trends(rows) = data else {
+            panic!("trends must compute Trends, got {data:?}");
+        };
+        // May->Jun: EC2 -10 (110 -> 100); S3 dropped off (-10). The September
+        // partial row and its +5 must not appear anywhere.
+        assert!(
+            !rows.iter().any(|r| r.delta.abs() < 0.005),
+            "no zero-delta rows expected"
+        );
+        assert!(rows.iter().all(|r| r.service != "Sep 2026"));
+        assert_eq!(rows[0].service, "EC2");
+        assert_eq!(rows[0].delta, -10.0);
+        assert!(
+            rows.iter().any(|r| r.pct == Some(-100.0)),
+            "a service that vanished must show as -100%"
+        );
+    }
+
+    /// A month label must render from the wire date; unparseable dates pass
+    /// through verbatim rather than crashing the panel.
+    #[test]
+    fn month_label_formats_and_tolerates_garbage() {
+        assert_eq!(month_label("2026-09-01"), "Sep 2026");
+        assert_eq!(month_label("garbage"), "garbage");
+    }
+}

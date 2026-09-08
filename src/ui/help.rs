@@ -96,6 +96,7 @@ pub fn render(f: &mut Frame, app: &App) {
         create_key_line("/", "Filter / Search"),
         create_key_line(":", "Command mode"),
         create_key_line("⇧←/→ or ,/.", "Scroll table horizontally"),
+        create_key_line(":billing", "Billing and cost dashboard"),
         create_key_line(":profiles", "Switch AWS profile"),
         create_key_line(":regions", "Switch AWS region"),
         create_key_line("Backspace", "Go back"),

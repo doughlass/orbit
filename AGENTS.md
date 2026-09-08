@@ -53,10 +53,27 @@ src/resource/dispatch.rs      Picks a handler, builds describe/action requests
 src/resource/field_mapper.rs  Applies field_mappings and named transforms
 src/resource/path_extractor.rs Path lookup into JSON, array-aware
 src/resource/handlers/        One module per wire protocol
+src/resource/dashboard.rs     Composite dashboard pages (panels, fetch+compute)
 
 src/ui/                   Rendering. mod.rs is the table + layout core
 src/resources/*.json      Resource definitions. This is where the work is.
 ```
+
+## Dashboards
+
+A dashboard is a second kind of view: one page assembled from several API
+calls, defined in `src/resources/dashboards.json` (parsed by `get_dashboard`
+in `registry.rs`). A panel declares named `fetches` (service, action,
+static_params — the same `{{template}}` machinery the JSON handler resolves)
+and a `kind` that selects a Rust computor/renderer in
+`src/resource/dashboard.rs`. Adding a dashboard is JSON only; the panel kinds
+(`cost_summary`, `cost_monitor`, `cost_breakdown`, `top_trends`) are
+capabilities. Each kind's `required_fetches()` must match its definition
+exactly — the registry test pins both directions. Opened with `:billing`
+(command mode); Esc/q closes; j/k scroll rows. Known template names:
+`{{account_id}}`, `{{today±Nd}}`, `{{month_start[-NM]}}`,
+`{{prev_month_start}}`, `{{prev_month_end}}` (== month_start, End is
+exclusive), `{{next_month_start}}`.
 
 ## How a list fetch works
 
@@ -198,6 +215,22 @@ static value. The JSON handler (`src/resource/handlers/json.rs`) fetches
 in the body before signing (WebTargeters with a literal `{{` are sent as-is, so
 this stays out of the query/rest handlers). The date window being stable across
 a paginated fetch is pinned by `resolve_templates_stable_across_two_resolutions`.
+Full template list in "Dashboards" above; `{{today+Nd}}` exists because
+`GetCostAndUsage` End is exclusive — "spend through today" is End = tomorrow.
+
+**GetAnomalies' DateInterval members are StartDate/EndDate, not Start/End.**
+GetCostAndUsage takes Start/End; GetAnomalies (AnomalyDateInterval shape)
+answers "Value null at 'dateInterval.startDate'" to Start/End — a message that
+reads like the params were missing. Both names validate in the botocore model
+pattern, so only a live call reveals the difference. Also: EndDate cannot be
+in the future ("Latest supported detectionDate is <today>"). Pinned by
+`get_anomalies_date_interval_uses_start_date_and_end_date`.
+
+**Cost Explorer has no global host.** `ce.amazonaws.com` does not resolve —
+every request goes to `ce.us-east-1.amazonaws.com`, with the signing region
+pinned to us-east-1. The `is_global: true` shortcut produces that dead host
+(exactly the WAFv2 trap below); the `ce` arm in `get_endpoint` stays
+region-addressed on purpose.
 
 **Pagination is not universal.** `DescribeAddresses` has no paginator and
 rejects `MaxResults`/`NextToken` with `InvalidParameterCombination`, so copying
@@ -309,7 +342,7 @@ of the *request*, not of the render.
 ### Before every commit
 
 ```bash
-cargo test --quiet                              # currently 338 tests, all green
+cargo test --quiet                              # currently 350 tests, all green
 cargo clippy --all-targets -- -D warnings       # must be silent
 cargo fmt --check
 ```

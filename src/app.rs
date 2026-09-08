@@ -2,8 +2,8 @@ use crate::aws;
 use crate::aws::client::AwsClients;
 use crate::config::Config;
 use crate::resource::{
-    extract_json_value, fetch_resources_paginated, get_all_resource_keys, get_resource,
-    ResourceDef, ResourceFilter,
+    extract_json_value, fetch_resources_paginated, get_all_resource_keys, get_dashboard,
+    get_resource, ResourceDef, ResourceFilter,
 };
 use anyhow::Result;
 use crossterm::event::KeyCode;
@@ -25,6 +25,7 @@ pub enum Mode {
     SsoLogin,     // SSO login dialog (IAM Identity Center)
     ConsoleLogin, // Console login dialog (aws login)
     LogTail,      // Tailing CloudWatch logs
+    Dashboard,    // Composite dashboard page (e.g. :billing)
     ColumnPicker, // Column visibility picker (p)
     Update,       // A newer version is available; offer to update
 }
@@ -94,6 +95,15 @@ pub struct DescribeDrill {
 pub struct AwsFilters {
     /// List of filter key-value pairs
     pub filters: Vec<(String, String)>,
+}
+
+/// An open dashboard page. `panels` aligns with `def.panels` once the
+/// composite fetch has run; empty before that. `scroll` offsets the first
+/// visible panel row when the grid exceeds a small terminal.
+pub struct DashboardState {
+    pub def: crate::resource::DashboardDef,
+    pub panels: Vec<crate::resource::PanelData>,
+    pub scroll: usize,
 }
 
 impl AwsFilters {
@@ -370,6 +380,10 @@ pub struct App {
 
     // Log tail state
     pub log_tail_state: Option<LogTailState>,
+
+    // Open dashboard page (e.g. :billing). Panels populate in place after the
+    // composite fetch completes.
+    pub dashboard_state: Option<DashboardState>,
 
     // SSM connect request (instance_id, region, profile)
     pub ssm_connect_request: Option<SsmConnectRequest>,
@@ -653,6 +667,7 @@ impl App {
             console_login_rx: None,
             pagination: PaginationState::default(),
             log_tail_state: None,
+            dashboard_state: None,
             ssm_connect_request: None,
             fuzzy_matcher: SkimMatcherV2::default().ignore_case(),
             sort: SortState::default(),
@@ -691,6 +706,13 @@ impl App {
             .iter()
             .map(|s| s.to_string())
             .collect();
+
+        // Dashboards (e.g. :billing) are commands too
+        commands.extend(
+            crate::resource::all_dashboard_keys()
+                .iter()
+                .map(|s| s.to_string()),
+        );
 
         // Add profiles and regions commands
         commands.push("profiles".to_string());
@@ -2281,6 +2303,13 @@ impl App {
                 self.refresh_current().await?;
             }
             _ => {
+                // Dashboards first: a dashboard key never collides with a
+                // resource key in practice, and `:billing` should win over a
+                // resource lookup.
+                if get_dashboard(cmd).is_some() {
+                    self.open_dashboard(cmd).await?;
+                    return Ok(false);
+                }
                 // Check if it's a known resource
                 if let Some(target_resource) = get_resource(cmd) {
                     // Check if the target resource requires a parent
@@ -2329,6 +2358,31 @@ impl App {
     // =========================================================================
     // Log Tail Mode
     // =========================================================================
+
+    /// Open a dashboard page and fetch its panels. Like describe, the fetch is
+    /// awaited inline: the loop cannot repaint while awaiting, so the user sees
+    /// the previous frame until the panels arrive.
+    pub async fn open_dashboard(&mut self, key: &str) -> Result<()> {
+        let Some(def) = crate::resource::get_dashboard(key) else {
+            self.error_message = Some(format!("Unknown dashboard: {}", key));
+            return Ok(());
+        };
+        let def = def.clone();
+        let panels = crate::resource::fetch_dashboard(&def, &self.clients).await;
+        self.dashboard_state = Some(DashboardState {
+            def,
+            panels,
+            scroll: 0,
+        });
+        self.mode = Mode::Dashboard;
+        Ok(())
+    }
+
+    /// Leave the dashboard back to the resource list.
+    pub fn close_dashboard(&mut self) {
+        self.dashboard_state = None;
+        self.mode = Mode::Normal;
+    }
 
     /// Enter log tail mode for the selected log stream
     pub async fn enter_log_tail_mode(&mut self) -> Result<()> {
