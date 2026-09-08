@@ -449,12 +449,30 @@ pub fn transform_format_money(value: &Value) -> Value {
     if cents == 0 {
         return Value::String("$0.00".to_string());
     }
+    let sign = if cents < 0 { "-" } else { "" };
+    let whole = (cents.abs() / 100).to_string();
+    // Thousands separators: Cost Explorer totals run six or seven digits and a
+    // bare "354237.04" is unreadable at a glance.
+    let whole = thousands(&whole);
     // Drop redundant cents for whole-dollar figures ("$12" not "$12.00").
     if cents.abs() % 100 == 0 {
-        Value::String(format!("${}", cents / 100))
+        Value::String(format!("${sign}{whole}"))
     } else {
-        Value::String(format!("${}.{:02}", cents / 100, cents.abs() % 100))
+        Value::String(format!("${sign}{whole}.{:02}", cents.abs() % 100))
     }
+}
+
+/// Insert commas every three digits of an integer string ("354237" ->
+/// "354,237").
+fn thousands(digits: &str) -> String {
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// An anomaly score is a double on a 0-100 scale. Round to whole and keep the
@@ -1070,6 +1088,21 @@ mod tests {
         assert_eq!(transform_format_money(&json!(42.0)), json!("$42"));
         assert_eq!(transform_format_money(&json!("0.0012345")), json!("$0.00"));
         assert_eq!(transform_format_money(&json!("bogus")), json!("bogus"));
+    }
+
+    /// Dashboard totals run six or seven digits; the money formatter must
+    /// group them the way the console does ("$354,237.04", "$-1,234.50").
+    #[test]
+    fn format_money_groups_thousands() {
+        assert_eq!(
+            transform_format_money(&json!("354237.04")),
+            json!("$354,237.04")
+        );
+        assert_eq!(transform_format_money(&json!(-1234.5)), json!("$-1,234.50"));
+        assert_eq!(
+            transform_format_money(&json!(1234567.0)),
+            json!("$1,234,567")
+        );
     }
 
     /// Anomaly scores are doubles on a 0-100 scale; the SCORE column reads the
