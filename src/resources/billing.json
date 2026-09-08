@@ -156,11 +156,10 @@
         "response_root": "/Anomalies",
         "static_params": {
           "DateInterval": {
-            "Start": "{{today-30d}}",
-            "End": "{{today}}"
+            "StartDate": "{{today-30d}}",
+            "EndDate": "{{today}}"
           }
-        },
-        "pagination": {
+        },        "pagination": {
           "input_token": "NextPageToken",
           "output_token": "/NextPageToken",
           "max_results_param": "MaxResults",
