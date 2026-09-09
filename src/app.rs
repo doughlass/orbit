@@ -27,6 +27,7 @@ pub enum Mode {
     LogTail,         // Tailing CloudWatch logs
     Dashboard,       // Composite dashboard page (e.g. :billing)
     DashboardPanels, // Panel picker popup on a dashboard
+    PanelCustomize,  // Per-pane report customize popup on a dashboard
     ColumnPicker,    // Column visibility picker (p)
     Update,          // A newer version is available; offer to update
 }
@@ -99,14 +100,14 @@ pub struct AwsFilters {
 }
 
 /// An open dashboard page. `panels` aligns with `def.panels` once the
-/// composite fetch has run; empty before that. `scroll` offsets the first
-/// visible panel row when the grid exceeds a small terminal. `key` is the
-/// dashboard/config key (e.g. "billing") the page was opened with.
+/// composite fetch has run; empty before that. `focused` is the index of the
+/// highlighted pane (customize targets it). `key` is the dashboard/config
+/// key (e.g. "billing") the page was opened with.
 pub struct DashboardState {
     pub key: String,
     pub def: crate::resource::DashboardDef,
     pub panels: Vec<crate::resource::PanelData>,
-    pub scroll: usize,
+    pub focused: usize,
 }
 
 /// The panel picker popup on a dashboard: every panel the page *could* show
@@ -124,6 +125,26 @@ pub struct PanelPickerEntry {
     pub custom: bool,
     /// The panel definition, so a toggle-on can fetch it in place.
     pub panel: crate::resource::DashboardPanel,
+}
+
+/// The per-pane customize popup: pick what one focused pane shows. Options
+/// are the pane's JSON default plus every named report; the choice lands in
+/// `config.dashboards.<key>.assignments`.
+#[derive(Debug, Clone)]
+pub struct PanelCustomize {
+    pub panel_title: String,
+    pub options: Vec<CustomizeOption>,
+    pub selected: usize,
+    /// The currently-assigned report title, if any.
+    pub current: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CustomizeOption {
+    /// Human label; the default option reads "(dashboard default)".
+    pub label: String,
+    /// Report title to assign, or None to reset to the JSON definition.
+    pub report: Option<String>,
 }
 
 impl AwsFilters {
@@ -407,6 +428,9 @@ pub struct App {
 
     // Panel picker popup (p on a dashboard)
     pub dashboard_panel_picker: Option<DashboardPanelPicker>,
+
+    // Per-pane customize popup (Enter/c on a focused dashboard pane)
+    pub dashboard_panel_customize: Option<PanelCustomize>,
 
     // SSM connect request (instance_id, region, profile)
     pub ssm_connect_request: Option<SsmConnectRequest>,
@@ -692,6 +716,7 @@ impl App {
             log_tail_state: None,
             dashboard_state: None,
             dashboard_panel_picker: None,
+            dashboard_panel_customize: None,
             ssm_connect_request: None,
             fuzzy_matcher: SkimMatcherV2::default().ignore_case(),
             sort: SortState::default(),
@@ -2393,16 +2418,9 @@ impl App {
             return Ok(());
         };
         let user_config = self.config.dashboards.get(key).cloned();
-
-        let (mut panels, user_errors) = crate::resource::dashboard::merge_panels(
-            def.panels.clone(),
-            user_config
-                .as_ref()
-                .map(|u| u.panels.as_slice())
-                .unwrap_or(&[]),
-        );
-        if !user_errors.is_empty() {
-            self.error_message = Some(user_errors.join("; "));
+        let (mut panels, errors) = self.resolve_dashboard_panels(key, def.panels.clone());
+        if !errors.is_empty() {
+            self.error_message = Some(errors.join("; "));
         }
         if let Some(ucfg) = &user_config {
             panels.retain(|p| ucfg.is_visible(&p.title, p.default_hidden));
@@ -2417,9 +2435,160 @@ impl App {
             key: key.to_string(),
             def,
             panels: panel_data,
-            scroll: 0,
+            focused: 0,
         });
         self.mode = Mode::Dashboard;
+        Ok(())
+    }
+
+    /// Full panel resolution for a dashboard: JSON defaults, then user custom
+    /// panels (title-replace), then the customize popup's per-pane report
+    /// assignments. Returns the effective definitions plus aggregated errors.
+    fn resolve_dashboard_panels(
+        &self,
+        key: &str,
+        base: Vec<crate::resource::DashboardPanel>,
+    ) -> (Vec<crate::resource::DashboardPanel>, Vec<String>) {
+        let Some(ucfg) = self.config.dashboards.get(key) else {
+            return (base, Vec::new());
+        };
+        let (merged, mut errors) = crate::resource::dashboard::merge_panels(base, &ucfg.panels);
+        let (resolved, assign_errors) =
+            crate::resource::dashboard::apply_assignments(merged, &ucfg.reports, &ucfg.assignments);
+        errors.extend(assign_errors);
+        (resolved, errors)
+    }
+
+    /// Move the pane highlight. The grid is two columns wide, so vertical
+    /// moves step by two; horizontal by one. Clamped at the edges.
+    pub fn move_dashboard_focus(&mut self, col: isize, row: isize) {
+        let Some(state) = self.dashboard_state.as_mut() else {
+            return;
+        };
+        let len = state.def.panels.len() as isize;
+        if len == 0 {
+            return;
+        }
+        let delta = col + row * 2;
+        let next = (state.focused as isize + delta).clamp(0, len - 1);
+        state.focused = next as usize;
+    }
+
+    /// Open the customize popup for the focused pane: choose between its
+    /// JSON default and every named report.
+    pub fn open_panel_customize(&mut self) {
+        let Some(state) = &self.dashboard_state else {
+            return;
+        };
+        let Some(panel) = state.def.panels.get(state.focused) else {
+            return;
+        };
+        let title = panel.title.clone();
+        let key = state.key.clone();
+        let ucfg = self.config.dashboards.get(&key);
+
+        let mut options = vec![CustomizeOption {
+            label: "(dashboard default)".to_string(),
+            report: None,
+        }];
+        if let Some(ucfg) = ucfg {
+            for report in &ucfg.reports {
+                options.push(CustomizeOption {
+                    label: report.title.clone(),
+                    report: Some(report.title.clone()),
+                });
+            }
+        }
+        let current = ucfg.and_then(|u| u.assignments.get(&title).cloned());
+        let selected = current
+            .as_ref()
+            .and_then(|cur| {
+                options
+                    .iter()
+                    .position(|o| o.report.as_deref() == Some(cur))
+            })
+            .unwrap_or(0);
+
+        self.dashboard_panel_customize = Some(PanelCustomize {
+            panel_title: title,
+            options,
+            selected,
+            current,
+        });
+        self.mode = Mode::PanelCustomize;
+    }
+
+    /// Close the customize popup, back to the dashboard.
+    pub fn close_panel_customize(&mut self) {
+        self.dashboard_panel_customize = None;
+        self.mode = Mode::Dashboard;
+    }
+
+    /// Apply the customize popup choice: persist the assignment (or reset),
+    /// refetch just that pane, and close the popup.
+    pub async fn apply_panel_customize(&mut self) -> Result<()> {
+        let Some(popup) = &self.dashboard_panel_customize else {
+            return Ok(());
+        };
+        let Some(option) = popup.options.get(popup.selected) else {
+            return Ok(());
+        };
+        let title = popup.panel_title.clone();
+        let choice = option.report.clone();
+        let key = self
+            .dashboard_state
+            .as_ref()
+            .map(|s| s.key.clone())
+            .unwrap_or_default();
+
+        {
+            let ucfg = self.config.dashboards.entry(key.clone()).or_default();
+            match &choice {
+                Some(report) => {
+                    ucfg.assignments.insert(title.clone(), report.clone());
+                }
+                None => {
+                    ucfg.assignments.remove(&title);
+                }
+            }
+        }
+        self.config.save()?;
+
+        // Resolve the pane's new effective definition and refetch only it.
+        // The page's visibility set must not change, only this pane's spec.
+        // Taken out of self so the resolver (which reads self.config) can run.
+        let Some(mut state) = self.dashboard_state.take() else {
+            self.close_panel_customize();
+            return Ok(());
+        };
+        let visible_titles: Vec<String> =
+            state.def.panels.iter().map(|p| p.title.clone()).collect();
+        let base = crate::resource::get_dashboard(&state.key)
+            .cloned()
+            .unwrap_or_default();
+        let (mut resolved, _) = self.resolve_dashboard_panels(&state.key, base.panels);
+        resolved.retain(|p| visible_titles.contains(&p.title));
+        let Some(panel) = resolved.iter().find(|p| p.title == title).cloned() else {
+            self.dashboard_state = Some(state);
+            self.close_panel_customize();
+            return Ok(());
+        };
+        let data = crate::resource::fetch_panel(&panel, &self.clients).await;
+        let idx = resolved.iter().position(|p| p.title == title).unwrap_or(0);
+        state.def = crate::resource::DashboardDef {
+            display_name: state.def.display_name.clone(),
+            panels: resolved,
+        };
+        // def.panels and state.panels stay aligned by index.
+        if let Some(slot) = state.panels.get_mut(idx) {
+            *slot = data;
+        } else {
+            state.panels.push(data);
+        }
+        state.focused = idx;
+        self.dashboard_state = Some(state);
+
+        self.close_panel_customize();
         Ok(())
     }
 
@@ -2427,6 +2596,7 @@ impl App {
     pub fn close_dashboard(&mut self) {
         self.dashboard_state = None;
         self.dashboard_panel_picker = None;
+        self.dashboard_panel_customize = None;
         self.mode = Mode::Normal;
     }
 
@@ -2513,8 +2683,10 @@ impl App {
                 state.def.panels.remove(idx);
                 state.panels.remove(idx);
             }
-            // The grid loses rows when panels disappear; keep the scroll sane.
-            state.scroll = state.scroll.min(state.def.panels.len().max(1) / 2);
+            // The grid loses panes when panels disappear; keep focus sane.
+            if !state.def.panels.is_empty() {
+                state.focused = state.focused.min(state.def.panels.len() - 1);
+            }
         }
 
         let anchor = title;

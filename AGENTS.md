@@ -87,6 +87,17 @@ JSON, config and picker — keep them unique: a config panel whose title
 matches a JSON panel replaces it in place (same slot, new spec), which is
 how an individual panel is re-pointed at a custom report.
 
+In the TUI, panes highlight and move with h/j/k/l (two-column grid:
+horizontal steps by one, vertical by two). Enter/c on a focused pane opens
+a customize popup listing the pane's JSON default plus every named report
+from `dashboards.<key>.reports` (same shape as `panels`; `kind` must be
+cost_table). Choosing one writes `dashboards.<key>.assignments`
+(`panel title: report title`) and refetches just that pane; "(dashboard
+default)" clears the assignment. Resolution order everywhere:
+merge_panels (title-replace) → apply_assignments → visibility filter.
+Unknown report names or stale panel titles in `assignments` are surfaced
+as error messages, never silently dropped.
+
 ## How a list fetch works
 
 1. `app.rs` asks `fetcher.rs` for a resource key.

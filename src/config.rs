@@ -53,6 +53,16 @@ pub struct DashboardUserConfig {
     pub shown: Vec<String>,
     #[serde(default)]
     pub hidden: Vec<String>,
+    /// Named report specs, reusable from any panel's customize popup. Each
+    /// is a cost_table spec (`kind` must be cost_table); the pane it ends up
+    /// on supplies the display title via `assignments`.
+    #[serde(default)]
+    pub reports: Vec<crate::resource::CustomPanel>,
+    /// Per-pane report choice from the customize popup: panel title ->
+    /// report title. Absent (or empty) means the pane keeps its JSON
+    /// definition.
+    #[serde(default)]
+    pub assignments: std::collections::HashMap<String, String>,
 }
 
 impl DashboardUserConfig {
@@ -337,6 +347,36 @@ mod tests {
         assert_eq!(panels[0].months, 4);
         let panel = panels[0].to_dashboard_panel().expect("converts");
         assert_eq!(panel.months, Some(4));
+    }
+
+    /// Named reports and the customize popup's assignments must round-trip:
+    /// the popup reads reports to build its options and assignments to mark
+    /// the current choice.
+    #[test]
+    fn test_dashboard_reports_and_assignments_round_trip() {
+        let mut config = Config::default();
+        let ucfg = config.dashboards.entry("billing".to_string()).or_default();
+        ucfg.reports.push(crate::resource::CustomPanel {
+            title: "Cost Centers 3mo".into(),
+            kind: crate::resource::dashboard::PanelKind::CostTable,
+            months: 3,
+            group_by: crate::resource::dashboard::GroupBySpec {
+                group_type: crate::resource::dashboard::GroupByType::Tag,
+                key: "CostCenter".into(),
+            },
+        });
+        ucfg.assignments
+            .insert("Cost Breakdown".to_string(), "Cost Centers 3mo".to_string());
+
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        let parsed: Config = serde_yaml::from_str(&yaml).unwrap();
+        let ucfg = parsed.dashboards.get("billing").unwrap();
+        assert_eq!(ucfg.reports.len(), 1);
+        assert_eq!(ucfg.reports[0].title, "Cost Centers 3mo");
+        assert_eq!(
+            ucfg.assignments.get("Cost Breakdown").map(|s| s.as_str()),
+            Some("Cost Centers 3mo")
+        );
     }
 
     #[test]

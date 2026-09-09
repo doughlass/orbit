@@ -36,27 +36,24 @@ async fn handle_key_event(app: &mut App, key: KeyEvent) -> Result<bool> {
         Mode::LogTail => handle_log_tail_mode(app, key).await,
         Mode::Dashboard => handle_dashboard_mode(app, key).await,
         Mode::DashboardPanels => handle_dashboard_panels_mode(app, key).await,
+        Mode::PanelCustomize => handle_panel_customize_mode(app, key).await,
         Mode::ColumnPicker => handle_column_picker_mode(app, key),
         Mode::Update => handle_update_mode(app, key).await,
     }
 }
 
-/// Dashboard pages scroll (they may exceed one screen on small terminals) and
-/// close with Esc/q back to the resource list. `p` opens the panel picker.
+/// Dashboard pages highlight one pane at a time: h/j/k/l (and arrows) move
+/// the focus, Enter/c customizes the focused pane, p opens the panel picker,
+/// Esc/q leaves the page.
 async fn handle_dashboard_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') => app.close_dashboard(),
         KeyCode::Char('p') => app.open_dashboard_panel_picker(),
-        KeyCode::Char('j') | KeyCode::Down => {
-            if let Some(state) = app.dashboard_state.as_mut() {
-                state.scroll = state.scroll.saturating_add(1);
-            }
-        }
-        KeyCode::Char('k') | KeyCode::Up => {
-            if let Some(state) = app.dashboard_state.as_mut() {
-                state.scroll = state.scroll.saturating_sub(1);
-            }
-        }
+        KeyCode::Enter | KeyCode::Char('c') => app.open_panel_customize(),
+        KeyCode::Char('h') | KeyCode::Left => app.move_dashboard_focus(-1, 0),
+        KeyCode::Char('l') | KeyCode::Right => app.move_dashboard_focus(1, 0),
+        KeyCode::Char('k') | KeyCode::Up => app.move_dashboard_focus(0, -1),
+        KeyCode::Char('j') | KeyCode::Down => app.move_dashboard_focus(0, 1),
         _ => {}
     }
     Ok(false)
@@ -87,6 +84,37 @@ async fn handle_dashboard_panels_mode(app: &mut App, key: KeyEvent) -> Result<bo
         }
         KeyCode::Char(' ') | KeyCode::Enter => {
             app.toggle_dashboard_panel().await?;
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
+/// The per-pane customize popup: pick a report for the focused pane.
+async fn handle_panel_customize_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
+    let count = app
+        .dashboard_panel_customize
+        .as_ref()
+        .map(|p| p.options.len())
+        .unwrap_or(0);
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => app.close_panel_customize(),
+        KeyCode::Char('j') | KeyCode::Down => {
+            if let Some(popup) = app.dashboard_panel_customize.as_mut() {
+                if count > 0 {
+                    popup.selected = (popup.selected + 1) % count;
+                }
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            if let Some(popup) = app.dashboard_panel_customize.as_mut() {
+                if count > 0 {
+                    popup.selected = (popup.selected + count - 1) % count;
+                }
+            }
+        }
+        KeyCode::Enter | KeyCode::Char(' ') => {
+            app.apply_panel_customize().await?;
         }
         _ => {}
     }

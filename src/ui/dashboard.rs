@@ -29,6 +29,10 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         return;
     };
 
+    // Panels flow in a 2-column grid, top-to-bottom in definition order. The
+    // focused pane carries a cyan border; content compresses on small
+    // terminals rather than scrolling.
+    let focused = state.focused;
     if state.panels.is_empty() {
         let loading = Paragraph::new(format!("Fetching {} data...", state.def.display_name))
             .style(Style::default().fg(Color::DarkGray));
@@ -36,31 +40,19 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    // Panels flow in a 2-column grid, top-to-bottom in definition order. The
-    // scroll offset drops whole rows from the top (only reachable on small
-    // terminals where the grid overflows).
-    let visible: Vec<(usize, &PanelData)> = state
-        .panels
-        .iter()
-        .enumerate()
-        .skip(state.scroll * 2)
-        .collect();
-    if visible.is_empty() {
-        return;
-    }
     let rows: Vec<Constraint> =
-        std::iter::repeat_n(Constraint::Min(6), visible.len().div_ceil(2)).collect();
+        std::iter::repeat_n(Constraint::Min(6), state.panels.len().div_ceil(2)).collect();
     let row_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(rows)
         .split(area);
 
-    for (idx, (panel_idx, panel_data)) in visible.iter().enumerate() {
+    for (idx, panel_data) in state.panels.iter().enumerate() {
         let row = row_chunks[idx / 2];
         let title = state
             .def
             .panels
-            .get(*panel_idx)
+            .get(idx)
             .map(|p| p.title.as_str())
             .unwrap_or("");
         let cell = if idx % 2 == 0 {
@@ -74,18 +66,23 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .split(row)[1]
         };
-        render_panel(f, title, panel_data, cell);
+        render_panel(f, title, panel_data, cell, idx == focused);
     }
 }
 
-fn render_panel(f: &mut Frame, title: &str, data: &PanelData, area: Rect) {
+fn render_panel(f: &mut Frame, title: &str, data: &PanelData, area: Rect, focused: bool) {
+    let (border, title_color) = if focused {
+        (Style::default().fg(Color::Cyan), Color::Cyan)
+    } else {
+        (Style::default().fg(Color::DarkGray), Color::Yellow)
+    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
+        .border_style(border)
         .title(Span::styled(
             format!(" {} ", title),
             Style::default()
-                .fg(Color::Yellow)
+                .fg(title_color)
                 .add_modifier(Modifier::BOLD),
         ));
     let inner = block.inner(area);
@@ -387,6 +384,80 @@ pub fn render_panel_picker(f: &mut Frame, app: &App) {
             Style::default().fg(Color::DarkGray),
         )),
         chunks[2],
+    );
+}
+
+/// Per-pane customize popup (Enter/c on a focused pane), styled like the
+/// Column Preferences dialog: a radio list of the pane's JSON default plus
+/// every named report; the current choice carries the [x].
+pub fn render_panel_customize(f: &mut Frame, app: &App) {
+    use ratatui::widgets::Clear;
+
+    let Some(popup) = &app.dashboard_panel_customize else {
+        return;
+    };
+    let area = centered_rect(50, 50, f.area());
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(Span::styled(
+            format!(" Customize Panel — {} ", popup.panel_title),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(inner);
+
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, option) in popup.options.iter().enumerate() {
+        let selected = i == popup.selected;
+        let is_current = option.report == popup.current;
+        let check = if is_current { "[x]" } else { "[ ]" };
+        let mut spans = vec![
+            Span::raw(if selected { "> " } else { "  " }),
+            Span::styled(
+                format!("{check} "),
+                Style::default().fg(if is_current {
+                    Color::Green
+                } else {
+                    Color::DarkGray
+                }),
+            ),
+            Span::styled(
+                option.label.clone(),
+                Style::default()
+                    .fg(if selected { Color::Cyan } else { Color::Reset })
+                    .add_modifier(if selected {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    }),
+            ),
+        ];
+        if is_current {
+            spans.push(Span::styled(
+                "  current",
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+    f.render_widget(Paragraph::new(lines), chunks[0]);
+
+    f.render_widget(
+        Paragraph::new(Span::styled(
+            "<j/k> move  <Enter> choose  <Esc> cancel",
+            Style::default().fg(Color::DarkGray),
+        )),
+        chunks[1],
     );
 }
 

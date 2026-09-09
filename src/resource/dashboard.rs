@@ -181,6 +181,47 @@ pub fn merge_panels(
     (panels, errors)
 }
 
+/// Apply the customize popup's per-pane report choices: for each
+/// `panel title -> report title` assignment, swap that pane's definition for
+/// the named report's spec (same slot). Unknown report names and unknown
+/// panel titles (stale assignments after a rename) are reported, not
+/// silently dropped. Runs after merge_panels so an assignment to a custom
+/// panel also works.
+pub fn apply_assignments(
+    panels: Vec<DashboardPanel>,
+    reports: &[CustomPanel],
+    assignments: &HashMap<String, String>,
+) -> (Vec<DashboardPanel>, Vec<String>) {
+    let mut panels = panels;
+    let mut errors = Vec::new();
+    for (panel_title, report_title) in assignments {
+        let Some(report) = reports.iter().find(|r| &r.title == report_title) else {
+            errors.push(format!(
+                "panel '{}' is assigned unknown report '{}'",
+                panel_title, report_title
+            ));
+            continue;
+        };
+        let mut spec = match report.to_dashboard_panel() {
+            Ok(p) => p,
+            Err(e) => {
+                errors.push(e.to_string());
+                continue;
+            }
+        };
+        // The pane keeps its own title; the report only supplies the spec.
+        spec.title = panel_title.clone();
+        match panels.iter().position(|d| &d.title == panel_title) {
+            Some(idx) => panels[idx] = spec,
+            None => errors.push(format!(
+                "assignment targets panel '{}' which this dashboard does not have",
+                panel_title
+            )),
+        }
+    }
+    (panels, errors)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanelKind {
     CostSummary,
@@ -1196,5 +1237,72 @@ mod tests {
             group_by: None,
             default_hidden: false,
         }
+    }
+
+    /// The customize popup's assignment swaps a pane's definition for the
+    /// named report's spec while keeping the pane's own title and slot.
+    #[test]
+    fn apply_assignments_repoints_a_pane_and_reports_unknowns() {
+        let base = vec![
+            panel_with_title("Cost Breakdown"),
+            panel_with_title("Top Trends"),
+        ];
+        let reports = vec![CustomPanel {
+            title: "Cost Centers 3mo".into(),
+            kind: PanelKind::CostTable,
+            months: 3,
+            group_by: GroupBySpec {
+                group_type: GroupByType::Tag,
+                key: "CostCenter".into(),
+            },
+        }];
+        let assignments = HashMap::from([
+            ("Cost Breakdown".to_string(), "Cost Centers 3mo".to_string()),
+            ("Top Trends".to_string(), "Missing Report".to_string()),
+        ]);
+        let (resolved, errors) = apply_assignments(base, &reports, &assignments);
+        assert_eq!(
+            errors.len(),
+            1,
+            "the unknown report is a loud error, not a silent skip"
+        );
+        assert!(errors[0].contains("Missing Report"));
+        assert_eq!(resolved[0].title, "Cost Breakdown", "pane keeps its title");
+        assert_eq!(
+            resolved[0].kind,
+            PanelKind::CostTable,
+            "but gets the report's spec"
+        );
+        assert_eq!(resolved[0].group_by.as_ref().unwrap().key, "CostCenter");
+        assert_eq!(resolved[1].title, "Top Trends");
+        assert_eq!(
+            resolved[1].kind,
+            PanelKind::CostBreakdown,
+            "untouched pane unchanged"
+        );
+    }
+
+    /// An assignment naming a panel the dashboard does not have is stale and
+    /// must surface too.
+    #[test]
+    fn apply_assignments_flags_stale_panel_titles() {
+        let base = vec![panel_with_title("Cost Breakdown")];
+        let reports = vec![CustomPanel {
+            title: "Any".into(),
+            kind: PanelKind::CostTable,
+            months: 3,
+            group_by: GroupBySpec {
+                group_type: GroupByType::Dimension,
+                key: "SERVICE".into(),
+            },
+        }];
+        let (resolved, errors) = apply_assignments(
+            base,
+            &reports,
+            &HashMap::from([("Gone".to_string(), "Any".to_string())]),
+        );
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("does not have"), "{}", errors[0]);
     }
 }

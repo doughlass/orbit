@@ -73,6 +73,9 @@ pub fn render(f: &mut Frame, app: &App) {
         Mode::DashboardPanels => {
             dashboard::render_panel_picker(f, app);
         }
+        Mode::PanelCustomize => {
+            dashboard::render_panel_customize(f, app);
+        }
         Mode::Confirm | Mode::Warning | Mode::SsoLogin | Mode::ConsoleLogin | Mode::Update => {
             dialog::render(f, app);
         }
