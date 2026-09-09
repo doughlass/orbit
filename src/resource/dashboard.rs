@@ -222,6 +222,23 @@ pub fn apply_assignments(
     (panels, errors)
 }
 
+/// The dashboard's own cost_table presets ("Past 3 Months by Service" and
+/// any like it) double as named reports: every pane's customize popup offers
+/// them, no config needed. They are already spec-driven, so the conversion
+/// is mechanical.
+pub fn builtin_reports(def: &DashboardDef) -> Vec<CustomPanel> {
+    def.panels
+        .iter()
+        .filter(|p| p.kind == PanelKind::CostTable && p.group_by.is_some())
+        .map(|p| CustomPanel {
+            title: p.title.clone(),
+            kind: PanelKind::CostTable,
+            months: p.months.unwrap_or(3),
+            group_by: p.group_by.clone().expect("filtered above"),
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanelKind {
     CostSummary,
@@ -1280,6 +1297,48 @@ mod tests {
             PanelKind::CostBreakdown,
             "untouched pane unchanged"
         );
+    }
+
+    /// The dashboard's own cost_table presets double as named reports so any
+    /// pane can adopt them via the customize popup without config.
+    #[test]
+    fn builtin_reports_expose_cost_table_presets_as_assignable_specs() {
+        let def = DashboardDef {
+            display_name: "Billing Overview".into(),
+            panels: vec![
+                panel_with_title("Cost Summary"),
+                DashboardPanel {
+                    kind: PanelKind::CostTable,
+                    title: "Past 3 Months by Service".into(),
+                    fetches: HashMap::new(),
+                    months: Some(3),
+                    group_by: Some(GroupBySpec {
+                        group_type: GroupByType::Dimension,
+                        key: "SERVICE".into(),
+                    }),
+                    default_hidden: true,
+                },
+            ],
+        };
+        let reports = builtin_reports(&def);
+        assert_eq!(reports.len(), 1, "only cost_table panels are reports");
+        assert_eq!(reports[0].title, "Past 3 Months by Service");
+        assert_eq!(reports[0].months, 3);
+
+        // Assigning it to a different pane keeps that pane's title.
+        let base = vec![
+            panel_with_title("Cost Monitor"),
+            panel_with_title("Top Trends"),
+        ];
+        let assignments = HashMap::from([(
+            "Cost Monitor".to_string(),
+            "Past 3 Months by Service".to_string(),
+        )]);
+        let (resolved, errors) = apply_assignments(base, &reports, &assignments);
+        assert!(errors.is_empty());
+        assert_eq!(resolved[0].title, "Cost Monitor");
+        assert_eq!(resolved[0].kind, PanelKind::CostTable);
+        assert_eq!(resolved[0].group_by.as_ref().unwrap().key, "SERVICE");
     }
 
     /// An assignment naming a panel the dashboard does not have is stale and

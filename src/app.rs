@@ -2449,12 +2449,20 @@ impl App {
         key: &str,
         base: Vec<crate::resource::DashboardPanel>,
     ) -> (Vec<crate::resource::DashboardPanel>, Vec<String>) {
+        // Built-in cost_table presets count as named reports so the customize
+        // popup can assign them without the user defining anything.
+        let builtin = crate::resource::builtin_reports(&crate::resource::DashboardDef {
+            display_name: String::new(),
+            panels: base.clone(),
+        });
         let Some(ucfg) = self.config.dashboards.get(key) else {
             return (base, Vec::new());
         };
+        let mut all_reports = builtin;
+        all_reports.extend(ucfg.reports.iter().cloned());
         let (merged, mut errors) = crate::resource::dashboard::merge_panels(base, &ucfg.panels);
         let (resolved, assign_errors) =
-            crate::resource::dashboard::apply_assignments(merged, &ucfg.reports, &ucfg.assignments);
+            crate::resource::dashboard::apply_assignments(merged, &all_reports, &ucfg.assignments);
         errors.extend(assign_errors);
         (resolved, errors)
     }
@@ -2491,12 +2499,27 @@ impl App {
             label: "(dashboard default)".to_string(),
             report: None,
         }];
-        if let Some(ucfg) = ucfg {
-            for report in &ucfg.reports {
+        // Built-in cost_table presets are offered alongside the user's own
+        // named reports; a pane never offers itself.
+        let base = crate::resource::get_dashboard(&key)
+            .cloned()
+            .unwrap_or_default();
+        for report in crate::resource::builtin_reports(&base) {
+            if report.title != title {
                 options.push(CustomizeOption {
                     label: report.title.clone(),
                     report: Some(report.title.clone()),
                 });
+            }
+        }
+        if let Some(ucfg) = ucfg {
+            for report in &ucfg.reports {
+                if report.title != title {
+                    options.push(CustomizeOption {
+                        label: report.title.clone(),
+                        report: Some(report.title.clone()),
+                    });
+                }
             }
         }
         let current = ucfg.and_then(|u| u.assignments.get(&title).cloned());
