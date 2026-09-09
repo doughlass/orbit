@@ -114,32 +114,25 @@ fn render_panel(f: &mut Frame, title: &str, data: &PanelData, area: Rect) {
 }
 
 fn render_stats(f: &mut Frame, items: &[StatItem], area: Rect) {
-    // Two stats per row: label column, then value (+ note) beside it.
+    // One stat per row: a two-column split looked like the console until a
+    // note ran long and collided with the second column ("...same periodLast
+    // month..."). Rows cannot collide regardless of terminal width.
     let mut lines: Vec<Line> = Vec::new();
-    for pair in items.chunks(2) {
-        let width = area.width as usize;
-        let col = width / 2;
-        let mut spans: Vec<Span> = Vec::new();
-        for (i, item) in pair.iter().enumerate() {
-            if i == 1 {
-                spans.push(Span::raw(" ".repeat(spans_width(&spans, col))));
-            }
-            spans.push(Span::styled(
-                pad(&item.label, 22),
-                Style::default().fg(Color::DarkGray),
-            ));
-            spans.push(Span::styled(
+    for item in items {
+        let mut spans = vec![
+            Span::styled(pad(&item.label, 24), Style::default().fg(Color::DarkGray)),
+            Span::styled(
                 item.value.clone(),
                 Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
+            ),
+        ];
+        if let Some(note) = &item.note {
+            spans.push(Span::styled(
+                format!("  {note}"),
+                Style::default().fg(Color::DarkGray),
             ));
-            if let Some(note) = &item.note {
-                spans.push(Span::styled(
-                    format!("  {note}"),
-                    Style::default().fg(Color::DarkGray),
-                ));
-            }
         }
         lines.push(Line::from(spans));
         lines.push(Line::from(""));
@@ -435,9 +428,4 @@ fn shorten(s: &str, w: usize) -> String {
             s.chars().take(w.saturating_sub(3)).collect::<String>()
         )
     }
-}
-
-fn spans_width(spans: &[Span], upto: usize) -> usize {
-    let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
-    upto.saturating_sub(used)
 }

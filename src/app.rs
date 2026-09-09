@@ -2392,29 +2392,31 @@ impl App {
             self.error_message = Some(format!("Unknown dashboard: {}", key));
             return Ok(());
         };
-        let mut def = def.clone();
         let user_config = self.config.dashboards.get(key).cloned();
 
-        let mut user_errors: Vec<String> = Vec::new();
-        if let Some(ucfg) = &user_config {
-            for panel in &ucfg.panels {
-                match panel.to_dashboard_panel() {
-                    Ok(p) => def.panels.push(p),
-                    Err(e) => user_errors.push(e.to_string()),
-                }
-            }
-            def.panels
-                .retain(|p| ucfg.is_visible(&p.title, p.default_hidden));
-        }
+        let (mut panels, user_errors) = crate::resource::dashboard::merge_panels(
+            def.panels.clone(),
+            user_config
+                .as_ref()
+                .map(|u| u.panels.as_slice())
+                .unwrap_or(&[]),
+        );
         if !user_errors.is_empty() {
             self.error_message = Some(user_errors.join("; "));
         }
+        if let Some(ucfg) = &user_config {
+            panels.retain(|p| ucfg.is_visible(&p.title, p.default_hidden));
+        }
+        let def = crate::resource::DashboardDef {
+            display_name: def.display_name.clone(),
+            panels,
+        };
 
-        let panels = crate::resource::fetch_dashboard(&def, &self.clients).await;
+        let panel_data = crate::resource::fetch_dashboard(&def, &self.clients).await;
         self.dashboard_state = Some(DashboardState {
             key: key.to_string(),
             def,
-            panels,
+            panels: panel_data,
             scroll: 0,
         });
         self.mode = Mode::Dashboard;
@@ -2435,36 +2437,33 @@ impl App {
             return;
         };
         let key = state.key.clone();
-        let mut entries: Vec<PanelPickerEntry> = Vec::new();
 
-        let def = crate::resource::get_dashboard(&key)
+        let base = crate::resource::get_dashboard(&key)
             .cloned()
             .unwrap_or_default();
         let user_config = self.config.dashboards.get(&key).cloned();
         let ucfg = user_config.as_ref();
+        let (merged, _) = crate::resource::dashboard::merge_panels(
+            base.panels,
+            ucfg.map(|u| u.panels.as_slice()).unwrap_or(&[]),
+        );
 
-        for panel in &def.panels {
-            entries.push(PanelPickerEntry {
-                visible: ucfg
-                    .map(|u| u.is_visible(&panel.title, panel.default_hidden))
-                    .unwrap_or(!panel.default_hidden),
-                custom: false,
-                title: panel.title.clone(),
-                panel: panel.clone(),
-            });
-        }
-        if let Some(ucfg) = &user_config {
-            for custom in &ucfg.panels {
-                if let Ok(panel) = custom.to_dashboard_panel() {
-                    entries.push(PanelPickerEntry {
-                        visible: ucfg.is_visible(&panel.title, panel.default_hidden),
-                        custom: true,
-                        title: panel.title.clone(),
-                        panel,
-                    });
+        let entries: Vec<PanelPickerEntry> = merged
+            .iter()
+            .map(|panel| {
+                let custom = ucfg
+                    .map(|u| u.panels.iter().any(|c| c.title == panel.title))
+                    .unwrap_or(false);
+                PanelPickerEntry {
+                    visible: ucfg
+                        .map(|u| u.is_visible(&panel.title, panel.default_hidden))
+                        .unwrap_or(!panel.default_hidden),
+                    custom,
+                    title: panel.title.clone(),
+                    panel: panel.clone(),
                 }
-            }
-        }
+            })
+            .collect();
 
         self.dashboard_panel_picker = Some(DashboardPanelPicker {
             entries,

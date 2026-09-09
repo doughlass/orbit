@@ -83,7 +83,9 @@ panels (currently `cost_table` only — `{title, kind, months, group_by:
 {type: dimension|tag|cost_category, key}}`), and `shown`/`hidden` title
 lists record the picker's choices. A `default_hidden: true` panel ships off
 the page until the picker shows it. Titles are the panel identity across
-JSON, config and picker — keep them unique.
+JSON, config and picker — keep them unique: a config panel whose title
+matches a JSON panel replaces it in place (same slot, new spec), which is
+how an individual panel is re-pointed at a custom report.
 
 ## How a list fetch works
 

@@ -154,6 +154,33 @@ impl CustomPanel {
     }
 }
 
+/// Merge user-defined panels into a dashboard's defaults. A custom panel
+/// whose title matches a default panel replaces it in place — that is how an
+/// individual panel is re-pointed at a custom report (same slot, new spec);
+/// every other title appends. Titles are the panel identity across the JSON,
+/// the config and the picker, so they must stay unique. Returns the merged
+/// list plus one error message per unusable custom panel.
+pub fn merge_panels(
+    base: Vec<DashboardPanel>,
+    customs: &[CustomPanel],
+) -> (Vec<DashboardPanel>, Vec<String>) {
+    let mut panels = base;
+    let mut errors = Vec::new();
+    for custom in customs {
+        match custom.to_dashboard_panel() {
+            Ok(p) => {
+                if let Some(idx) = panels.iter().position(|d| d.title == p.title) {
+                    panels[idx] = p;
+                } else {
+                    panels.push(p);
+                }
+            }
+            Err(e) => errors.push(e.to_string()),
+        }
+    }
+    (panels, errors)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanelKind {
     CostSummary,
@@ -1115,5 +1142,59 @@ mod tests {
             wrong_kind.to_dashboard_panel().is_err(),
             "non-cost_table custom panels are rejected"
         );
+    }
+
+    /// A custom panel whose title matches a default panel replaces it in
+    /// place — that is how an individual panel is re-pointed at a custom
+    /// report — while other titles append.
+    #[test]
+    fn merge_panels_replaces_by_title_and_appends_others() {
+        let base = vec![
+            panel_with_title("Cost Summary"),
+            panel_with_title("Cost Breakdown"),
+        ];
+        let customs = vec![
+            CustomPanel {
+                title: "Cost Breakdown".into(),
+                kind: PanelKind::CostTable,
+                months: 3,
+                group_by: GroupBySpec {
+                    group_type: GroupByType::Tag,
+                    key: "CostCenter".into(),
+                },
+            },
+            CustomPanel {
+                title: "Extra Report".into(),
+                kind: PanelKind::CostTable,
+                months: 6,
+                group_by: GroupBySpec {
+                    group_type: GroupByType::Dimension,
+                    key: "SERVICE".into(),
+                },
+            },
+        ];
+        let (merged, errors) = merge_panels(base, &customs);
+        assert!(errors.is_empty());
+        assert_eq!(merged.len(), 3, "replace keeps position, append adds");
+        assert_eq!(merged[0].title, "Cost Summary");
+        assert_eq!(merged[1].title, "Cost Breakdown");
+        assert_eq!(
+            merged[1].kind,
+            PanelKind::CostTable,
+            "the replacement carries the custom spec"
+        );
+        assert_eq!(merged[1].group_by.as_ref().unwrap().key, "CostCenter");
+        assert_eq!(merged[2].title, "Extra Report");
+    }
+
+    fn panel_with_title(title: &str) -> DashboardPanel {
+        DashboardPanel {
+            kind: PanelKind::CostBreakdown,
+            title: title.into(),
+            fetches: HashMap::new(),
+            months: None,
+            group_by: None,
+            default_hidden: false,
+        }
     }
 }
