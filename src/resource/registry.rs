@@ -4367,7 +4367,7 @@ mod tests {
         );
         assert!(panel.fetches.is_empty(), "cost_table builds its own fetch");
         assert_eq!(panel.months, Some(3));
-        let group_by = panel.group_by.as_ref().expect("group_by");
+        let group_by = &panel.group_by.as_ref().expect("group_by").specs()[0];
         assert_eq!(format!("{:?}", group_by.group_type), "Dimension");
         assert_eq!(group_by.key, "SERVICE");
     }

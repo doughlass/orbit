@@ -43,10 +43,20 @@ pub struct DashboardPanel {
     /// Cost-table window length in months. Only read by the cost_table kind.
     #[serde(default)]
     pub months: Option<u32>,
-    /// Cost-table grouping (dimension / tag / cost category). Only read by
-    /// the cost_table kind.
+    /// Cost-table grouping(s) — one or two, the GetCostAndUsage limit. Only
+    /// read by the cost_table kind.
     #[serde(default)]
-    pub group_by: Option<GroupBySpec>,
+    pub group_by: Option<GroupBys>,
+    /// Cost-table metric (UnblendedCost, AmortizedCost, UsageQuantity, ...).
+    /// Only read by the cost_table kind.
+    #[serde(default)]
+    pub metric: Option<String>,
+    /// Raw GetCostAndUsage Filter Expression (credits excluded, service
+    /// scoped, ...). Passed to the wire verbatim: the Expression shape is
+    /// recursive (And/Or/Not/Dimensions/Tags/CostCategories) and a struct
+    /// would only mirror it. Only read by the cost_table kind.
+    #[serde(default)]
+    pub filter: Option<Value>,
     /// A default-hidden panel stays off the page until the panel picker
     /// shows it; the picker's choice is remembered in the user config.
     #[serde(default)]
@@ -54,8 +64,9 @@ pub struct DashboardPanel {
 }
 
 /// A custom panel as the user writes it in `~/.orbit/config.yaml`. Declarative
-/// on purpose: the fetch is generated from window + group-by, so users never
-/// touch the fetch machinery. Currently only cost_table panels are supported.
+/// on purpose: the fetch is generated from window + group-by + metric, so
+/// users never touch the fetch machinery. Currently only cost_table panels
+/// are supported.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CustomPanel {
@@ -63,7 +74,14 @@ pub struct CustomPanel {
     pub kind: PanelKind,
     #[serde(default = "default_months")]
     pub months: u32,
-    pub group_by: GroupBySpec,
+    pub group_by: GroupBys,
+    /// GetCostAndUsage metric; UnblendedCost when omitted.
+    #[serde(default)]
+    pub metric: Option<String>,
+    /// Raw Filter Expression, passed to the wire verbatim. This is where a
+    /// mirrored console report's "exclude credits" or service scoping lives.
+    #[serde(default)]
+    pub filter: Option<Value>,
 }
 
 fn default_months() -> u32 {
@@ -79,7 +97,7 @@ pub enum GroupByType {
 
 /// What to group a cost table by. `key` is the dimension name (SERVICE,
 /// LINKED_ACCOUNT, ...), the tag key, or the cost category name.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GroupBySpec {
     #[serde(rename = "type")]
@@ -120,16 +138,51 @@ impl Serialize for GroupByType {
 }
 
 impl GroupBySpec {
-    /// The GetCostAndUsage GroupBy entry this spec describes.
+    /// One GetCostAndUsage GroupBy entry as this spec describes.
     fn to_group_by(&self) -> Value {
         let api_type = match self.group_type {
             GroupByType::Dimension => "DIMENSION",
             GroupByType::Tag => "TAG",
             GroupByType::CostCategory => "COST_CATEGORY",
         };
-        serde_json::json!([{ "Type": api_type, "Key": self.key }])
+        serde_json::json!({ "Type": api_type, "Key": self.key })
     }
 }
+
+/// One or two GetCostAndUsage groupings — two is the API limit. Untagged so
+/// both the single-object form every existing config uses and the two-entry
+/// list form parse, and serialize back to the same shape.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum GroupBys {
+    One(GroupBySpec),
+    Two(Vec<GroupBySpec>),
+}
+
+impl GroupBys {
+    pub fn specs(&self) -> &[GroupBySpec] {
+        match self {
+            GroupBys::One(s) => std::slice::from_ref(s),
+            GroupBys::Two(v) => v,
+        }
+    }
+
+    fn to_group_by(&self) -> Vec<Value> {
+        self.specs().iter().map(|s| s.to_group_by()).collect()
+    }
+}
+
+/// The metrics GetCostAndUsage accepts. A metric outside this list is a
+/// definition error — the API's 400 would otherwise look like an empty panel.
+pub const CE_METRICS: &[&str] = &[
+    "AmortizedCost",
+    "BlendedCost",
+    "NetAmortizedCost",
+    "NetUnblendedCost",
+    "NormalizedUsageAmount",
+    "UnblendedCost",
+    "UsageQuantity",
+];
 
 impl CustomPanel {
     /// Turn a user-defined panel into the same shape the JSON dashboards use.
@@ -149,6 +202,8 @@ impl CustomPanel {
             fetches: HashMap::new(),
             months: Some(self.months),
             group_by: Some(self.group_by.clone()),
+            metric: self.metric.clone(),
+            filter: self.filter.clone(),
             default_hidden: false,
         })
     }
@@ -235,6 +290,8 @@ pub fn builtin_reports(def: &DashboardDef) -> Vec<CustomPanel> {
             kind: PanelKind::CostTable,
             months: p.months.unwrap_or(3),
             group_by: p.group_by.clone().expect("filtered above"),
+            metric: p.metric.clone(),
+            filter: p.filter.clone(),
         })
         .collect()
 }
@@ -405,12 +462,12 @@ pub async fn fetch_panel(panel: &DashboardPanel, clients: &AwsClients) -> PanelD
 async fn run_panel(panel: &DashboardPanel, clients: &AwsClients) -> PanelData {
     // CostTable derives its fetch from months/group_by, not named fetches.
     if panel.kind == PanelKind::CostTable {
-        let fetch = match cost_table_fetch(panel) {
+        let (fetch, metric) = match cost_table_fetch(panel) {
             Ok(f) => f,
             Err(e) => return PanelData::Error(format!("{}: {e}", panel.title)),
         };
         return match run_fetch(&fetch, clients).await {
-            Ok(response) => compute_cost_table(&response),
+            Ok(response) => compute_cost_table(&response, &metric),
             Err(e) => PanelData::Error(format!("{}: {e}", panel.title)),
         };
     }
@@ -440,29 +497,55 @@ async fn run_panel(panel: &DashboardPanel, clients: &AwsClients) -> PanelData {
 }
 
 /// Build the single GetCostAndUsage call a cost table needs from its
-/// window + group-by spec.
-fn cost_table_fetch(panel: &DashboardPanel) -> Result<PanelFetch> {
-    let group_by = panel
+/// window + group-by + metric + filter spec. Returns the resolved metric too
+/// — the computor must read the same metric the request asked for, or a
+/// mirrored report would silently sum UnblendedCost while claiming otherwise.
+fn cost_table_fetch(panel: &DashboardPanel) -> Result<(PanelFetch, String)> {
+    let specs = panel
         .group_by
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("cost table '{}' needs a group_by", panel.title))?;
+        .ok_or_else(|| anyhow::anyhow!("cost table '{}' needs a group_by", panel.title))?
+        .specs();
+    if specs.is_empty() || specs.len() > 2 {
+        return Err(anyhow::anyhow!(
+            "cost table '{}' has {} group_bys: GetCostAndUsage takes one or two",
+            panel.title,
+            specs.len()
+        ));
+    }
+    let metric = panel.metric.as_deref().unwrap_or("UnblendedCost");
+    if !CE_METRICS.contains(&metric) {
+        return Err(anyhow::anyhow!(
+            "cost table '{}' uses metric '{}': not one of {}",
+            panel.title,
+            metric,
+            CE_METRICS.join(", ")
+        ));
+    }
     let months = panel.months.unwrap_or(3).max(1);
     let start = if months == 1 {
         "{{month_start}}".to_string()
     } else {
         format!("{{{{month_start-{}M}}}}", months - 1)
     };
-    Ok(PanelFetch {
-        service: "ce".to_string(),
-        action: "GetCostAndUsage".to_string(),
-        static_params: serde_json::json!({
-            "TimePeriod": { "Start": start, "End": "{{today+1d}}" },
-            "Granularity": "MONTHLY",
-            "Metrics": ["UnblendedCost"],
-            "GroupBy": group_by.to_group_by()
-        }),
-        response_root: Some("/ResultsByTime".to_string()),
-    })
+    let mut static_params = serde_json::json!({
+        "TimePeriod": { "Start": start, "End": "{{today+1d}}" },
+        "Granularity": "MONTHLY",
+        "Metrics": [metric],
+        "GroupBy": GroupBys::Two(specs.to_vec()).to_group_by(),
+    });
+    if let Some(filter) = &panel.filter {
+        static_params["Filter"] = filter.clone();
+    }
+    Ok((
+        PanelFetch {
+            service: "ce".to_string(),
+            action: "GetCostAndUsage".to_string(),
+            static_params,
+            response_root: Some("/ResultsByTime".to_string()),
+        },
+        metric.to_string(),
+    ))
 }
 
 async fn run_fetch(fetch: &PanelFetch, clients: &AwsClients) -> Result<Value> {
@@ -652,9 +735,12 @@ fn compute_cost_monitor(responses: &HashMap<String, Value>) -> PanelData {
 /// plus unsorted per-group totals for the whole window.
 type MonthlyRows = (Vec<(String, Vec<(String, f64)>)>, Vec<(String, f64)>);
 
-/// Reduce GetCostAndUsage ResultsByTime (monthly, grouped by SERVICE) into
-/// month rows plus unsorted per-group totals.
-fn monthly_rows(results: &Value) -> MonthlyRows {
+/// Reduce GetCostAndUsage ResultsByTime (monthly, grouped) into month rows
+/// plus unsorted per-group totals. With two groupings a group's Keys arrive
+/// as ["Service", "TagKey$Value"]; the label joins them, mirroring how the
+/// console prints paired groupings.
+fn monthly_rows(results: &Value, metric: &str) -> MonthlyRows {
+    let metric_path = format!("/Metrics/{metric}/Amount");
     let mut months: Vec<(String, Vec<(String, f64)>)> = Vec::new();
     let mut totals: HashMap<String, f64> = HashMap::new();
     for row in results.as_array().cloned().unwrap_or_default() {
@@ -671,11 +757,17 @@ fn monthly_rows(results: &Value) -> MonthlyRows {
             .unwrap_or_default()
         {
             let key = g
-                .pointer("/Keys/0")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown")
-                .to_string();
-            let cost = amount(g.pointer("/Metrics/UnblendedCost/Amount"));
+                .pointer("/Keys")
+                .and_then(|v| v.as_array())
+                .map(|keys| {
+                    keys.iter()
+                        .filter_map(|k| k.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" / ")
+                })
+                .filter(|joined| !joined.is_empty())
+                .unwrap_or_else(|| "Unknown".to_string());
+            let cost = amount(g.pointer(&metric_path));
             if cost.abs() < 0.005 {
                 continue;
             }
@@ -690,9 +782,10 @@ fn monthly_rows(results: &Value) -> MonthlyRows {
 }
 
 /// A cost table sums the whole window per group and shows every group —
-/// credits included, since they are real money — biggest impact first.
-fn compute_cost_table(results: &Value) -> PanelData {
-    let (months, mut totals) = monthly_rows(results);
+/// credits included, since they are real money — biggest impact first. It
+/// reads the metric the fetch asked for, not a hardcoded one.
+fn compute_cost_table(results: &Value, metric: &str) -> PanelData {
+    let (months, mut totals) = monthly_rows(results, metric);
     if months.is_empty() {
         return PanelData::Error("cost table: no months returned".into());
     }
@@ -714,7 +807,7 @@ fn compute_breakdown(responses: &HashMap<String, Value>) -> PanelData {
     let Some(results) = responses.get("monthly_by_service") else {
         return PanelData::Error("cost breakdown: no monthly results".into());
     };
-    let (months, totals) = monthly_rows(results);
+    let (months, totals) = monthly_rows(results, "UnblendedCost");
     if months.is_empty() {
         return PanelData::Error("cost breakdown: no months returned".into());
     }
@@ -774,7 +867,7 @@ fn compute_trends(responses: &HashMap<String, Value>) -> PanelData {
     let Some(results) = responses.get("monthly_by_service") else {
         return PanelData::Error("top trends: no monthly results".into());
     };
-    let (months, _) = monthly_rows(results);
+    let (months, _) = monthly_rows(results, "UnblendedCost");
     if months.len() < 2 {
         return PanelData::Error("top trends: need at least two months".into());
     }
@@ -1096,7 +1189,7 @@ mod tests {
                 { "Keys": ["S3"], "Metrics": { "UnblendedCost": { "Amount": "10" } } }
               ] }
         ]);
-        let data = compute_cost_table(&results);
+        let data = compute_cost_table(&results, "UnblendedCost");
         let PanelData::Table(rows) = data else {
             panic!("cost table must compute Table, got {data:?}");
         };
@@ -1121,13 +1214,16 @@ mod tests {
             title: "Past 3 Months by Service".into(),
             fetches: HashMap::new(),
             months: Some(3),
-            group_by: Some(GroupBySpec {
+            group_by: Some(GroupBys::One(GroupBySpec {
                 group_type: GroupByType::Dimension,
                 key: "SERVICE".into(),
-            }),
+            })),
+            metric: None,
+            filter: None,
             default_hidden: true,
         };
-        let fetch = cost_table_fetch(&panel).expect("fetch builds");
+        let (fetch, metric) = cost_table_fetch(&panel).expect("fetch builds");
+        assert_eq!(metric, "UnblendedCost", "default metric");
         assert_eq!(fetch.action, "GetCostAndUsage");
         assert_eq!(
             fetch.static_params["GroupBy"],
@@ -1145,7 +1241,7 @@ mod tests {
             months: Some(1),
             ..panel
         };
-        let fetch = cost_table_fetch(&one).expect("fetch builds");
+        let (fetch, _) = cost_table_fetch(&one).expect("fetch builds");
         assert_eq!(
             fetch.static_params["TimePeriod"]["Start"],
             "{{month_start}}"
@@ -1162,9 +1258,165 @@ mod tests {
             fetches: HashMap::new(),
             months: Some(3),
             group_by: None,
+            metric: None,
+            filter: None,
             default_hidden: false,
         };
         assert!(cost_table_fetch(&panel).is_err());
+    }
+
+    /// A mirrored Cost Explorer report is a (metric, filter, group-by)
+    /// triple: the console's "cost type" and service scoping live in the
+    /// Filter, the amortized/blended choice in Metrics. Both must reach the
+    /// wire, and the default spec must ask for plain UnblendedCost with no
+    /// Filter key at all.
+    #[test]
+    fn cost_table_fetch_carries_metric_and_filter_from_the_spec() {
+        let filter = json!({
+            "Not": { "Dimensions": {
+                "Key": "RECORD_TYPE", "Values": ["Credit", "Refund"] } }
+        });
+        let panel = DashboardPanel {
+            kind: PanelKind::CostTable,
+            title: "EC2 amortized".into(),
+            fetches: HashMap::new(),
+            months: Some(3),
+            group_by: Some(GroupBys::One(GroupBySpec {
+                group_type: GroupByType::Dimension,
+                key: "SERVICE".into(),
+            })),
+            metric: Some("AmortizedCost".into()),
+            filter: Some(filter.clone()),
+            default_hidden: false,
+        };
+        let (fetch, metric) = cost_table_fetch(&panel).expect("fetch builds");
+        assert_eq!(metric, "AmortizedCost");
+        assert_eq!(fetch.static_params["Metrics"], json!(["AmortizedCost"]));
+        assert_eq!(
+            fetch.static_params["Filter"], filter,
+            "the Filter Expression passes through verbatim"
+        );
+
+        // Defaults: no metric and no filter must mean UnblendedCost and no
+        // Filter param — an absent key, not a null one.
+        let plain = DashboardPanel {
+            metric: None,
+            filter: None,
+            ..panel
+        };
+        let (fetch, metric) = cost_table_fetch(&plain).expect("fetch builds");
+        assert_eq!(metric, "UnblendedCost");
+        assert_eq!(fetch.static_params["Metrics"], json!(["UnblendedCost"]));
+        assert!(
+            fetch.static_params.get("Filter").is_none(),
+            "no Filter key without a filter spec"
+        );
+    }
+
+    /// Two groupings are the GetCostAndUsage limit and go out as a two-entry
+    /// GroupBy list; a third grouping or an unknown metric is a definition
+    /// error, not a 400 nobody can read.
+    #[test]
+    fn cost_table_fetch_accepts_two_group_bys_and_rejects_more_or_bad_metrics() {
+        let service = GroupBySpec {
+            group_type: GroupByType::Dimension,
+            key: "SERVICE".into(),
+        };
+        let env = GroupBySpec {
+            group_type: GroupByType::Tag,
+            key: "Environment".into(),
+        };
+        let region = GroupBySpec {
+            group_type: GroupByType::Dimension,
+            key: "REGION".into(),
+        };
+        let panel = |specs: Vec<GroupBySpec>, metric: Option<&str>| DashboardPanel {
+            kind: PanelKind::CostTable,
+            title: "Paired".into(),
+            fetches: HashMap::new(),
+            months: Some(3),
+            group_by: Some(GroupBys::Two(specs)),
+            metric: metric.map(String::from),
+            filter: None,
+            default_hidden: false,
+        };
+        let (fetch, _) = cost_table_fetch(&panel(vec![service.clone(), env.clone()], None))
+            .expect("two groupings build");
+        assert_eq!(fetch.static_params["GroupBy"].as_array().unwrap().len(), 2);
+
+        assert!(
+            cost_table_fetch(&panel(vec![service.clone(), env, region], None)).is_err(),
+            "three groupings must be rejected"
+        );
+        let err = cost_table_fetch(&panel(vec![service], Some("FakeMetric")))
+            .expect_err("unknown metric must be rejected");
+        assert!(
+            err.to_string().contains("FakeMetric"),
+            "the error names the metric: {err}"
+        );
+    }
+
+    /// A mirrored report's metric choice must be what the table sums —
+    /// AmortizedCost rows read AmortizedCost amounts — and with two groupings
+    /// the label joins both Keys, the way the console prints paired groups.
+    #[test]
+    fn cost_table_reads_the_requested_metric_and_joins_two_group_keys() {
+        let results = json!([
+            { "TimePeriod": { "Start": "2026-08-01" },
+              "Groups": [
+                { "Keys": ["EC2", "CostCenter$Prod"],
+                  "Metrics": { "AmortizedCost": { "Amount": "40" },
+                               "UnblendedCost": { "Amount": "999" } } }
+              ] }
+        ]);
+        let data = compute_cost_table(&results, "AmortizedCost");
+        let PanelData::Table(rows) = data else {
+            panic!("cost table must compute Table, got {data:?}");
+        };
+        assert_eq!(rows[0].label, "EC2 / CostCenter$Prod");
+        assert_eq!(
+            rows[0].total, 40.0,
+            "sums the metric the report asked for, not UnblendedCost"
+        );
+    }
+
+    /// Custom reports keep their metric and filter through the config
+    /// round-trip and into the dashboard panel they become.
+    #[test]
+    fn custom_reports_round_trip_metric_filter_and_group_by_pair() {
+        let custom = CustomPanel {
+            title: "Amortized by service and env".into(),
+            kind: PanelKind::CostTable,
+            months: 4,
+            group_by: GroupBys::Two(vec![
+                GroupBySpec {
+                    group_type: GroupByType::Dimension,
+                    key: "SERVICE".into(),
+                },
+                GroupBySpec {
+                    group_type: GroupByType::Tag,
+                    key: "Environment".into(),
+                },
+            ]),
+            metric: Some("AmortizedCost".into()),
+            filter: Some(json!({
+                "Dimensions": { "Key": "SERVICE",
+                                "Values": ["Amazon Elastic Compute Cloud - Compute"] }
+            })),
+        };
+        let yaml = serde_yaml::to_string(&custom).expect("serializes");
+        let parsed: CustomPanel = serde_yaml::from_str(&yaml).expect("round-trips");
+        assert_eq!(parsed.metric.as_deref(), Some("AmortizedCost"));
+        assert_eq!(parsed.group_by.specs().len(), 2);
+        assert!(parsed.filter.is_some());
+
+        // The single-object form existing configs use must still parse.
+        let legacy: CustomPanel = serde_yaml::from_str(
+            "title: Old\nkind: cost_table\nmonths: 3\ngroup_by: { type: dimension, key: SERVICE }\n",
+        )
+        .expect("single group_by object parses");
+        assert_eq!(legacy.group_by.specs()[0].key, "SERVICE");
+        assert!(legacy.metric.is_none() && legacy.filter.is_none());
     }
 
     /// User-defined panels must convert to the dashboard shape, and a kind
@@ -1176,10 +1428,12 @@ mod tests {
             title: "EC2 spend".into(),
             kind: PanelKind::CostTable,
             months: 6,
-            group_by: GroupBySpec {
+            group_by: GroupBys::One(GroupBySpec {
                 group_type: GroupByType::Dimension,
                 key: "SERVICE".into(),
-            },
+            }),
+            metric: None,
+            filter: None,
         };
         let panel = custom.to_dashboard_panel().expect("cost_table converts");
         assert_eq!(panel.months, Some(6));
@@ -1216,19 +1470,23 @@ mod tests {
                 title: "Cost Breakdown".into(),
                 kind: PanelKind::CostTable,
                 months: 3,
-                group_by: GroupBySpec {
+                group_by: GroupBys::One(GroupBySpec {
                     group_type: GroupByType::Tag,
                     key: "CostCenter".into(),
-                },
+                }),
+                metric: None,
+                filter: None,
             },
             CustomPanel {
                 title: "Extra Report".into(),
                 kind: PanelKind::CostTable,
                 months: 6,
-                group_by: GroupBySpec {
+                group_by: GroupBys::One(GroupBySpec {
                     group_type: GroupByType::Dimension,
                     key: "SERVICE".into(),
-                },
+                }),
+                metric: None,
+                filter: None,
             },
         ];
         let (merged, errors) = merge_panels(base, &customs);
@@ -1241,7 +1499,10 @@ mod tests {
             PanelKind::CostTable,
             "the replacement carries the custom spec"
         );
-        assert_eq!(merged[1].group_by.as_ref().unwrap().key, "CostCenter");
+        assert_eq!(
+            merged[1].group_by.as_ref().unwrap().specs()[0].key,
+            "CostCenter"
+        );
         assert_eq!(merged[2].title, "Extra Report");
     }
 
@@ -1252,6 +1513,8 @@ mod tests {
             fetches: HashMap::new(),
             months: None,
             group_by: None,
+            metric: None,
+            filter: None,
             default_hidden: false,
         }
     }
@@ -1268,10 +1531,12 @@ mod tests {
             title: "Cost Centers 3mo".into(),
             kind: PanelKind::CostTable,
             months: 3,
-            group_by: GroupBySpec {
+            group_by: GroupBys::One(GroupBySpec {
                 group_type: GroupByType::Tag,
                 key: "CostCenter".into(),
-            },
+            }),
+            metric: None,
+            filter: None,
         }];
         let assignments = HashMap::from([
             ("Cost Breakdown".to_string(), "Cost Centers 3mo".to_string()),
@@ -1290,7 +1555,10 @@ mod tests {
             PanelKind::CostTable,
             "but gets the report's spec"
         );
-        assert_eq!(resolved[0].group_by.as_ref().unwrap().key, "CostCenter");
+        assert_eq!(
+            resolved[0].group_by.as_ref().unwrap().specs()[0].key,
+            "CostCenter"
+        );
         assert_eq!(resolved[1].title, "Top Trends");
         assert_eq!(
             resolved[1].kind,
@@ -1312,10 +1580,12 @@ mod tests {
                     title: "Past 3 Months by Service".into(),
                     fetches: HashMap::new(),
                     months: Some(3),
-                    group_by: Some(GroupBySpec {
+                    group_by: Some(GroupBys::One(GroupBySpec {
                         group_type: GroupByType::Dimension,
                         key: "SERVICE".into(),
-                    }),
+                    })),
+                    metric: None,
+                    filter: None,
                     default_hidden: true,
                 },
             ],
@@ -1338,7 +1608,10 @@ mod tests {
         assert!(errors.is_empty());
         assert_eq!(resolved[0].title, "Cost Monitor");
         assert_eq!(resolved[0].kind, PanelKind::CostTable);
-        assert_eq!(resolved[0].group_by.as_ref().unwrap().key, "SERVICE");
+        assert_eq!(
+            resolved[0].group_by.as_ref().unwrap().specs()[0].key,
+            "SERVICE"
+        );
     }
 
     /// An assignment naming a panel the dashboard does not have is stale and
@@ -1350,10 +1623,12 @@ mod tests {
             title: "Any".into(),
             kind: PanelKind::CostTable,
             months: 3,
-            group_by: GroupBySpec {
+            group_by: GroupBys::One(GroupBySpec {
                 group_type: GroupByType::Dimension,
                 key: "SERVICE".into(),
-            },
+            }),
+            metric: None,
+            filter: None,
         }];
         let (resolved, errors) = apply_assignments(
             base,

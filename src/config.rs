@@ -329,10 +329,14 @@ mod tests {
             title: "Cost Centers".into(),
             kind: crate::resource::dashboard::PanelKind::CostTable,
             months: 4,
-            group_by: crate::resource::dashboard::GroupBySpec {
-                group_type: crate::resource::dashboard::GroupByType::CostCategory,
-                key: "CostCenter".into(),
-            },
+            group_by: crate::resource::dashboard::GroupBys::One(
+                crate::resource::dashboard::GroupBySpec {
+                    group_type: crate::resource::dashboard::GroupByType::CostCategory,
+                    key: "CostCenter".into(),
+                },
+            ),
+            metric: None,
+            filter: None,
         });
 
         let yaml = serde_yaml::to_string(&config).unwrap();
@@ -360,10 +364,14 @@ mod tests {
             title: "Cost Centers 3mo".into(),
             kind: crate::resource::dashboard::PanelKind::CostTable,
             months: 3,
-            group_by: crate::resource::dashboard::GroupBySpec {
-                group_type: crate::resource::dashboard::GroupByType::Tag,
-                key: "CostCenter".into(),
-            },
+            group_by: crate::resource::dashboard::GroupBys::One(
+                crate::resource::dashboard::GroupBySpec {
+                    group_type: crate::resource::dashboard::GroupByType::Tag,
+                    key: "CostCenter".into(),
+                },
+            ),
+            metric: None,
+            filter: None,
         });
         ucfg.assignments
             .insert("Cost Breakdown".to_string(), "Cost Centers 3mo".to_string());
