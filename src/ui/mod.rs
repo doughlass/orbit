@@ -51,7 +51,9 @@ pub fn render(f: &mut Frame, app: &App) {
         Mode::LogTail => {
             render_log_tail_view(f, app, chunks[1]);
         }
-        Mode::Dashboard => {
+        Mode::Dashboard | Mode::DashboardPanels | Mode::PanelCustomize => {
+            // The popups overlay the dashboard page itself, not the resource
+            // table it was opened from.
             dashboard::render(f, app, chunks[1]);
         }
         _ => {
