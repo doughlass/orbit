@@ -11,7 +11,7 @@ use crate::resource::handlers::get_protocol_handler;
 use crate::resource::protocol::{ApiConfig, ApiProtocol};
 use anyhow::Result;
 use chrono::Datelike;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -25,7 +25,7 @@ pub struct DashboardFile {
     pub dashboards: HashMap<String, DashboardDef>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DashboardDef {
     pub display_name: String,
@@ -40,6 +40,118 @@ pub struct DashboardPanel {
     pub title: String,
     #[serde(default)]
     pub fetches: HashMap<String, PanelFetch>,
+    /// Cost-table window length in months. Only read by the cost_table kind.
+    #[serde(default)]
+    pub months: Option<u32>,
+    /// Cost-table grouping (dimension / tag / cost category). Only read by
+    /// the cost_table kind.
+    #[serde(default)]
+    pub group_by: Option<GroupBySpec>,
+    /// A default-hidden panel stays off the page until the panel picker
+    /// shows it; the picker's choice is remembered in the user config.
+    #[serde(default)]
+    pub default_hidden: bool,
+}
+
+/// A custom panel as the user writes it in `~/.orbit/config.yaml`. Declarative
+/// on purpose: the fetch is generated from window + group-by, so users never
+/// touch the fetch machinery. Currently only cost_table panels are supported.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CustomPanel {
+    pub title: String,
+    pub kind: PanelKind,
+    #[serde(default = "default_months")]
+    pub months: u32,
+    pub group_by: GroupBySpec,
+}
+
+fn default_months() -> u32 {
+    3
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GroupByType {
+    Dimension,
+    Tag,
+    CostCategory,
+}
+
+/// What to group a cost table by. `key` is the dimension name (SERVICE,
+/// LINKED_ACCOUNT, ...), the tag key, or the cost category name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroupBySpec {
+    #[serde(rename = "type")]
+    pub group_type: GroupByType,
+    pub key: String,
+}
+
+impl<'de> Deserialize<'de> for GroupByType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "dimension" => Ok(GroupByType::Dimension),
+            "tag" => Ok(GroupByType::Tag),
+            "cost_category" => Ok(GroupByType::CostCategory),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["dimension", "tag", "cost_category"],
+            )),
+        }
+    }
+}
+
+impl Serialize for GroupByType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let s = match self {
+            GroupByType::Dimension => "dimension",
+            GroupByType::Tag => "tag",
+            GroupByType::CostCategory => "cost_category",
+        };
+        serializer.serialize_str(s)
+    }
+}
+
+impl GroupBySpec {
+    /// The GetCostAndUsage GroupBy entry this spec describes.
+    fn to_group_by(&self) -> Value {
+        let api_type = match self.group_type {
+            GroupByType::Dimension => "DIMENSION",
+            GroupByType::Tag => "TAG",
+            GroupByType::CostCategory => "COST_CATEGORY",
+        };
+        serde_json::json!([{ "Type": api_type, "Key": self.key }])
+    }
+}
+
+impl CustomPanel {
+    /// Turn a user-defined panel into the same shape the JSON dashboards use.
+    /// Only cost_table is supported: the other kinds are hardcoded computors
+    /// whose definitions would not survive user editing.
+    pub fn to_dashboard_panel(&self) -> Result<DashboardPanel> {
+        if self.kind != PanelKind::CostTable {
+            return Err(anyhow::anyhow!(
+                "custom panel '{}' uses kind '{}': user-defined panels currently support only 'cost_table'",
+                self.title,
+                self.kind.as_str()
+            ));
+        }
+        Ok(DashboardPanel {
+            kind: self.kind,
+            title: self.title.clone(),
+            fetches: HashMap::new(),
+            months: Some(self.months),
+            group_by: Some(self.group_by.clone()),
+            default_hidden: false,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,18 +160,40 @@ pub enum PanelKind {
     CostMonitor,
     CostBreakdown,
     TopTrends,
+    CostTable,
 }
 
 impl PanelKind {
     /// The named fetches a kind's computor reads. A missing or extra name is
     /// a definition error — fail loudly rather than render an empty panel.
+    /// CostTable builds its fetch from months/group_by instead.
     pub fn required_fetches(&self) -> &'static [&'static str] {
         match self {
             PanelKind::CostSummary => &["mtd", "last_month", "forecast"],
             PanelKind::CostMonitor => &["budgets", "anomalies"],
             PanelKind::CostBreakdown => &["monthly_by_service"],
             PanelKind::TopTrends => &["monthly_by_service"],
+            PanelKind::CostTable => &[],
         }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PanelKind::CostSummary => "cost_summary",
+            PanelKind::CostMonitor => "cost_monitor",
+            PanelKind::CostBreakdown => "cost_breakdown",
+            PanelKind::TopTrends => "top_trends",
+            PanelKind::CostTable => "cost_table",
+        }
+    }
+}
+
+impl Serialize for PanelKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
     }
 }
 
@@ -76,6 +210,7 @@ impl<'de> Deserialize<'de> for PanelKind {
             "cost_monitor" => Ok(PanelKind::CostMonitor),
             "cost_breakdown" => Ok(PanelKind::CostBreakdown),
             "top_trends" => Ok(PanelKind::TopTrends),
+            "cost_table" => Ok(PanelKind::CostTable),
             other => Err(serde::de::Error::unknown_variant(
                 other,
                 &[
@@ -83,6 +218,7 @@ impl<'de> Deserialize<'de> for PanelKind {
                     "cost_monitor",
                     "cost_breakdown",
                     "top_trends",
+                    "cost_table",
                 ],
             )),
         }
@@ -110,6 +246,7 @@ pub enum PanelData {
     Monitor(MonitorData),
     Breakdown(BreakdownData),
     Trends(Vec<TrendRow>),
+    Table(Vec<TableRow>),
     Error(String),
 }
 
@@ -152,6 +289,13 @@ pub struct TrendRow {
     pub pct: Option<f64>,
 }
 
+/// One row of a cost table: the group name and its summed cost.
+#[derive(Debug, Clone)]
+pub struct TableRow {
+    pub label: String,
+    pub total: f64,
+}
+
 // =============================================================================
 // Fetch + compute
 // =============================================================================
@@ -167,7 +311,25 @@ pub async fn fetch_dashboard(def: &DashboardDef, clients: &AwsClients) -> Vec<Pa
     out
 }
 
+/// Fetch + compute a single panel. The panel picker uses this to populate a
+/// newly-shown panel without refetching the whole page.
+pub async fn fetch_panel(panel: &DashboardPanel, clients: &AwsClients) -> PanelData {
+    run_panel(panel, clients).await
+}
+
 async fn run_panel(panel: &DashboardPanel, clients: &AwsClients) -> PanelData {
+    // CostTable derives its fetch from months/group_by, not named fetches.
+    if panel.kind == PanelKind::CostTable {
+        let fetch = match cost_table_fetch(panel) {
+            Ok(f) => f,
+            Err(e) => return PanelData::Error(format!("{}: {e}", panel.title)),
+        };
+        return match run_fetch(&fetch, clients).await {
+            Ok(response) => compute_cost_table(&response),
+            Err(e) => PanelData::Error(format!("{}: {e}", panel.title)),
+        };
+    }
+
     let mut responses: HashMap<String, Value> = HashMap::new();
     for name in panel.kind.required_fetches() {
         let Some(fetch) = panel.fetches.get(*name) else {
@@ -188,7 +350,34 @@ async fn run_panel(panel: &DashboardPanel, clients: &AwsClients) -> PanelData {
         PanelKind::CostMonitor => compute_cost_monitor(&responses),
         PanelKind::CostBreakdown => compute_breakdown(&responses),
         PanelKind::TopTrends => compute_trends(&responses),
+        PanelKind::CostTable => unreachable!("cost_table handled above"),
     }
+}
+
+/// Build the single GetCostAndUsage call a cost table needs from its
+/// window + group-by spec.
+fn cost_table_fetch(panel: &DashboardPanel) -> Result<PanelFetch> {
+    let group_by = panel
+        .group_by
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("cost table '{}' needs a group_by", panel.title))?;
+    let months = panel.months.unwrap_or(3).max(1);
+    let start = if months == 1 {
+        "{{month_start}}".to_string()
+    } else {
+        format!("{{{{month_start-{}M}}}}", months - 1)
+    };
+    Ok(PanelFetch {
+        service: "ce".to_string(),
+        action: "GetCostAndUsage".to_string(),
+        static_params: serde_json::json!({
+            "TimePeriod": { "Start": start, "End": "{{today+1d}}" },
+            "Granularity": "MONTHLY",
+            "Metrics": ["UnblendedCost"],
+            "GroupBy": group_by.to_group_by()
+        }),
+        response_root: Some("/ResultsByTime".to_string()),
+    })
 }
 
 async fn run_fetch(fetch: &PanelFetch, clients: &AwsClients) -> Result<Value> {
@@ -374,10 +563,12 @@ fn compute_cost_monitor(responses: &HashMap<String, Value>) -> PanelData {
     })
 }
 
-/// Reduce GetCostAndUsage ResultsByTime (monthly, grouped by SERVICE) into
-/// month rows plus a top-N legend with an "Others" bucket.
+/// Reduce GetCostAndUsage ResultsByTime (monthly, grouped) into month rows
+/// plus unsorted per-group totals for the whole window.
 type MonthlyRows = (Vec<(String, Vec<(String, f64)>)>, Vec<(String, f64)>);
 
+/// Reduce GetCostAndUsage ResultsByTime (monthly, grouped by SERVICE) into
+/// month rows plus unsorted per-group totals.
 fn monthly_rows(results: &Value) -> MonthlyRows {
     let mut months: Vec<(String, Vec<(String, f64)>)> = Vec::new();
     let mut totals: HashMap<String, f64> = HashMap::new();
@@ -408,6 +599,40 @@ fn monthly_rows(results: &Value) -> MonthlyRows {
         }
         months.push((month_label(&start), groups));
     }
+    // Raw totals, unsorted: callers decide their own order and whether
+    // credits (negative totals) belong in the view at all.
+    (months, totals.into_iter().collect())
+}
+
+/// A cost table sums the whole window per group and shows every group —
+/// credits included, since they are real money — biggest impact first.
+fn compute_cost_table(results: &Value) -> PanelData {
+    let (months, mut totals) = monthly_rows(results);
+    if months.is_empty() {
+        return PanelData::Error("cost table: no months returned".into());
+    }
+    totals.sort_by(|a, b| {
+        b.1.abs()
+            .partial_cmp(&a.1.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    totals.truncate(20);
+    PanelData::Table(
+        totals
+            .into_iter()
+            .map(|(label, total)| TableRow { label, total })
+            .collect(),
+    )
+}
+
+fn compute_breakdown(responses: &HashMap<String, Value>) -> PanelData {
+    let Some(results) = responses.get("monthly_by_service") else {
+        return PanelData::Error("cost breakdown: no monthly results".into());
+    };
+    let (months, totals) = monthly_rows(results);
+    if months.is_empty() {
+        return PanelData::Error("cost breakdown: no months returned".into());
+    }
     let mut ranked: Vec<(String, f64)> = totals
         .into_iter()
         // Negative totals are credits/refunds, not spend categories: they
@@ -417,17 +642,6 @@ fn monthly_rows(results: &Value) -> MonthlyRows {
         .filter(|(_, total)| *total > 0.0)
         .collect();
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    (months, ranked)
-}
-
-fn compute_breakdown(responses: &HashMap<String, Value>) -> PanelData {
-    let Some(results) = responses.get("monthly_by_service") else {
-        return PanelData::Error("cost breakdown: no monthly results".into());
-    };
-    let (months, ranked) = monthly_rows(results);
-    if months.is_empty() {
-        return PanelData::Error("cost breakdown: no months returned".into());
-    }
     // Top five services get their own colour; everything else — long tail and
     // credits alike — folds into one "Others" amount, the way the console does.
     let top: Vec<String> = ranked.iter().take(5).map(|(s, _)| s.clone()).collect();
@@ -778,5 +992,128 @@ mod tests {
     fn month_label_formats_and_tolerates_garbage() {
         assert_eq!(month_label("2026-09-01"), "Sep 2026");
         assert_eq!(month_label("garbage"), "garbage");
+    }
+
+    /// A cost table sums the whole window per group and shows every group —
+    /// credits included — biggest impact first, capped at 20 rows.
+    #[test]
+    fn cost_table_sums_per_group_and_ranks_by_impact() {
+        let results = json!([
+            { "TimePeriod": { "Start": "2026-07-01" },
+              "Groups": [
+                { "Keys": ["EC2"], "Metrics": { "UnblendedCost": { "Amount": "100" } } },
+                { "Keys": ["S3"], "Metrics": { "UnblendedCost": { "Amount": "50" } } }
+              ] },
+            { "TimePeriod": { "Start": "2026-08-01" },
+              "Groups": [
+                { "Keys": ["EC2"], "Metrics": { "UnblendedCost": { "Amount": "120" } } },
+                { "Keys": ["Refund"], "Metrics": { "UnblendedCost": { "Amount": "-90" } } },
+                { "Keys": ["S3"], "Metrics": { "UnblendedCost": { "Amount": "10" } } }
+              ] }
+        ]);
+        let data = compute_cost_table(&results);
+        let PanelData::Table(rows) = data else {
+            panic!("cost table must compute Table, got {data:?}");
+        };
+        let labels: Vec<&str> = rows.iter().map(|r| r.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            vec!["EC2", "Refund", "S3"],
+            "ranked by absolute impact; credits keep their place"
+        );
+        assert_eq!(rows[0].total, 220.0);
+        assert_eq!(rows[1].total, -90.0);
+        assert_eq!(rows[2].total, 60.0);
+    }
+
+    /// The cost-table fetch is derived from the spec: window start N-1 months
+    /// back (so N months are covered), End exclusive tomorrow, grouped by the
+    /// requested dimension.
+    #[test]
+    fn cost_table_fetch_is_derived_from_the_spec() {
+        let panel = DashboardPanel {
+            kind: PanelKind::CostTable,
+            title: "Past 3 Months by Service".into(),
+            fetches: HashMap::new(),
+            months: Some(3),
+            group_by: Some(GroupBySpec {
+                group_type: GroupByType::Dimension,
+                key: "SERVICE".into(),
+            }),
+            default_hidden: true,
+        };
+        let fetch = cost_table_fetch(&panel).expect("fetch builds");
+        assert_eq!(fetch.action, "GetCostAndUsage");
+        assert_eq!(
+            fetch.static_params["GroupBy"],
+            json!([{ "Type": "DIMENSION", "Key": "SERVICE" }])
+        );
+        assert_eq!(
+            fetch.static_params["TimePeriod"]["Start"], "{{month_start-2M}}",
+            "3 months back starts 2 months before the current one"
+        );
+        assert_eq!(fetch.static_params["TimePeriod"]["End"], "{{today+1d}}");
+        assert_eq!(fetch.response_root.as_deref(), Some("/ResultsByTime"));
+
+        // One month is a valid window and must not emit a -0M template.
+        let one = DashboardPanel {
+            months: Some(1),
+            ..panel
+        };
+        let fetch = cost_table_fetch(&one).expect("fetch builds");
+        assert_eq!(
+            fetch.static_params["TimePeriod"]["Start"],
+            "{{month_start}}"
+        );
+    }
+
+    /// A cost table without group_by is a definition error, not a silent
+    /// ungrouped dump.
+    #[test]
+    fn cost_table_without_group_by_is_an_error() {
+        let panel = DashboardPanel {
+            kind: PanelKind::CostTable,
+            title: "Broken".into(),
+            fetches: HashMap::new(),
+            months: Some(3),
+            group_by: None,
+            default_hidden: false,
+        };
+        assert!(cost_table_fetch(&panel).is_err());
+    }
+
+    /// User-defined panels must convert to the dashboard shape, and a kind
+    /// other than cost_table must be rejected — the hardcoded computors'
+    /// definitions would not survive user editing.
+    #[test]
+    fn custom_panels_convert_and_reject_unsupported_kinds() {
+        let custom = CustomPanel {
+            title: "EC2 spend".into(),
+            kind: PanelKind::CostTable,
+            months: 6,
+            group_by: GroupBySpec {
+                group_type: GroupByType::Dimension,
+                key: "SERVICE".into(),
+            },
+        };
+        let panel = custom.to_dashboard_panel().expect("cost_table converts");
+        assert_eq!(panel.months, Some(6));
+        assert!(panel.fetches.is_empty());
+
+        custom.kind.as_str(); // PanelKind serializes for the config save path
+        let yaml = serde_yaml::to_string(&custom).expect("custom panel serializes");
+        let parsed: CustomPanel = serde_yaml::from_str(&yaml).expect("round-trips");
+        assert_eq!(parsed.title, "EC2 spend");
+        assert_eq!(parsed.months, 6);
+
+        let wrong_kind = CustomPanel {
+            title: "bad".into(),
+            kind: PanelKind::CostSummary,
+            ..custom
+        };
+        assert!(
+            wrong_kind.to_dashboard_panel().is_err(),
+            "non-cost_table custom panels are rejected"
+        );
     }
 }

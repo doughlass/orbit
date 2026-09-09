@@ -70,6 +70,9 @@ pub fn render(f: &mut Frame, app: &App) {
         Mode::ColumnPicker => {
             column_picker::render(f, app);
         }
+        Mode::DashboardPanels => {
+            dashboard::render_panel_picker(f, app);
+        }
         Mode::Confirm | Mode::Warning | Mode::SsoLogin | Mode::ConsoleLogin | Mode::Update => {
             dialog::render(f, app);
         }

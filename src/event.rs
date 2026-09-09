@@ -34,17 +34,19 @@ async fn handle_key_event(app: &mut App, key: KeyEvent) -> Result<bool> {
         Mode::SsoLogin => handle_sso_login_mode(app, key).await,
         Mode::ConsoleLogin => handle_console_login_mode(app, key).await,
         Mode::LogTail => handle_log_tail_mode(app, key).await,
-        Mode::Dashboard => handle_dashboard_mode(app, key),
+        Mode::Dashboard => handle_dashboard_mode(app, key).await,
+        Mode::DashboardPanels => handle_dashboard_panels_mode(app, key).await,
         Mode::ColumnPicker => handle_column_picker_mode(app, key),
         Mode::Update => handle_update_mode(app, key).await,
     }
 }
 
 /// Dashboard pages scroll (they may exceed one screen on small terminals) and
-/// close with Esc/q back to the resource list.
-fn handle_dashboard_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
+/// close with Esc/q back to the resource list. `p` opens the panel picker.
+async fn handle_dashboard_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') => app.close_dashboard(),
+        KeyCode::Char('p') => app.open_dashboard_panel_picker(),
         KeyCode::Char('j') | KeyCode::Down => {
             if let Some(state) = app.dashboard_state.as_mut() {
                 state.scroll = state.scroll.saturating_add(1);
@@ -54,6 +56,37 @@ fn handle_dashboard_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
             if let Some(state) = app.dashboard_state.as_mut() {
                 state.scroll = state.scroll.saturating_sub(1);
             }
+        }
+        _ => {}
+    }
+    Ok(false)
+}
+
+/// The panel picker: navigate, toggle visibility (persisted), close.
+async fn handle_dashboard_panels_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
+    let count = app
+        .dashboard_panel_picker
+        .as_ref()
+        .map(|p| p.entries.len())
+        .unwrap_or(0);
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => app.close_dashboard_panel_picker(),
+        KeyCode::Char('j') | KeyCode::Down => {
+            if let Some(picker) = app.dashboard_panel_picker.as_mut() {
+                if count > 0 {
+                    picker.selected = (picker.selected + 1) % count;
+                }
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            if let Some(picker) = app.dashboard_panel_picker.as_mut() {
+                if count > 0 {
+                    picker.selected = (picker.selected + count - 1) % count;
+                }
+            }
+        }
+        KeyCode::Char(' ') | KeyCode::Enter => {
+            app.toggle_dashboard_panel().await?;
         }
         _ => {}
     }

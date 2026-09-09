@@ -4310,7 +4310,8 @@ mod tests {
 
     /// Dashboard panels must declare exactly the fetches their Rust computor
     /// reads: a missing fetch would surface as an error panel, an extra one
-    /// would be silent definition rot.
+    /// would be silent definition rot. cost_table panels are exempt — their
+    /// fetch is generated from months/group_by.
     #[test]
     fn billing_dashboard_panels_declare_required_fetches() {
         let def = get_dashboard("billing").expect("billing dashboard registered");
@@ -4318,7 +4319,7 @@ mod tests {
             def.display_name, "Billing Overview",
             "billing display_name drifted"
         );
-        assert_eq!(def.panels.len(), 4, "billing must have its four panels");
+        assert_eq!(def.panels.len(), 5, "billing must have its five panels");
         for panel in &def.panels {
             let required = panel.kind.required_fetches();
             for name in required {
@@ -4335,7 +4336,7 @@ mod tests {
                     required.contains(&name.as_str()),
                     "panel '{}' declares fetch '{}' which its kind never reads",
                     panel.title,
-                    name
+                    name,
                 );
                 assert!(
                     crate::aws::http::get_service(&fetch.service).is_some(),
@@ -4346,6 +4347,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The cost_table preset must carry its spec fields: hidden by default
+    /// (it appears only via the picker) and grouped by the SERVICE dimension
+    /// over three months.
+    #[test]
+    fn billing_dashboard_cost_table_preset_is_wired() {
+        let def = get_dashboard("billing").expect("billing dashboard registered");
+        let panel = def
+            .panels
+            .iter()
+            .find(|p| p.kind == crate::resource::dashboard::PanelKind::CostTable)
+            .expect("the cost_table preset panel");
+        assert_eq!(panel.title, "Past 3 Months by Service");
+        assert!(
+            panel.default_hidden,
+            "the preset must ship hidden; the picker enables it"
+        );
+        assert!(panel.fetches.is_empty(), "cost_table builds its own fetch");
+        assert_eq!(panel.months, Some(3));
+        let group_by = panel.group_by.as_ref().expect("group_by");
+        assert_eq!(format!("{:?}", group_by.group_type), "Dimension");
+        assert_eq!(group_by.key, "SERVICE");
     }
 
     /// Dashboard date windows lean on the template resolver; a placeholder

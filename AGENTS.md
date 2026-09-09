@@ -67,13 +67,23 @@ in `registry.rs`). A panel declares named `fetches` (service, action,
 static_params — the same `{{template}}` machinery the JSON handler resolves)
 and a `kind` that selects a Rust computor/renderer in
 `src/resource/dashboard.rs`. Adding a dashboard is JSON only; the panel kinds
-(`cost_summary`, `cost_monitor`, `cost_breakdown`, `top_trends`) are
-capabilities. Each kind's `required_fetches()` must match its definition
-exactly — the registry test pins both directions. Opened with `:billing`
-(command mode); Esc/q closes; j/k scroll rows. Known template names:
-`{{account_id}}`, `{{today±Nd}}`, `{{month_start[-NM]}}`,
-`{{prev_month_start}}`, `{{prev_month_end}}` (== month_start, End is
-exclusive), `{{next_month_start}}`.
+(`cost_summary`, `cost_monitor`, `cost_breakdown`, `top_trends`,
+`cost_table`) are capabilities. Each kind's `required_fetches()` must match
+its definition exactly — the registry test pins both directions (`cost_table`
+has none: its fetch is generated from `months` + `group_by`). Opened with
+`:billing` (command mode); Esc/q closes; j/k scroll rows; `p` opens the panel
+picker (show/hide, persisted). Known template names: `{{account_id}}`,
+`{{today±Nd}}`, `{{month_start[-NM]}}`, `{{prev_month_start}}`,
+`{{prev_month_end}}` (== month_start, End is exclusive),
+`{{next_month_start}}`.
+
+Users can extend a dashboard without touching the JSON: a
+`dashboards.<key>.panels` list in `~/.orbit/config.yaml` appends custom
+panels (currently `cost_table` only — `{title, kind, months, group_by:
+{type: dimension|tag|cost_category, key}}`), and `shown`/`hidden` title
+lists record the picker's choices. A `default_hidden: true` panel ships off
+the page until the picker shows it. Titles are the panel identity across
+JSON, config and picker — keep them unique.
 
 ## How a list fetch works
 

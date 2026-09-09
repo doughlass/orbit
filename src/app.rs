@@ -14,20 +14,21 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Mode {
-    Normal,       // Viewing list
-    Command,      // : command input
-    Help,         // ? help popup
-    Confirm,      // Confirmation dialog
-    Warning,      // Warning/info dialog (OK only)
-    Profiles,     // Profile selection
-    Regions,      // Region selection
-    Describe,     // Viewing JSON details of selected item
-    SsoLogin,     // SSO login dialog (IAM Identity Center)
-    ConsoleLogin, // Console login dialog (aws login)
-    LogTail,      // Tailing CloudWatch logs
-    Dashboard,    // Composite dashboard page (e.g. :billing)
-    ColumnPicker, // Column visibility picker (p)
-    Update,       // A newer version is available; offer to update
+    Normal,          // Viewing list
+    Command,         // : command input
+    Help,            // ? help popup
+    Confirm,         // Confirmation dialog
+    Warning,         // Warning/info dialog (OK only)
+    Profiles,        // Profile selection
+    Regions,         // Region selection
+    Describe,        // Viewing JSON details of selected item
+    SsoLogin,        // SSO login dialog (IAM Identity Center)
+    ConsoleLogin,    // Console login dialog (aws login)
+    LogTail,         // Tailing CloudWatch logs
+    Dashboard,       // Composite dashboard page (e.g. :billing)
+    DashboardPanels, // Panel picker popup on a dashboard
+    ColumnPicker,    // Column visibility picker (p)
+    Update,          // A newer version is available; offer to update
 }
 
 /// Pending action that requires confirmation
@@ -99,11 +100,30 @@ pub struct AwsFilters {
 
 /// An open dashboard page. `panels` aligns with `def.panels` once the
 /// composite fetch has run; empty before that. `scroll` offsets the first
-/// visible panel row when the grid exceeds a small terminal.
+/// visible panel row when the grid exceeds a small terminal. `key` is the
+/// dashboard/config key (e.g. "billing") the page was opened with.
 pub struct DashboardState {
+    pub key: String,
     pub def: crate::resource::DashboardDef,
     pub panels: Vec<crate::resource::PanelData>,
     pub scroll: usize,
+}
+
+/// The panel picker popup on a dashboard: every panel the page *could* show
+/// (JSON defaults + user-defined ones), with its current visibility.
+#[derive(Debug, Clone)]
+pub struct DashboardPanelPicker {
+    pub entries: Vec<PanelPickerEntry>,
+    pub selected: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct PanelPickerEntry {
+    pub title: String,
+    pub visible: bool,
+    pub custom: bool,
+    /// The panel definition, so a toggle-on can fetch it in place.
+    pub panel: crate::resource::DashboardPanel,
 }
 
 impl AwsFilters {
@@ -384,6 +404,9 @@ pub struct App {
     // Open dashboard page (e.g. :billing). Panels populate in place after the
     // composite fetch completes.
     pub dashboard_state: Option<DashboardState>,
+
+    // Panel picker popup (p on a dashboard)
+    pub dashboard_panel_picker: Option<DashboardPanelPicker>,
 
     // SSM connect request (instance_id, region, profile)
     pub ssm_connect_request: Option<SsmConnectRequest>,
@@ -668,6 +691,7 @@ impl App {
             pagination: PaginationState::default(),
             log_tail_state: None,
             dashboard_state: None,
+            dashboard_panel_picker: None,
             ssm_connect_request: None,
             fuzzy_matcher: SkimMatcherV2::default().ignore_case(),
             sort: SortState::default(),
@@ -2361,15 +2385,34 @@ impl App {
 
     /// Open a dashboard page and fetch its panels. Like describe, the fetch is
     /// awaited inline: the loop cannot repaint while awaiting, so the user sees
-    /// the previous frame until the panels arrive.
+    /// the previous frame until the panels arrive. User-defined panels from
+    /// the config are appended; panels hidden via the picker are dropped.
     pub async fn open_dashboard(&mut self, key: &str) -> Result<()> {
         let Some(def) = crate::resource::get_dashboard(key) else {
             self.error_message = Some(format!("Unknown dashboard: {}", key));
             return Ok(());
         };
-        let def = def.clone();
+        let mut def = def.clone();
+        let user_config = self.config.dashboards.get(key).cloned();
+
+        let mut user_errors: Vec<String> = Vec::new();
+        if let Some(ucfg) = &user_config {
+            for panel in &ucfg.panels {
+                match panel.to_dashboard_panel() {
+                    Ok(p) => def.panels.push(p),
+                    Err(e) => user_errors.push(e.to_string()),
+                }
+            }
+            def.panels
+                .retain(|p| ucfg.is_visible(&p.title, p.default_hidden));
+        }
+        if !user_errors.is_empty() {
+            self.error_message = Some(user_errors.join("; "));
+        }
+
         let panels = crate::resource::fetch_dashboard(&def, &self.clients).await;
         self.dashboard_state = Some(DashboardState {
+            key: key.to_string(),
             def,
             panels,
             scroll: 0,
@@ -2381,7 +2424,108 @@ impl App {
     /// Leave the dashboard back to the resource list.
     pub fn close_dashboard(&mut self) {
         self.dashboard_state = None;
+        self.dashboard_panel_picker = None;
         self.mode = Mode::Normal;
+    }
+
+    /// Open the panel picker: every panel the dashboard could show, with its
+    /// current visibility from the config.
+    pub fn open_dashboard_panel_picker(&mut self) {
+        let Some(state) = &self.dashboard_state else {
+            return;
+        };
+        let key = state.key.clone();
+        let mut entries: Vec<PanelPickerEntry> = Vec::new();
+
+        let def = crate::resource::get_dashboard(&key)
+            .cloned()
+            .unwrap_or_default();
+        let user_config = self.config.dashboards.get(&key).cloned();
+        let ucfg = user_config.as_ref();
+
+        for panel in &def.panels {
+            entries.push(PanelPickerEntry {
+                visible: ucfg
+                    .map(|u| u.is_visible(&panel.title, panel.default_hidden))
+                    .unwrap_or(!panel.default_hidden),
+                custom: false,
+                title: panel.title.clone(),
+                panel: panel.clone(),
+            });
+        }
+        if let Some(ucfg) = &user_config {
+            for custom in &ucfg.panels {
+                if let Ok(panel) = custom.to_dashboard_panel() {
+                    entries.push(PanelPickerEntry {
+                        visible: ucfg.is_visible(&panel.title, panel.default_hidden),
+                        custom: true,
+                        title: panel.title.clone(),
+                        panel,
+                    });
+                }
+            }
+        }
+
+        self.dashboard_panel_picker = Some(DashboardPanelPicker {
+            entries,
+            selected: 0,
+        });
+        self.mode = Mode::DashboardPanels;
+    }
+
+    /// Close the panel picker, back to the dashboard page.
+    pub fn close_dashboard_panel_picker(&mut self) {
+        self.dashboard_panel_picker = None;
+        self.mode = Mode::Dashboard;
+    }
+
+    /// Toggle the selected panel's visibility: persists the choice, updates
+    /// the live page (fetching just the newly-shown panel), and refreshes the
+    /// picker in place.
+    pub async fn toggle_dashboard_panel(&mut self) -> Result<()> {
+        let Some(picker) = &self.dashboard_panel_picker else {
+            return Ok(());
+        };
+        let Some(entry) = picker.entries.get(picker.selected) else {
+            return Ok(());
+        };
+        let title = entry.title.clone();
+        let panel = entry.panel.clone();
+        let new_visible = !entry.visible;
+        let key = self
+            .dashboard_state
+            .as_ref()
+            .map(|s| s.key.clone())
+            .unwrap_or_default();
+
+        self.config
+            .dashboards
+            .entry(key.clone())
+            .or_default()
+            .set_visible(&title, new_visible);
+        self.config.save()?;
+
+        if let Some(state) = self.dashboard_state.as_mut() {
+            if new_visible {
+                state.def.panels.push(panel.clone());
+                let data = crate::resource::fetch_panel(&panel, &self.clients).await;
+                state.panels.push(data);
+            } else if let Some(idx) = state.def.panels.iter().position(|p| p.title == title) {
+                state.def.panels.remove(idx);
+                state.panels.remove(idx);
+            }
+            // The grid loses rows when panels disappear; keep the scroll sane.
+            state.scroll = state.scroll.min(state.def.panels.len().max(1) / 2);
+        }
+
+        let anchor = title;
+        self.open_dashboard_panel_picker();
+        if let Some(picker) = &mut self.dashboard_panel_picker {
+            if let Some(idx) = picker.entries.iter().position(|e| e.title == anchor) {
+                picker.selected = idx;
+            }
+        }
+        Ok(())
     }
 
     /// Enter log tail mode for the selected log stream

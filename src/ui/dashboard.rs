@@ -4,7 +4,7 @@
 //! list, all in text form.
 
 use crate::app::App;
-use crate::resource::{BreakdownData, MonitorData, PanelData, StatItem, TrendRow};
+use crate::resource::{BreakdownData, MonitorData, PanelData, StatItem, TableRow, TrendRow};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -96,6 +96,7 @@ fn render_panel(f: &mut Frame, title: &str, data: &PanelData, area: Rect) {
         PanelData::Monitor(m) => render_monitor(f, m, inner),
         PanelData::Breakdown(b) => render_breakdown(f, b, inner),
         PanelData::Trends(rows) => render_trends(f, rows, inner),
+        PanelData::Table(rows) => render_table(f, rows, inner),
         PanelData::Error(msg) => {
             let p = Paragraph::new(vec![
                 Line::from(Span::styled(
@@ -236,6 +237,51 @@ fn render_breakdown(f: &mut Frame, b: &BreakdownData, area: Rect) {
     f.render_widget(Paragraph::new(lines), area);
 }
 
+/// A cost table: group name left, money right-aligned, sorted biggest first.
+/// Credits keep their negative sign and red colour.
+fn render_table(f: &mut Frame, rows: &[TableRow], area: Rect) {
+    let width = area.width as usize;
+    let mut lines: Vec<Line> = Vec::new();
+    if rows.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "No cost data for this window",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    for row in rows {
+        let name_width = width.saturating_sub(14).max(10);
+        let mut spans = vec![Span::styled(
+            shorten(&row.label, name_width),
+            Style::default().fg(if row.total < 0.0 {
+                Color::Green
+            } else {
+                Color::DarkGray
+            }),
+        )];
+        let used = row.label.chars().count().min(name_width);
+        if width > used + 14 {
+            spans.push(Span::raw(" ".repeat(width - used - 14)));
+        }
+        let money =
+            crate::resource::field_mapper::transform_format_money(&serde_json::json!(row.total))
+                .as_str()
+                .unwrap_or("-")
+                .to_string();
+        spans.push(Span::styled(
+            format!("{:>13}", money),
+            Style::default()
+                .fg(if row.total < 0.0 {
+                    Color::Green
+                } else {
+                    Color::Reset
+                })
+                .add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::from(spans));
+    }
+    f.render_widget(Paragraph::new(lines), area);
+}
+
 fn render_trends(f: &mut Frame, rows: &[TrendRow], area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
     if rows.is_empty() {
@@ -273,6 +319,102 @@ fn render_trends(f: &mut Frame, rows: &[TrendRow], area: Rect) {
         lines.push(Line::from(spans));
     }
     f.render_widget(Paragraph::new(lines), area);
+}
+
+/// Panel picker popup (p on a dashboard): checkbox list of every panel the
+/// page could show — JSON defaults plus user-defined ones — with the live
+/// visibility state. Space/Enter toggles; the choice is persisted to config.
+pub fn render_panel_picker(f: &mut Frame, app: &App) {
+    use ratatui::widgets::Clear;
+
+    let Some(picker) = &app.dashboard_panel_picker else {
+        return;
+    };
+    let area = centered_rect(55, 60, f.area());
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(Span::styled(
+            " Dashboard Panels ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let rows: Vec<Constraint> = std::iter::repeat_n(Constraint::Min(1), 3)
+        .chain(std::iter::once(Constraint::Length(1)))
+        .collect();
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(rows)
+        .split(inner);
+
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, entry) in picker.entries.iter().enumerate() {
+        let check = if entry.visible { "[x]" } else { "[ ]" };
+        let selected = i == picker.selected;
+        let mut spans = vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("{check} "),
+                Style::default().fg(if entry.visible {
+                    Color::Green
+                } else {
+                    Color::DarkGray
+                }),
+            ),
+            Span::styled(
+                entry.title.clone(),
+                Style::default()
+                    .fg(if selected { Color::Cyan } else { Color::Reset })
+                    .add_modifier(if selected {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    }),
+            ),
+        ];
+        if entry.custom {
+            spans.push(Span::styled(
+                "  custom",
+                Style::default().fg(Color::Magenta),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+    f.render_widget(Paragraph::new(lines), chunks[0]);
+
+    f.render_widget(
+        Paragraph::new(Span::styled(
+            " space/enter: toggle · j/k: move · esc: close",
+            Style::default().fg(Color::DarkGray),
+        )),
+        chunks[2],
+    );
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
 
 fn pad(s: &str, w: usize) -> String {

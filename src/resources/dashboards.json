@@ -98,6 +98,14 @@
               "response_root": "/ResultsByTime"
             }
           }
+        },
+        {
+          "kind": "cost_table",
+          "title": "Past 3 Months by Service",
+          "default_hidden": true,
+          "months": 3,
+          "group_by": { "type": "dimension", "key": "SERVICE" },
+          "fetches": {}
         }
       ]
     }
