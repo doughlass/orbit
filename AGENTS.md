@@ -400,6 +400,15 @@ Match the surrounding code. Specifics that are consistent throughout:
 
 ## Known gaps and open work
 
+- Cost Explorer Saved Reports cannot be fetched from orbit. The console's
+  `AWSInsightsIndexService.ListReports` (needs `x-amz-source: CMC` on
+  ce.us-east-1) only dispatches for console-session tokens: byte-identical
+  requests with CLI/SDK STS tokens — same role, same session name, same
+  us-east-1 issuance — answer UnknownOperationException (verified against
+  live AWS, Sep 2026). Reports are expressible as config cost_table specs
+  (metric/filter/group-bys); mirroring them is a manual copy, not an API
+  call. Re-verify only if a future botocore model adds report operations.
+
 - Route53 records truncate at the first page (two-token pagination, above).
 - Aurora clusters are invisible; only `DescribeDBInstances` is wired, not
   `DescribeDBClusters`.
