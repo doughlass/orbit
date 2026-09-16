@@ -71,6 +71,7 @@ pub fn apply_transform(value: &Value, transform: &str) -> Value {
         "arn_tail" => transform_arn_tail(value),
         "anomaly_scope" => transform_anomaly_scope(value),
         "category_status" => transform_category_status(value),
+        "cc_rules_to_lines" => transform_cc_rules_to_lines(value),
         "bool_to_yes_no" => transform_bool_to_yes_no(value),
         "array_to_csv" => transform_array_to_csv(value),
         "first_item" => transform_first_item(value),
@@ -564,6 +565,81 @@ pub fn transform_category_status(value: &Value) -> Value {
     } else {
         "APPLIED".to_string()
     })
+}
+
+/// One readable line per cost-category rule. Rules carry either a nested
+/// Or/And/Not expression (a flat item_template cannot render a tree) or an
+/// InheritedValue dimension, so each is rendered as
+/// `<Value> <- <expression>` / `<Value> <- inherits <dim>/<key>`.
+/// A rule that carries neither passes through as its value alone.
+fn transform_cc_rules_to_lines(value: &Value) -> Value {
+    let rules = match value {
+        Value::Array(arr) => arr,
+        Value::Object(_) => {
+            return Value::Array(vec![cc_rule_to_line(value)]);
+        }
+        _ => return value.clone(),
+    };
+    Value::Array(rules.iter().map(cc_rule_to_line).collect())
+}
+
+fn cc_rule_to_line(rule: &Value) -> Value {
+    let assigned = rule.get("Value").and_then(|v| v.as_str()).unwrap_or("-");
+
+    let rendered = if let Some(inherited) = rule.get("InheritedValue") {
+        let dim = inherited
+            .get("DimensionName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let key = inherited
+            .get("DimensionKey")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        format!("{assigned} <- inherits {dim}/{key}")
+    } else if let Some(expr) = rule.get("Rule") {
+        format!("{assigned} <- {}", cc_expression_to_text(expr))
+    } else {
+        assigned.to_string()
+    };
+    Value::String(rendered)
+}
+
+/// Render a cost-category Expression into console-like text: nested Or/And/Not
+/// become joined groups, a Dimensions/Tags/CostCategories leaf becomes
+/// `<prefix> <key> = <values>`. A shape that carries none of these renders as
+/// its raw JSON-derived string rather than silently vanishing.
+fn cc_expression_to_text(expr: &Value) -> String {
+    if let Some(items) = expr.get("Or").and_then(|v| v.as_array()) {
+        let parts: Vec<String> = items.iter().map(cc_expression_to_text).collect();
+        return format!("({})", parts.join(" OR "));
+    }
+    if let Some(items) = expr.get("And").and_then(|v| v.as_array()) {
+        let parts: Vec<String> = items.iter().map(cc_expression_to_text).collect();
+        return format!("({})", parts.join(" AND "));
+    }
+    if let Some(inner) = expr.get("Not") {
+        return format!("NOT {}", cc_expression_to_text(inner));
+    }
+    for (field, prefix) in [
+        ("Dimensions", ""),
+        ("Tags", "Tag "),
+        ("CostCategories", "CostCategory "),
+    ] {
+        if let Some(leaf) = expr.get(field) {
+            let key = leaf.get("Key").and_then(|v| v.as_str()).unwrap_or("");
+            let values = leaf.get("Values").and_then(|v| v.as_array());
+            let joined = values
+                .map(|vs| {
+                    vs.iter()
+                        .map(|v| v.as_str().unwrap_or("").to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+            return format!("{prefix}{key} = {joined}");
+        }
+    }
+    expr.to_string()
 }
 
 /// Transform boolean to Yes/No string

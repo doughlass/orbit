@@ -872,9 +872,53 @@ async fn handle_confirm_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
 }
 
 async fn handle_profiles_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
+    // While the filter is active, printable characters type into it and j/k/g/G
+    // lose their navigation meaning (arrows still navigate), mirroring the main
+    // table filter.
+    if app.profiles_filter_active {
+        match key.code {
+            KeyCode::Esc => {
+                app.profiles_filter_active = false;
+                app.profiles_filter_text.clear();
+                app.apply_profiles_filter();
+            }
+            KeyCode::Enter => {
+                app.profiles_filter_active = false;
+                return app.select_profile().await;
+            }
+            KeyCode::Backspace => {
+                app.profiles_filter_text.pop();
+                app.apply_profiles_filter();
+            }
+            KeyCode::Char('/') => {
+                app.profiles_filter_active = false;
+                app.profiles_filter_text.clear();
+                app.apply_profiles_filter();
+            }
+            KeyCode::Up => app.previous(),
+            KeyCode::Down => app.next(),
+            KeyCode::PageUp => app.page_up(10),
+            KeyCode::PageDown => app.page_down(10),
+            KeyCode::Home => app.go_to_top(),
+            KeyCode::End => app.go_to_bottom(),
+            KeyCode::Char(c) => {
+                app.profiles_filter_text.push(c);
+                app.apply_profiles_filter();
+            }
+            _ => {}
+        }
+        return Ok(false);
+    }
+
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') => {
             app.exit_mode();
+        }
+        // '/' starts the filter, mirroring the main table. A profile list is
+        // dozens of entries once ~/.aws/config accumulates sessions.
+        KeyCode::Char('/') => {
+            app.profiles_filter_active = true;
+            app.profiles_filter_text.clear();
         }
         KeyCode::Char('j') | KeyCode::Down => {
             app.next();
@@ -888,8 +932,10 @@ async fn handle_profiles_mode(app: &mut App, key: KeyEvent) -> Result<bool> {
         KeyCode::Char('G') | KeyCode::End => {
             app.go_to_bottom();
         }
+        KeyCode::PageUp => app.page_up(10),
+        KeyCode::PageDown => app.page_down(10),
         KeyCode::Enter => {
-            app.select_profile().await?;
+            return app.select_profile().await;
         }
         _ => {}
     }
@@ -1524,5 +1570,106 @@ mod tests {
 
         assert!(app.update_available.is_none());
         assert_eq!(app.mode, crate::app::Mode::Normal);
+    }
+
+    /// The profile picker filter must narrow the list and keep the cursor
+    /// inside it. `j`/`k` type into the filter while it is active (arrows
+    /// navigate), mirroring the main table filter.
+    async fn press_profiles(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
+        handle_profiles_mode(app, KeyEvent::new(code, modifiers))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn profiles_filter_narrows_the_picker_and_keeps_navigation_inside() {
+        let mut app = test_app();
+        app.available_profiles = vec![
+            "main".to_string(),
+            "stg-prod".to_string(),
+            "STG-dev".to_string(),
+            "other".to_string(),
+        ];
+        app.enter_profiles_mode();
+        assert_eq!(app.profiles_visible().len(), 4);
+
+        press_profiles(&mut app, KeyCode::Char('/'), KeyModifiers::NONE).await;
+        for c in "stg".chars() {
+            press_profiles(&mut app, KeyCode::Char(c), KeyModifiers::NONE).await;
+        }
+
+        assert_eq!(
+            app.profiles_visible().len(),
+            2,
+            "the filter must be case-insensitive and match both stg-* profiles"
+        );
+        assert_eq!(
+            app.profiles_visible()[0],
+            "stg-prod",
+            "the filtered list keeps the original order"
+        );
+
+        // j/k/g/G type into the filter while it is active; arrows navigate.
+        press_profiles(&mut app, KeyCode::Char('j'), KeyModifiers::NONE).await;
+        assert_eq!(
+            app.profiles_filter_text, "stgj",
+            "j must type into the filter, not navigate"
+        );
+        assert_eq!(
+            app.profiles_visible().len(),
+            0,
+            "a filter that matches nothing narrows to an empty list"
+        );
+
+        // Backspace removes the typed 'j' and the list reappears.
+        press_profiles(&mut app, KeyCode::Backspace, KeyModifiers::NONE).await;
+        assert_eq!(app.profiles_visible().len(), 2);
+
+        // Arrows navigate the narrowed list; the cursor must not escape it.
+        for _ in 0..5 {
+            press_profiles(&mut app, KeyCode::Down, KeyModifiers::NONE).await;
+        }
+        assert_eq!(
+            app.profiles_selected, 1,
+            "navigation must clamp to the filtered list, not the full one"
+        );
+
+        // Esc clears the filter and stays; a second Esc exits the picker.
+        press_profiles(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        assert!(app.profiles_filter_text.is_empty());
+        assert!(!app.profiles_filter_active);
+        assert_eq!(app.mode, crate::app::Mode::Profiles);
+
+        press_profiles(&mut app, KeyCode::Esc, KeyModifiers::NONE).await;
+        assert_eq!(app.mode, crate::app::Mode::Normal);
+    }
+
+    /// Enter under an active filter must select the profile the cursor sits on
+    /// in the *filtered* list — the same index into the full list is a
+    /// different profile, or out of range. select_profile itself needs live
+    /// AWS credentials, so pin the seam it reads: the filtered list and cursor.
+    #[tokio::test]
+    async fn profiles_filter_cursor_selects_from_the_filtered_list() {
+        let mut app = test_app();
+        app.available_profiles = vec![
+            "main".to_string(),
+            "stg-prod".to_string(),
+            "prod-eu".to_string(),
+        ];
+        app.enter_profiles_mode();
+        app.profile = "stg-prod".to_string();
+
+        press_profiles(&mut app, KeyCode::Char('/'), KeyModifiers::NONE).await;
+        for c in "eu".chars() {
+            press_profiles(&mut app, KeyCode::Char(c), KeyModifiers::NONE).await;
+        }
+
+        assert_eq!(app.profiles_visible(), vec!["prod-eu".to_string()]);
+        assert_eq!(app.profiles_selected, 0);
+        assert_eq!(
+            app.profiles_visible()[app.profiles_selected],
+            "prod-eu",
+            "the cursor selects prod-eu, not whatever index 0 is in the full list"
+        );
     }
 }

@@ -358,6 +358,8 @@ pub struct App {
     pub available_regions: Vec<String>,
     pub profiles_selected: usize,
     pub regions_selected: usize,
+    pub profiles_filter_text: String,
+    pub profiles_filter_active: bool,
 
     // Confirmation
     pub pending_action: Option<PendingAction>,
@@ -687,6 +689,8 @@ impl App {
             available_regions,
             profiles_selected: 0,
             regions_selected: 0,
+            profiles_filter_text: String::new(),
+            profiles_filter_active: false,
             pending_action: None,
             loading: false,
             error_message: None,
@@ -1449,9 +1453,9 @@ impl App {
     pub fn next(&mut self) {
         match self.mode {
             Mode::Profiles => {
-                if !self.available_profiles.is_empty() {
-                    self.profiles_selected =
-                        (self.profiles_selected + 1).min(self.available_profiles.len() - 1);
+                let len = self.profiles_visible().len();
+                if len > 0 {
+                    self.profiles_selected = (self.profiles_selected + 1).min(len - 1);
                 }
             }
             Mode::Regions => {
@@ -1493,8 +1497,9 @@ impl App {
     pub fn go_to_bottom(&mut self) {
         match self.mode {
             Mode::Profiles => {
-                if !self.available_profiles.is_empty() {
-                    self.profiles_selected = self.available_profiles.len() - 1;
+                let len = self.profiles_visible().len();
+                if len > 0 {
+                    self.profiles_selected = len - 1;
                 }
             }
             Mode::Regions => {
@@ -1513,9 +1518,9 @@ impl App {
     pub fn page_down(&mut self, page_size: usize) {
         match self.mode {
             Mode::Profiles => {
-                if !self.available_profiles.is_empty() {
-                    self.profiles_selected =
-                        (self.profiles_selected + page_size).min(self.available_profiles.len() - 1);
+                let len = self.profiles_visible().len();
+                if len > 0 {
+                    self.profiles_selected = (self.profiles_selected + page_size).min(len - 1);
                 }
             }
             Mode::Regions => {
@@ -1903,9 +1908,35 @@ impl App {
         })
     }
 
+    /// Profiles shown in the picker, narrowed by the profile filter. A filter
+    /// that matches nothing yields an empty list so the cursor lands on "-":
+    /// a stale selection must never silently pick an invisible profile.
+    pub fn profiles_visible(&self) -> Vec<String> {
+        if self.profiles_filter_text.is_empty() {
+            return self.available_profiles.clone();
+        }
+        let needle = self.profiles_filter_text.to_lowercase();
+        self.available_profiles
+            .iter()
+            .filter(|p| p.to_lowercase().contains(&needle))
+            .cloned()
+            .collect()
+    }
+
+    /// Reclamp the cursor after the filtered list shrank. The current profile
+    /// staying in view matters: the user filtered to *find* it.
+    pub fn apply_profiles_filter(&mut self) {
+        let visible = self.profiles_visible();
+        if self.profiles_selected >= visible.len() {
+            self.profiles_selected = visible.len().saturating_sub(1);
+        }
+    }
+
     pub fn enter_profiles_mode(&mut self) {
+        self.profiles_filter_text.clear();
+        self.profiles_filter_active = false;
         self.profiles_selected = self
-            .available_profiles
+            .profiles_visible()
             .iter()
             .position(|p| p == &self.profile)
             .unwrap_or(0);
@@ -2264,8 +2295,8 @@ impl App {
 
     /// Select profile - returns true if login (SSO or Console) is required
     pub async fn select_profile(&mut self) -> Result<bool> {
-        if let Some(profile) = self.available_profiles.get(self.profiles_selected) {
-            let profile = profile.clone();
+        let visible = self.profiles_visible();
+        if let Some(profile) = visible.get(self.profiles_selected).cloned() {
             match self.switch_profile_with_sso_check(&profile).await? {
                 ProfileSwitchResult::Success => {
                     self.refresh_current().await?;

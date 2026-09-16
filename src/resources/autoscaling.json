@@ -33,12 +33,39 @@
         }
       },
       "field_mappings": {
+        "Raw": { "source": "/" },
         "AutoScalingGroupName": { "source": "/AutoScalingGroupName", "default": "-" },
         "MinSize": { "source": "/MinSize", "default": "0" },
         "MaxSize": { "source": "/MaxSize", "default": "0" },
         "DesiredCapacity": { "source": "/DesiredCapacity", "default": "0" },
         "InstanceCount": { "source": "/Instances/member", "default": "0" },
-        "AvailabilityZones": { "source": "/AvailabilityZones", "default": "-" }
+        "AvailabilityZones": { "source": "/AvailabilityZones/member", "transform": "array_to_csv", "default": "-" }
+      },
+      "describe_from_row": true,
+      "describe_config": {
+        "describe_fields": [
+          { "label": "Group Name", "source": "/Raw/AutoScalingGroupName", "section": "Details" },
+          { "label": "ARN", "source": "/Raw/AutoScalingGroupARN", "section": "Details" },
+          { "label": "Created", "source": "/Raw/CreatedTime", "section": "Details" },
+          { "label": "Health Check", "source": "/Raw/HealthCheckType", "section": "Details" },
+          { "label": "Grace Period", "source": "/Raw/HealthCheckGracePeriod", "section": "Details" },
+          { "label": "Default Cooldown", "source": "/Raw/DefaultCooldown", "section": "Details" },
+          { "label": "Desired", "source": "/Raw/DesiredCapacity", "section": "Capacity" },
+          { "label": "Min", "source": "/Raw/MinSize", "section": "Capacity" },
+          { "label": "Max", "source": "/Raw/MaxSize", "section": "Capacity" },
+          { "label": "New Instances Scale-In Protected", "source": "/Raw/NewInstancesProtectedFromScaleIn", "transform": "bool_to_yes_no", "section": "Capacity" },
+          { "label": "Launch Template", "source": "/Raw/LaunchTemplate/LaunchTemplateName", "section": "Launch" },
+          { "label": "Launch Template Version", "source": "/Raw/LaunchTemplate/Version", "section": "Launch" },
+          { "label": "Launch Config", "source": "/Raw/LaunchConfigurationName", "section": "Launch" },
+          { "label": "Availability Zones", "source": "/Raw/AvailabilityZones/member", "transform": "array_to_csv", "section": "Networking" },
+          { "label": "Subnets", "source": "/Raw/VPCZoneIdentifier", "section": "Networking" },
+          { "label": "Instances", "source": "/Raw/Instances/member", "list": true, "item_template": "{InstanceId} {LifecycleState} {InstanceType} {AvailabilityZone}", "section": "Instances" },
+          { "label": "Traffic Sources", "source": "/Raw/TrafficSources/member", "list": true, "item_template": "{Type} {Identifier}", "section": "Traffic" },
+          { "label": "Suspended Processes", "source": "/Raw/SuspendedProcesses/member", "list": true, "item_template": "{ProcessName}", "section": "Health" },
+          { "label": "Termination Policies", "source": "/Raw/TerminationPolicies/member", "list": true, "section": "Health" },
+          { "label": "Enabled Metrics", "source": "/Raw/EnabledMetrics/member", "list": true, "item_template": "{Metric} ({Granularity})", "section": "Health" },
+          { "label": "Tags", "source": "/Raw/Tags/member", "list": true, "item_template": "{key}={value}", "section": "Tags" }
+        ]
       },
       "action_configs": {
         "delete_auto_scaling_group": {

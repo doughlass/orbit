@@ -51,7 +51,7 @@
       "sdk_method": "list_cost_category_definitions",
       "sdk_method_params": {},
       "response_path": "cost_categories",
-      "id_field": "Name",
+      "id_field": "CostCategoryArn",
       "name_field": "Name",
       "is_global": false,
       "columns": [
@@ -83,6 +83,22 @@
         "ProcessingStatus": { "source": "/ProcessingStatus", "transform": "category_status", "default": "APPLIED" },
         "EffectiveStart": { "source": "/EffectiveStart", "default": "-" },
         "EffectiveEnd": { "source": "/EffectiveEnd", "default": "-" }
+      },
+      "describe_config": {
+        "protocol": "json",
+        "service_name": "ce",
+        "action": "DescribeCostCategoryDefinition",
+        "id_param": "CostCategoryArn",
+        "response_path": "/CostCategory",
+        "describe_fields": [
+          { "label": "Name", "source": "/Name", "section": "Details" },
+          { "label": "ARN", "source": "/CostCategoryArn", "section": "Details" },
+          { "label": "Rule Version", "source": "/RuleVersion", "section": "Details" },
+          { "label": "Default Value", "source": "/DefaultValue", "section": "Details" },
+          { "label": "Effective Start", "source": "/EffectiveStart", "section": "Details" },
+          { "label": "Effective End", "source": "/EffectiveEnd", "section": "Details" },
+          { "label": "Rules", "source": "/Rules", "list": true, "transform": "cc_rules_to_lines", "section": "Rules" }
+        ]
       }
     },
     "billing-anomaly-monitors": {
@@ -103,8 +119,11 @@
         { "header": "CREATED", "json_path": "CreationDate", "width": 20 },
         { "header": "LAST UPDATED", "json_path": "LastUpdatedDate", "width": 20 }
       ],
-      "sub_resources": [],
+      "sub_resources": [
+        { "shortcut": "a", "display_name": "Cost Anomalies", "resource_key": "billing-cost-anomalies", "parent_id_field": "MonitorArn", "filter_param": "MonitorArn" }
+      ],
       "actions": [],
+      "enter_sub_resource": "billing-cost-anomalies",
       "api_config": {
         "protocol": "json",
         "service_name": "ce",
@@ -138,6 +157,7 @@
       "name_field": "AnomalyStartDate",
       "is_global": false,
       "preserve_order": true,
+      "describe_from_row": true,
       "columns": [
         { "header": "START", "json_path": "AnomalyStartDate", "width": 12 },
         { "header": "END", "json_path": "AnomalyEndDate", "width": 12 },
@@ -167,6 +187,7 @@
         }
       },
       "field_mappings": {
+        "Raw": { "source": "/" },
         "AnomalyId": { "source": "/AnomalyId", "default": "-" },
         "AnomalyStartDate": { "source": "/AnomalyStartDate", "transform": "format_date_only", "default": "-" },
         "AnomalyEndDate": { "source": "/AnomalyEndDate", "transform": "format_date_only", "default": "-" },
@@ -175,6 +196,24 @@
         "CurrentScore": { "source": "/AnomalyScore/CurrentScore", "transform": "format_percent", "default": "-" },
         "MonitorName": { "source": "/MonitorArn", "transform": "arn_tail", "default": "-" },
         "Feedback": { "source": "/Feedback", "default": "NOT_REVIEWED" }
+      },
+      "describe_config": {
+        "describe_fields": [
+          { "label": "Anomaly ID", "source": "/Raw/AnomalyId", "section": "Anomaly" },
+          { "label": "Service", "source": "/Raw/DimensionValue", "section": "Anomaly" },
+          { "label": "Monitor", "source": "/Raw/MonitorArn", "transform": "arn_tail", "section": "Anomaly" },
+          { "label": "Started", "source": "/Raw/AnomalyStartDate", "transform": "format_date_only", "section": "Anomaly" },
+          { "label": "Ended", "source": "/Raw/AnomalyEndDate", "transform": "format_date_only", "section": "Anomaly" },
+          { "label": "Feedback", "source": "/Raw/Feedback", "section": "Anomaly" },
+          { "label": "Current Score", "source": "/Raw/AnomalyScore/CurrentScore", "transform": "format_percent", "section": "Score" },
+          { "label": "Max Score", "source": "/Raw/AnomalyScore/MaxScore", "transform": "format_percent", "section": "Score" },
+          { "label": "Total Impact", "source": "/Raw/Impact/TotalImpact", "transform": "format_money", "section": "Impact" },
+          { "label": "Max Impact", "source": "/Raw/Impact/MaxImpact", "transform": "format_money", "section": "Impact" },
+          { "label": "Impact %", "source": "/Raw/Impact/TotalImpactPercentage", "section": "Impact" },
+          { "label": "Actual Spend", "source": "/Raw/Impact/TotalActualSpend", "transform": "format_money", "section": "Impact" },
+          { "label": "Expected Spend", "source": "/Raw/Impact/TotalExpectedSpend", "transform": "format_money", "section": "Impact" },
+          { "label": "Root Causes", "source": "/Raw/RootCauses", "list": true, "item_template": "{Service} {Region} {LinkedAccountName}: ${Impact/Contribution} ({UsageType})", "section": "Root Causes" }
+        ]
       }
     }
   }

@@ -3008,6 +3008,575 @@ mod tests {
         }
     }
 
+    /// Cost anomalies drill down from a monitor row: GetAnomalies scopes by
+    /// MonitorArn, so the monitor must declare the anomalies as a sub-resource
+    /// and the child must carry requires_parent (an unscoped GetAnomalies would
+    /// silently list anomalies for every monitor).
+    #[test]
+    fn anomaly_monitors_drill_into_parent_scoped_cost_anomalies() {
+        let monitors = get_resource("billing-anomaly-monitors").expect("billing-anomaly-monitors");
+        let drill = monitors
+            .sub_resources
+            .iter()
+            .find(|s| s.resource_key == "billing-cost-anomalies")
+            .expect("monitors must drill into cost anomalies");
+        assert_eq!(drill.parent_id_field, "MonitorArn", "scope by MonitorArn");
+        assert_eq!(
+            drill.filter_param, "MonitorArn",
+            "GetAnomalies takes MonitorArn"
+        );
+
+        let anomalies = get_resource("billing-cost-anomalies").expect("billing-cost-anomalies");
+        // GetAnomalies without a MonitorArn is valid (lists across all
+        // monitors), so the child stays standalone; the drill-down only scopes.
+        assert!(
+            !anomalies.requires_parent,
+            "anomalies must list standalone (unscoped GetAnomalies is valid)"
+        );
+        // The MonitorArn filter must be the only dynamic param: static params
+        // (DateInterval) stay untouched so the date window is not overridden.
+        let api = anomalies.api_config.as_ref().expect("anomalies api_config");
+        assert_eq!(api.action.as_deref(), Some("GetAnomalies"));
+        assert!(api.static_params.contains_key("DateInterval"));
+        assert!(!api.static_params.contains_key("MonitorArn"));
+    }
+
+    /// GetAnomaliesRequest has no AnomalyId param, so a single anomaly cannot
+    /// be re-fetched — `d` must describe from the row itself (the Route53/EC2
+    /// pattern) and render the rich detail the list fetch already carries:
+    /// impact spends, the score, and one line per root cause. Paths are pinned
+    /// against a slice of the real wire shape.
+    #[test]
+    fn cost_anomalies_describe_from_the_row_already_fetched() {
+        use serde_json::json;
+
+        let r = get_resource("billing-cost-anomalies").expect("billing-cost-anomalies");
+        assert!(
+            r.describe_from_row,
+            "anomalies describe from the fetched row, not a re-fetch"
+        );
+        let raw_mapping = r
+            .field_mappings
+            .get("Raw")
+            .expect("anomalies must keep the raw item via the Raw mapping");
+        assert_eq!(
+            raw_mapping.source, "/",
+            "Raw mapping must copy the whole raw anomaly"
+        );
+        let dc = r.describe_config.as_ref().expect("describe_config");
+        assert!(
+            dc.action.is_none() && dc.path.is_none(),
+            "a from-row describe declares no API call"
+        );
+
+        for (label, source) in [
+            ("Anomaly ID", "/Raw/AnomalyId"),
+            ("Started", "/Raw/AnomalyStartDate"),
+            ("Ended", "/Raw/AnomalyEndDate"),
+            ("Monitor", "/Raw/MonitorArn"),
+            ("Service", "/Raw/DimensionValue"),
+            ("Feedback", "/Raw/Feedback"),
+            ("Current Score", "/Raw/AnomalyScore/CurrentScore"),
+            ("Max Score", "/Raw/AnomalyScore/MaxScore"),
+            ("Total Impact", "/Raw/Impact/TotalImpact"),
+            ("Max Impact", "/Raw/Impact/MaxImpact"),
+            ("Actual Spend", "/Raw/Impact/TotalActualSpend"),
+            ("Expected Spend", "/Raw/Impact/TotalExpectedSpend"),
+            ("Impact %", "/Raw/Impact/TotalImpactPercentage"),
+        ] {
+            assert!(
+                dc.describe_fields
+                    .iter()
+                    .any(|f| f.label == label && f.source == source),
+                "anomaly detail must surface {label} from {source}"
+            );
+        }
+
+        let causes = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.source == "/Raw/RootCauses")
+            .expect("root causes must be a describe field");
+        assert!(causes.list, "root causes is one line per cause");
+        assert_eq!(
+            causes.item_template.as_deref(),
+            Some("{Service} {Region} {LinkedAccountName}: ${Impact/Contribution} ({UsageType})"),
+            "one templated line per root cause"
+        );
+
+        // Slice of a real GetAnomalies response (2026, linked-account monitor):
+        // the anomaly detail panel reads every field against this shape.
+        let raw = json!({
+            "AnomalyId": "0a28307e-e24a-4035-9c1c-f26c1804812b",
+            "AnomalyStartDate": "2026-08-17T00:00:00Z",
+            "AnomalyEndDate": "2026-08-17T00:00:00Z",
+            "RootCauses": [
+                {
+                    "Service": "AmazonCloudWatch",
+                    "Region": "us-east-1",
+                    "LinkedAccount": "306678508250",
+                    "LinkedAccountName": "jackpocket-stage",
+                    "UsageType": "USE1-VendedLog-Bytes",
+                    "Impact": { "Contribution": 21.95 }
+                }
+            ],
+            "AnomalyScore": { "MaxScore": 0.26, "CurrentScore": 0.26 },
+            "Impact": {
+                "MaxImpact": 30.9,
+                "TotalImpact": 30.9,
+                "TotalActualSpend": 172.22,
+                "TotalExpectedSpend": 141.32,
+                "TotalImpactPercentage": 21.87
+            },
+            "MonitorArn": "arn:aws:ce::259740665173:anomalymonitor/54776ade"
+        });
+        let row = json!({ "AnomalyId": raw["AnomalyId"], "Raw": raw });
+
+        for field in &dc.describe_fields {
+            if field.list {
+                continue; // list items are surfaced in the item_template check above
+            }
+            // DimensionValue is only set for service monitors; on a
+            // linked-account or consolidated anomaly it is absent and the
+            // panel must render "-" rather than fail. Feedback is optional
+            // too: the column's default supplies NOT_REVIEWED.
+            if field.source == "/Raw/DimensionValue" || field.source == "/Raw/Feedback" {
+                continue;
+            }
+            let v = crate::resource::path_extractor::extract_by_path(&row, &field.source);
+            assert!(
+                !v.is_null(),
+                "billing-cost-anomalies describe field {} source {} misses the GetAnomalies wire shape",
+                field.label,
+                field.source
+            );
+        }
+    }
+
+    /// DescribeCostCategoryDefinition keys on the ARN, not the Name the list
+    /// shows, so the resource id must be the ARN. The describe carries the
+    /// full rule set, whose Or/And/Not expressions cannot be rendered by a
+    /// flat item_template — the `cc_rules_to_lines` transform turns each rule
+    /// into one readable line. Pinned against the real wire shape.
+    #[test]
+    fn cost_categories_describe_fetches_the_rules_and_renders_them_as_lines() {
+        use serde_json::json;
+
+        let r = get_resource("billing-cost-categories").expect("billing-cost-categories");
+        assert_eq!(
+            r.id_field, "CostCategoryArn",
+            "the describe call keys on CostCategoryArn, not the display Name"
+        );
+        let dc = r.describe_config.as_ref().expect("describe_config");
+        assert_eq!(dc.action.as_deref(), Some("DescribeCostCategoryDefinition"));
+        assert_eq!(
+            dc.id_param.as_deref(),
+            Some("CostCategoryArn"),
+            "the wire parameter is CostCategoryArn"
+        );
+        assert_eq!(dc.response_path.as_deref(), Some("/CostCategory"));
+
+        let rules = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.label == "Rules")
+            .expect("cost category detail must list its rules");
+        assert!(rules.list, "rules render one line per rule");
+        assert_eq!(
+            rules.transform.as_deref(),
+            Some("cc_rules_to_lines"),
+            "nested Or/And/Not expressions need the line-rendering transform"
+        );
+
+        // Real DescribeCostCategoryDefinition response (2026), covering a
+        // regular Or rule plus an inherited-value rule.
+        let describe = json!({
+            "CostCategory": {
+                "Name": "Ballys",
+                "CostCategoryArn": "arn:aws:ce::259740665173:costcategory/d5c93278",
+                "RuleVersion": "CostCategoryExpression.v1",
+                "EffectiveStart": "2024-06-01T00:00:00Z",
+                "Rules": [
+                    {
+                        "Value": "Ballys",
+                        "Type": "REGULAR",
+                        "Rule": {
+                            "Or": [
+                                { "Tags": { "Key": "CostCenter", "Values": ["Ballys"], "MatchOptions": ["EQUALS"] } },
+                                { "Tags": { "Key": "OutpostClient", "Values": ["Ballys"], "MatchOptions": ["EQUALS"] } }
+                            ]
+                        }
+                    },
+                    {
+                        "Value": "ByTag",
+                        "Type": "INHERITED_VALUE",
+                        "InheritedValue": { "DimensionName": "TAG", "DimensionKey": "Team" }
+                    }
+                ]
+            }
+        });
+
+        for (label, source) in [
+            ("Name", "/Name"),
+            ("ARN", "/CostCategoryArn"),
+            ("Rule Version", "/RuleVersion"),
+            ("Default Value", "/DefaultValue"),
+            ("Effective Start", "/EffectiveStart"),
+        ] {
+            assert!(
+                dc.describe_fields
+                    .iter()
+                    .any(|f| f.label == label && f.source == source),
+                "cost category detail must surface {label} from {source}"
+            );
+        }
+
+        // response_path lifts /CostCategory out, so describe fields read the
+        // CostCategory object directly.
+        let category = describe.pointer("/CostCategory").unwrap();
+        for field in &dc.describe_fields {
+            if field.label == "Rules" {
+                continue; // exercised through the transform below
+            }
+            // DefaultValue and EffectiveEnd are optional: a category with no
+            // default, or still active (no end), carries neither.
+            if field.source == "/DefaultValue" || field.source == "/EffectiveEnd" {
+                continue;
+            }
+            let v = crate::resource::path_extractor::extract_by_path(category, &field.source);
+            assert!(
+                !v.is_null(),
+                "billing-cost-categories describe field {} source {} misses the DescribeCostCategoryDefinition wire shape",
+                field.label,
+                field.source
+            );
+        }
+
+        // The transform must turn the real rule set into readable lines.
+        let raw = describe.pointer("/CostCategory/Rules").unwrap();
+        let lines = crate::resource::field_mapper::apply_transform(raw, "cc_rules_to_lines");
+        let Value::Array(lines) = &lines else {
+            panic!("cc_rules_to_lines must return an array of lines");
+        };
+        let as_str = |v: &Value| v.as_str().expect("line is a string").to_string();
+        assert_eq!(
+            as_str(&lines[0]),
+            "Ballys <- (Tag CostCenter = Ballys OR Tag OutpostClient = Ballys)",
+            "a regular Or rule renders its expression inline"
+        );
+        assert_eq!(
+            as_str(&lines[1]),
+            "ByTag <- inherits TAG/Team",
+            "an inherited-value rule names the dimension it inherits"
+        );
+    }
+
+    /// A workgroup's list entry is a stub (name/state/description), so `d`
+    /// must fetch GetWorkGroup for the full configuration: output location,
+    /// encryption, engine version, cost guardrails. GetWorkGroup takes the
+    /// WorkGroup name — exactly the row's id_field — so list and describe
+    /// agree with no extra wiring. Pinned against the real wire shape.
+    #[test]
+    fn athena_workgroups_describe_fetches_the_full_configuration() {
+        use serde_json::json;
+
+        let r = get_resource("athena-workgroups").expect("athena-workgroups");
+        let dc = r.describe_config.as_ref().expect("describe_config");
+        assert_eq!(dc.action.as_deref(), Some("GetWorkGroup"));
+        assert_eq!(
+            dc.id_param.as_deref(),
+            Some("WorkGroup"),
+            "GetWorkGroup keys on the WorkGroup name"
+        );
+        assert_eq!(dc.response_path.as_deref(), Some("/WorkGroup"));
+        assert_eq!(
+            r.id_field, "Name",
+            "the describe key must be the row id, not a separate field"
+        );
+
+        for (label, source) in [
+            ("Name", "/Name"),
+            ("State", "/State"),
+            ("Description", "/Description"),
+            ("Created", "/CreationTime"),
+            (
+                "Engine",
+                "/Configuration/EngineVersion/EffectiveEngineVersion",
+            ),
+            (
+                "Engine Requested",
+                "/Configuration/EngineVersion/SelectedEngineVersion",
+            ),
+            (
+                "Output Location",
+                "/Configuration/ResultConfiguration/OutputLocation",
+            ),
+            (
+                "Encryption",
+                "/Configuration/ResultConfiguration/EncryptionConfiguration/EncryptionOption",
+            ),
+            (
+                "KMS Key",
+                "/Configuration/ResultConfiguration/EncryptionConfiguration/KmsKey",
+            ),
+            (
+                "Expected Bucket Owner",
+                "/Configuration/ResultConfiguration/ExpectedBucketOwner",
+            ),
+            ("Execution Role", "/Configuration/ExecutionRole"),
+            (
+                "Bytes Scanned Cutoff",
+                "/Configuration/BytesScannedCutoffPerQuery",
+            ),
+            (
+                "Enforce Workgroup Settings",
+                "/Configuration/EnforceWorkGroupConfiguration",
+            ),
+            (
+                "Publish CloudWatch Metrics",
+                "/Configuration/PublishCloudWatchMetricsEnabled",
+            ),
+            ("Requester Pays", "/Configuration/RequesterPaysEnabled"),
+        ] {
+            assert!(
+                dc.describe_fields
+                    .iter()
+                    .any(|f| f.label == label && f.source == source),
+                "workgroup detail must surface {label} from {source}"
+            );
+        }
+
+        // Real GetWorkGroup response (eu-west-1, primary, 2026) plus the
+        // optional members botocore models but primary does not set.
+        let cutoff: i64 = 10_000_000_000;
+        let describe = json!({
+            "WorkGroup": {
+                "Name": "primary",
+                "State": "ENABLED",
+                "Configuration": {
+                    "ResultConfiguration": {
+                        "OutputLocation": "s3://aws-athena-query-results-123/",
+                        "EncryptionConfiguration": {
+                            "EncryptionOption": "SSE_KMS",
+                            "KmsKey": "arn:aws:kms:eu-west-1:123:key/abc"
+                        },
+                        "ExpectedBucketOwner": "123456789012"
+                    },
+                    "EnforceWorkGroupConfiguration": false,
+                    "PublishCloudWatchMetricsEnabled": false,
+                    "RequesterPaysEnabled": false,
+                    "EngineVersion": {
+                        "SelectedEngineVersion": "AUTO",
+                        "EffectiveEngineVersion": "Athena engine version 3"
+                    },
+                    "ExecutionRole": "arn:aws:iam::123:role/athena",
+                    "BytesScannedCutoffPerQuery": cutoff
+                },
+                "Description": "Main workgroup",
+                "CreationTime": "2022-06-01T16:56:27.202000+01:00"
+            }
+        });
+
+        // response_path lifts /WorkGroup out, so describe fields read the
+        // WorkGroup object directly. Optional members botocore does not
+        // require: OutputLocation (unset workgroups), KmsKey (none),
+        // ExpectedBucketOwner, ExecutionRole, BytesScannedCutoff, and the
+        // Description.
+        let required_sources: &[&str] = &[
+            "/Name",
+            "/State",
+            "/CreationTime",
+            "/Configuration/EngineVersion/EffectiveEngineVersion",
+            "/Configuration/EngineVersion/SelectedEngineVersion",
+            "/Configuration/EnforceWorkGroupConfiguration",
+            "/Configuration/PublishCloudWatchMetricsEnabled",
+            "/Configuration/RequesterPaysEnabled",
+        ];
+        for field in &dc.describe_fields {
+            if required_sources.contains(&field.source.as_str()) {
+                let v = crate::resource::path_extractor::extract_by_path(
+                    describe.pointer("/WorkGroup").unwrap(),
+                    &field.source,
+                );
+                assert!(
+                    !v.is_null(),
+                    "athena-workgroups describe field {} source {} misses the GetWorkGroup wire shape",
+                    field.label,
+                    field.source
+                );
+            }
+        }
+    }
+
+    /// DescribeAutoScalingGroups already returns the full group in the list
+    /// call, so describe must not re-fetch: it reads the row (the Route53/EC2
+    /// pattern). The row is the *mapped* item, so the raw record is kept under
+    /// the `Raw` mapping and describe_fields path into it — the wire is
+    /// PascalCase with `member`-wrapped lists, not the lowerCamelCase the EC2
+    /// detail panel reads.
+    #[test]
+    fn autoscaling_groups_describe_from_the_row_already_fetched() {
+        use serde_json::json;
+
+        let r = get_resource("autoscaling-groups").expect("autoscaling-groups");
+        assert!(
+            r.describe_from_row,
+            "groups describe from the fetched row, not a re-fetch"
+        );
+        let raw_mapping = r
+            .field_mappings
+            .get("Raw")
+            .expect("groups must keep the raw record via the Raw mapping");
+        assert_eq!(
+            raw_mapping.source, "/",
+            "Raw mapping must copy the whole raw group"
+        );
+        let dc = r.describe_config.as_ref().expect("describe_config");
+        assert!(
+            dc.action.is_none() && dc.path.is_none(),
+            "a from-row describe declares no API call"
+        );
+
+        for (label, source) in [
+            ("Group Name", "/Raw/AutoScalingGroupName"),
+            ("ARN", "/Raw/AutoScalingGroupARN"),
+            ("Created", "/Raw/CreatedTime"),
+            ("Default Cooldown", "/Raw/DefaultCooldown"),
+            ("Health Check", "/Raw/HealthCheckType"),
+            ("Grace Period", "/Raw/HealthCheckGracePeriod"),
+            ("Desired", "/Raw/DesiredCapacity"),
+            ("Min", "/Raw/MinSize"),
+            ("Max", "/Raw/MaxSize"),
+            ("Launch Template", "/Raw/LaunchTemplate/LaunchTemplateName"),
+            ("Launch Template Version", "/Raw/LaunchTemplate/Version"),
+            ("Availability Zones", "/Raw/AvailabilityZones/member"),
+            ("Subnets", "/Raw/VPCZoneIdentifier"),
+            ("Suspended Processes", "/Raw/SuspendedProcesses/member"),
+            ("Termination Policies", "/Raw/TerminationPolicies/member"),
+        ] {
+            assert!(
+                dc.describe_fields
+                    .iter()
+                    .any(|f| f.label == label && f.source == source),
+                "group detail must surface {label} from {source}"
+            );
+        }
+
+        // Real DescribeAutoScalingGroups wire shape (eu-west-1, 2026).
+        let raw = json!({
+            "HealthCheckType": "EC2",
+            "Instances": {
+                "member": [
+                    {
+                        "LifecycleState": "InService",
+                        "InstanceId": "i-00369f168cce54b7e",
+                        "HealthStatus": "Healthy",
+                        "InstanceType": "c6a.2xlarge",
+                        "AvailabilityZone": "eu-west-1c",
+                        "ProtectedFromScaleIn": false
+                    }
+                ]
+            },
+            "TerminationPolicies": { "member": ["Default"] },
+            "DefaultCooldown": 300,
+            "EnabledMetrics": {
+                "member": [ { "Metric": "GroupMinSize", "Granularity": "1Minute" } ]
+            },
+            "AutoScalingGroupARN": "arn:aws:autoscaling:eu-west-1:123:autoScalingGroup/xyz",
+            "AvailabilityZones": { "member": ["eu-west-1b", "eu-west-1c"] },
+            "TargetGroupARNs": { "member": ["arn:aws:elasticloadbalancing:...:targetgroup/tg/abc"] },
+            "AutoScalingGroupName": "fpm-web-frontend-asg",
+            "HealthCheckGracePeriod": 300,
+            "NewInstancesProtectedFromScaleIn": false,
+            "CreatedTime": "2022-05-10T09:50:33.211Z",
+            "MinSize": 9,
+            "MaxSize": 9,
+            "TrafficSources": {
+                "member": [ { "Identifier": "arn:...:targetgroup/tg/abc", "Type": "elbv2" } ]
+            },
+            "Tags": {
+                "member": [ { "Key": "Name", "Value": "fpm-web" } ]
+            },
+            "LaunchTemplate": {
+                "LaunchTemplateId": "lt-0c6a6d92c70f6ef5e",
+                "Version": "$Latest",
+                "LaunchTemplateName": "fpm-web-frontend-lc"
+            },
+            "SuspendedProcesses": { "member": [ { "ProcessName": "AlarmNotification" } ] },
+            "DesiredCapacity": 9,
+            "VPCZoneIdentifier": "subnet-a,subnet-b"
+        });
+        let row = json!({
+            "AutoScalingGroupName": "fpm-web-frontend-asg",
+            "Raw": raw
+        });
+
+        for field in &dc.describe_fields {
+            // LaunchConfigurationName only exists on launch-config groups;
+            // template-based groups (the modern shape) carry neither it nor
+            // TargetGroupARNs. The panel renders "-" when absent.
+            if field.source == "/Raw/LaunchConfigurationName" {
+                continue;
+            }
+            let v = crate::resource::path_extractor::extract_by_path(&row, &field.source);
+            assert!(
+                !v.is_null(),
+                "autoscaling-groups describe field {} source {} misses the DescribeAutoScalingGroups wire shape",
+                field.label,
+                field.source
+            );
+        }
+
+        let instances = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.label == "Instances")
+            .expect("group detail must list its instances");
+        assert!(instances.list, "instances render one line per member");
+        assert_eq!(
+            instances.item_template.as_deref(),
+            Some("{InstanceId} {LifecycleState} {InstanceType} {AvailabilityZone}"),
+            "one templated line per instance"
+        );
+        assert_eq!(
+            instances.source, "/Raw/Instances/member",
+            "autoscaling wraps lists in <member>, not <item>"
+        );
+
+        let metrics = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.label == "Enabled Metrics")
+            .expect("group detail must list its enabled metrics");
+        assert_eq!(
+            metrics.item_template.as_deref(),
+            Some("{Metric} ({Granularity})"),
+            "one templated line per metric"
+        );
+
+        let traffic = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.label == "Traffic Sources")
+            .expect("group detail must list its traffic sources");
+        assert_eq!(
+            traffic.item_template.as_deref(),
+            Some("{Type} {Identifier}"),
+            "one templated line per traffic source"
+        );
+
+        let tags = dc
+            .describe_fields
+            .iter()
+            .find(|f| f.label == "Tags")
+            .expect("group detail must list its tags");
+        assert_eq!(
+            tags.item_template.as_deref(),
+            Some("{key}={value}"),
+            "one templated line per tag"
+        );
+    }
+
     /// The Elasticache/Redshift/RDS parameter groups, reserved nodes, and
     /// events are all query-protocol lists that page on Marker/MaxRecords (not
     /// NextToken) and answer from a `<action>Result/<List>/<member>` root. Pin
