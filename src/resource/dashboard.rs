@@ -488,7 +488,7 @@ async fn run_panel(panel: &DashboardPanel, clients: &AwsClients) -> PanelData {
         }
     }
     match panel.kind {
-        PanelKind::CostSummary => compute_cost_summary(&responses),
+        PanelKind::CostSummary => compute_cost_summary(&responses, chrono::Utc::now().day() as i64),
         PanelKind::CostMonitor => compute_cost_monitor(&responses),
         PanelKind::CostBreakdown => compute_breakdown(&responses),
         PanelKind::TopTrends => compute_trends(&responses),
@@ -598,7 +598,11 @@ fn amount(v: Option<&Value>) -> f64 {
     .unwrap_or(0.0)
 }
 
-fn compute_cost_summary(responses: &HashMap<String, Value>) -> PanelData {
+/// `today_day` is the current day-of-month, threaded in rather than read from
+/// the clock: the "same period" slice is the only date-dependent thing here,
+/// and a test that let the clock decide its own expected figure would pass for
+/// a few days each month and fail for the rest.
+fn compute_cost_summary(responses: &HashMap<String, Value>, today_day: i64) -> PanelData {
     let Some(mtd_rows) = responses.get("mtd").and_then(|v| v.as_array()) else {
         return PanelData::Error("cost summary: no mtd results".into());
     };
@@ -611,10 +615,9 @@ fn compute_cost_summary(responses: &HashMap<String, Value>) -> PanelData {
     let Some(last_rows) = responses.get("last_month").and_then(|v| v.as_array()) else {
         return PanelData::Error("cost summary: no last-month results".into());
     };
-    // Daily rows: sum the days up to today's day-of-month for "same period",
-    // all rows for the full month. Day-of-month alignment is what the console
-    // means by "same time period" (Aug 1-8 vs Sep 1-8).
-    let today_day = chrono::Utc::now().day() as i64;
+    // Daily rows: sum the days up to `today_day` for "same period", all rows
+    // for the full month. Day-of-month alignment is what the console means by
+    // "same time period" (Aug 1-8 vs Sep 1-8).
     let mut same_period = 0.0;
     let mut last_total = 0.0;
     for row in last_rows {
@@ -997,12 +1000,14 @@ mod tests {
     }
 
     /// The summary panel must produce the four console stats, with the
-    /// "same period" slice counting only days up to today's day-of-month and
-    /// the forecast taken straight from GetCostForecast (its amount already
-    /// covers the month total, measured live against the console).
+    /// "same period" slice counting only days up to the given day-of-month
+    /// and the forecast taken straight from GetCostForecast (its amount
+    /// already covers the month total, measured live against the console).
     #[test]
     fn cost_summary_computes_the_four_console_stats() {
-        let data = compute_cost_summary(&fixture_summary_responses());
+        // Day 16 of the fixture's last month: rows fall on the 1st, 8th and
+        // 20th, so this pins the 1st and 8th into the slice and the 20th out.
+        let data = compute_cost_summary(&fixture_summary_responses(), 16);
         let PanelData::Stats(items) = data else {
             panic!("summary must compute Stats, got {data:?}");
         };
@@ -1021,6 +1026,37 @@ mod tests {
         assert!(
             forecast_note.contains("last month total"),
             "the forecast stat must compare against last month's total: {forecast_note}"
+        );
+    }
+
+    /// The same-period slice is a function of the day-of-month alone, so it
+    /// must not drift with the wall clock. It was originally asserted against
+    /// the real `Utc::now().day()` and the expected figure only held for the
+    /// 9th-19th: from the 20th the 20th-of-the-month row joins the slice and
+    /// the test failed on the 25th. Pin every boundary against the fixture's
+    /// 1st / 8th / 20th rows.
+    #[test]
+    fn cost_summary_same_period_slice_moves_only_with_the_given_day() {
+        let slice = |day: i64| {
+            let data = compute_cost_summary(&fixture_summary_responses(), day);
+            let PanelData::Stats(items) = data else {
+                panic!("summary must compute Stats, got {data:?}");
+            };
+            items[1].value.clone()
+        };
+        assert_eq!(slice(1), "$40,000", "day 1 admits only the 1st");
+        assert_eq!(slice(7), "$40,000", "day 7 is still before the 8th");
+        assert_eq!(slice(8), "$90,000", "day 8 admits the 8th");
+        assert_eq!(slice(20), "$164,484.01", "day 20 admits the 20th");
+        assert_eq!(
+            slice(25),
+            "$164,484.01",
+            "a day past the last row must equal the full month total, not a truncated slice"
+        );
+        assert_eq!(
+            slice(31),
+            slice(20),
+            "days past the last row are equivalent, so the slice must not creep with the date"
         );
     }
 
