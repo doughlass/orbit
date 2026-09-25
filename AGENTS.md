@@ -53,10 +53,50 @@ src/resource/dispatch.rs      Picks a handler, builds describe/action requests
 src/resource/field_mapper.rs  Applies field_mappings and named transforms
 src/resource/path_extractor.rs Path lookup into JSON, array-aware
 src/resource/handlers/        One module per wire protocol
+src/resource/dashboard.rs     Composite dashboard pages (panels, fetch+compute)
 
 src/ui/                   Rendering. mod.rs is the table + layout core
 src/resources/*.json      Resource definitions. This is where the work is.
 ```
+
+## Dashboards
+
+A dashboard is a second kind of view: one page assembled from several API
+calls, defined in `src/resources/dashboards.json` (parsed by `get_dashboard`
+in `registry.rs`). A panel declares named `fetches` (service, action,
+static_params — the same `{{template}}` machinery the JSON handler resolves)
+and a `kind` that selects a Rust computor/renderer in
+`src/resource/dashboard.rs`. Adding a dashboard is JSON only; the panel kinds
+(`cost_summary`, `cost_monitor`, `cost_breakdown`, `top_trends`,
+`cost_table`) are capabilities. Each kind's `required_fetches()` must match
+its definition exactly — the registry test pins both directions (`cost_table`
+has none: its fetch is generated from `months` + `group_by`). Opened with
+`:billing` (command mode); Esc/q closes; j/k scroll rows; `p` opens the panel
+picker (show/hide, persisted). Known template names: `{{account_id}}`,
+`{{today±Nd}}`, `{{month_start[-NM]}}`, `{{prev_month_start}}`,
+`{{prev_month_end}}` (== month_start, End is exclusive),
+`{{next_month_start}}`.
+
+Users can extend a dashboard without touching the JSON: a
+`dashboards.<key>.panels` list in `~/.orbit/config.yaml` appends custom
+panels (currently `cost_table` only — `{title, kind, months, group_by:
+{type: dimension|tag|cost_category, key}}`), and `shown`/`hidden` title
+lists record the picker's choices. A `default_hidden: true` panel ships off
+the page until the picker shows it. Titles are the panel identity across
+JSON, config and picker — keep them unique: a config panel whose title
+matches a JSON panel replaces it in place (same slot, new spec), which is
+how an individual panel is re-pointed at a custom report.
+
+In the TUI, panes highlight and move with h/j/k/l (two-column grid:
+horizontal steps by one, vertical by two). Enter/c on a focused pane opens
+a customize popup listing the pane's JSON default plus every named report
+from `dashboards.<key>.reports` (same shape as `panels`; `kind` must be
+cost_table). Choosing one writes `dashboards.<key>.assignments`
+(`panel title: report title`) and refetches just that pane; "(dashboard
+default)" clears the assignment. Resolution order everywhere:
+merge_panels (title-replace) → apply_assignments → visibility filter.
+Unknown report names or stale panel titles in `assignments` are surfaced
+as error messages, never silently dropped.
 
 ## How a list fetch works
 
@@ -190,6 +230,31 @@ own match arm for exactly this. Check before you reuse `is_global: true`.
 the single easiest mistake in these files and it looks identical to "the account
 has none of these". Always confirm the root against a real response.
 
+**`{{account_id}}` and `{{today-Nd}}` resolve at request time, JSON protocol only.**
+Budgets `DescribeBudgets` requires the account id as a plain param, and Cost
+Explorer `GetAnomalies` needs a rolling 30-day `DateInterval` — neither can be a
+static value. The JSON handler (`src/resource/handlers/json.rs`) fetches
+`GetCallerIdentity` once, caches it, and substitutes the placeholders anywhere
+in the body before signing (WebTargeters with a literal `{{` are sent as-is, so
+this stays out of the query/rest handlers). The date window being stable across
+a paginated fetch is pinned by `resolve_templates_stable_across_two_resolutions`.
+Full template list in "Dashboards" above; `{{today+Nd}}` exists because
+`GetCostAndUsage` End is exclusive — "spend through today" is End = tomorrow.
+
+**GetAnomalies' DateInterval members are StartDate/EndDate, not Start/End.**
+GetCostAndUsage takes Start/End; GetAnomalies (AnomalyDateInterval shape)
+answers "Value null at 'dateInterval.startDate'" to Start/End — a message that
+reads like the params were missing. Both names validate in the botocore model
+pattern, so only a live call reveals the difference. Also: EndDate cannot be
+in the future ("Latest supported detectionDate is <today>"). Pinned by
+`get_anomalies_date_interval_uses_start_date_and_end_date`.
+
+**Cost Explorer has no global host.** `ce.amazonaws.com` does not resolve —
+every request goes to `ce.us-east-1.amazonaws.com`, with the signing region
+pinned to us-east-1. The `is_global: true` shortcut produces that dead host
+(exactly the WAFv2 trap below); the `ce` arm in `get_endpoint` stays
+region-addressed on purpose.
+
 **Pagination is not universal.** `DescribeAddresses` has no paginator and
 rejects `MaxResults`/`NextToken` with `InvalidParameterCombination`, so copying
 a neighbour's pagination block yields zero rows. Check the botocore model for
@@ -300,7 +365,7 @@ of the *request*, not of the render.
 ### Before every commit
 
 ```bash
-cargo test --quiet                              # currently 201 tests, all green
+cargo test --quiet                              # currently 350 tests, all green
 cargo clippy --all-targets -- -D warnings       # must be silent
 cargo fmt --check
 ```
@@ -335,14 +400,23 @@ Match the surrounding code. Specifics that are consistent throughout:
 
 ## Known gaps and open work
 
+- Cost Explorer Saved Reports cannot be fetched from orbit. The console's
+  `AWSInsightsIndexService.ListReports` (needs `x-amz-source: CMC` on
+  ce.us-east-1) only dispatches for console-session tokens: byte-identical
+  requests with CLI/SDK STS tokens — same role, same session name, same
+  us-east-1 issuance — answer UnknownOperationException (verified against
+  live AWS, Sep 2026). Reports are expressible as config cost_table specs
+  (metric/filter/group-bys); mirroring them is a manual copy, not an API
+  call. Re-verify only if a future botocore model adds report operations.
+
 - Route53 records truncate at the first page (two-token pagination, above).
 - Aurora clusters are invisible; only `DescribeDBInstances` is wired, not
   `DescribeDBClusters`.
 - No CloudWatch alarms — needs a `monitoring` service entry in `http.rs`.
 - No CloudTrail `LookupEvents`.
 - The `elb` (classic) service is registered in `http.rs` but has no resources.
-- The new VPC networking resources have no `sub_resources` wiring, deliberately:
-  the obvious shortcut letters all collide with global keys.
+- Cost anomaly monitors' `Scope` row renders only SERVICE names from
+  `MonitorSpecification/And`, ignoring REGION / USAGE_TYPE / HOSTED_RESOURCES.
 - Column widths are fixed percentages per resource and most do not sum to 100.
   ratatui compresses them proportionally, which the layout code now measures
   accurately. Content-aware auto-fit is unimplemented.

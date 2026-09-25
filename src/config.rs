@@ -33,6 +33,65 @@ pub struct Config {
     /// the resource JSON marks visible.
     #[serde(default)]
     pub column_preferences: std::collections::HashMap<String, Vec<String>>,
+
+    /// Per-dashboard user customization, keyed by dashboard key (e.g.
+    /// "billing"): extra panels the user defined and the picker's shown/
+    /// hidden overrides, persisted so the layout survives restarts.
+    #[serde(default)]
+    pub dashboards: std::collections::HashMap<String, DashboardUserConfig>,
+}
+
+/// User-level dashboard customization. `panels` appends custom panels;
+/// `shown`/`hidden` are panel *titles* recorded by the panel picker. A title
+/// in `hidden` hides the panel, in `shown` shows it (overriding a JSON
+/// `default_hidden`), and a title in neither uses the definition default.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DashboardUserConfig {
+    #[serde(default)]
+    pub panels: Vec<crate::resource::CustomPanel>,
+    #[serde(default)]
+    pub shown: Vec<String>,
+    #[serde(default)]
+    pub hidden: Vec<String>,
+    /// Named report specs, reusable from any panel's customize popup. Each
+    /// is a cost_table spec (`kind` must be cost_table); the pane it ends up
+    /// on supplies the display title via `assignments`.
+    #[serde(default)]
+    pub reports: Vec<crate::resource::CustomPanel>,
+    /// Per-pane report choice from the customize popup: panel title ->
+    /// report title. Absent (or empty) means the pane keeps its JSON
+    /// definition.
+    #[serde(default)]
+    pub assignments: std::collections::HashMap<String, String>,
+}
+
+impl DashboardUserConfig {
+    /// Whether a panel with this title currently shows. `default_hidden` is
+    /// the definition's own preference for when neither list mentions it.
+    pub fn is_visible(&self, title: &str, default_hidden: bool) -> bool {
+        if self.hidden.iter().any(|t| t == title) {
+            return false;
+        }
+        if self.shown.iter().any(|t| t == title) {
+            return true;
+        }
+        !default_hidden
+    }
+
+    /// Record an explicit show/hide for a title, replacing the opposite
+    /// override so the latest picker choice always wins. Pure: the caller
+    /// decides whether to persist.
+    pub fn set_visible(&mut self, title: &str, visible: bool) {
+        let (target, other) = if visible {
+            (&mut self.shown, &mut self.hidden)
+        } else {
+            (&mut self.hidden, &mut self.shown)
+        };
+        other.retain(|t| t != title);
+        if !target.iter().any(|t| t == title) {
+            target.push(title.to_string());
+        }
+    }
 }
 
 impl Config {
@@ -199,6 +258,7 @@ mod tests {
             last_resource: Some("ec2-instances".to_string()),
             recently_used_regions: vec!["eu-west-1".to_string(), "us-east-1".to_string()],
             column_preferences: std::collections::HashMap::new(),
+            dashboards: std::collections::HashMap::new(),
         };
 
         let yaml = serde_yaml::to_string(&config).unwrap();
@@ -226,6 +286,105 @@ mod tests {
         let prefs = parsed.column_preferences("ec2-instances").unwrap();
         assert_eq!(prefs, &vec!["NAME".to_string(), "STATE".to_string()]);
         assert!(parsed.column_preferences("eks-clusters").is_none());
+    }
+
+    /// The picker's visibility overrides must round-trip and behave like the
+    /// picker expects: hidden wins, shown overrides default_hidden, and the
+    /// latest toggle replaces the opposite record.
+    #[test]
+    fn test_dashboard_visibility_overrides_round_trip() {
+        let mut config = Config::default();
+        let ucfg = config.dashboards.entry("billing".to_string()).or_default();
+        ucfg.set_visible("Past 3 Months by Service", true);
+        ucfg.set_visible("Top Trends", false);
+
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        let parsed: Config = serde_yaml::from_str(&yaml).unwrap();
+        let ucfg = parsed.dashboards.get("billing").unwrap();
+
+        // default_hidden preset explicitly shown
+        assert!(ucfg.is_visible("Past 3 Months by Service", true));
+        // default-visible panel explicitly hidden
+        assert!(!ucfg.is_visible("Top Trends", false));
+        // untouched panel follows the definition default
+        assert!(ucfg.is_visible("Cost Summary", false));
+        assert!(!ucfg.is_visible("Cost Monitor", true));
+
+        // Toggling back replaces the opposite record instead of fighting it.
+        let mut ucfg = ucfg.clone();
+        ucfg.set_visible("Past 3 Months by Service", false);
+        assert!(!ucfg.is_visible("Past 3 Months by Service", true));
+        assert!(
+            !ucfg.shown.contains(&"Past 3 Months by Service".to_string()),
+            "a later hide must remove the earlier show record"
+        );
+    }
+
+    /// User-defined custom panels must survive a config round-trip.
+    #[test]
+    fn test_dashboard_custom_panels_round_trip() {
+        let mut config = Config::default();
+        let ucfg = config.dashboards.entry("billing".to_string()).or_default();
+        ucfg.panels.push(crate::resource::CustomPanel {
+            title: "Cost Centers".into(),
+            kind: crate::resource::dashboard::PanelKind::CostTable,
+            months: 4,
+            group_by: crate::resource::dashboard::GroupBys::One(
+                crate::resource::dashboard::GroupBySpec {
+                    group_type: crate::resource::dashboard::GroupByType::CostCategory,
+                    key: "CostCenter".into(),
+                },
+            ),
+            metric: None,
+            filter: None,
+        });
+
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        assert!(
+            yaml.contains("cost_table") && yaml.contains("CostCenter"),
+            "the YAML must carry the group-by spec: {yaml}"
+        );
+        let parsed: Config = serde_yaml::from_str(&yaml).unwrap();
+        let panels = &parsed.dashboards.get("billing").unwrap().panels;
+        assert_eq!(panels.len(), 1);
+        assert_eq!(panels[0].title, "Cost Centers");
+        assert_eq!(panels[0].months, 4);
+        let panel = panels[0].to_dashboard_panel().expect("converts");
+        assert_eq!(panel.months, Some(4));
+    }
+
+    /// Named reports and the customize popup's assignments must round-trip:
+    /// the popup reads reports to build its options and assignments to mark
+    /// the current choice.
+    #[test]
+    fn test_dashboard_reports_and_assignments_round_trip() {
+        let mut config = Config::default();
+        let ucfg = config.dashboards.entry("billing".to_string()).or_default();
+        ucfg.reports.push(crate::resource::CustomPanel {
+            title: "Cost Centers 3mo".into(),
+            kind: crate::resource::dashboard::PanelKind::CostTable,
+            months: 3,
+            group_by: crate::resource::dashboard::GroupBys::One(
+                crate::resource::dashboard::GroupBySpec {
+                    group_type: crate::resource::dashboard::GroupByType::Tag,
+                    key: "CostCenter".into(),
+                },
+            ),
+            metric: None,
+            filter: None,
+        });
+        ucfg.assignments
+            .insert("Cost Breakdown".to_string(), "Cost Centers 3mo".to_string());
+
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        let parsed: Config = serde_yaml::from_str(&yaml).unwrap();
+        let ucfg = parsed.dashboards.get("billing").unwrap();
+        assert_eq!(ucfg.reports.len(), 1);
+        assert_eq!(ucfg.reports[0].title, "Cost Centers 3mo");
+        assert_eq!(
+            ucfg.assignments.get("Cost Breakdown").map(|s| s.as_str()),
+            Some("Cost Centers 3mo")
+        );
     }
 
     #[test]

@@ -1,0 +1,113 @@
+{
+  "dashboards": {
+    "billing": {
+      "display_name": "Billing Overview",
+      "panels": [
+        {
+          "kind": "cost_summary",
+          "title": "Cost Summary",
+          "fetches": {
+            "mtd": {
+              "service": "ce",
+              "action": "GetCostAndUsage",
+              "static_params": {
+                "TimePeriod": { "Start": "{{month_start}}", "End": "{{today+1d}}" },
+                "Granularity": "MONTHLY",
+                "Metrics": ["UnblendedCost"]
+              },
+              "response_root": "/ResultsByTime"
+            },
+            "last_month": {
+              "service": "ce",
+              "action": "GetCostAndUsage",
+              "static_params": {
+                "TimePeriod": { "Start": "{{prev_month_start}}", "End": "{{month_start}}" },
+                "Granularity": "DAILY",
+                "Metrics": ["UnblendedCost"]
+              },
+              "response_root": "/ResultsByTime"
+            },
+            "forecast": {
+              "service": "ce",
+              "action": "GetCostForecast",
+              "static_params": {
+                "TimePeriod": { "Start": "{{today}}", "End": "{{next_month_start}}" },
+                "Metric": "UNBLENDED_COST",
+                "Granularity": "MONTHLY"
+              },
+              "response_root": "/Total"
+            }
+          }
+        },
+        {
+          "kind": "cost_monitor",
+          "title": "Cost Monitor",
+          "fetches": {
+            "budgets": {
+              "service": "budgets",
+              "action": "DescribeBudgets",
+              "static_params": {
+                "AccountId": "{{account_id}}"
+              },
+              "response_root": "/"
+            },
+            "anomalies": {
+              "service": "ce",
+              "action": "GetAnomalies",
+              "static_params": {
+                "DateInterval": { "StartDate": "{{month_start}}", "EndDate": "{{today}}" }
+              },
+              "response_root": "/"
+            }
+          }
+        },
+        {
+          "kind": "cost_breakdown",
+          "title": "Cost Breakdown",
+          "fetches": {
+            "monthly_by_service": {
+              "service": "ce",
+              "action": "GetCostAndUsage",
+              "static_params": {
+                "TimePeriod": { "Start": "{{month_start-5M}}", "End": "{{today+1d}}" },
+                "Granularity": "MONTHLY",
+                "Metrics": ["UnblendedCost"],
+                "GroupBy": [
+                  { "Type": "DIMENSION", "Key": "SERVICE" }
+                ]
+              },
+              "response_root": "/ResultsByTime"
+            }
+          }
+        },
+        {
+          "kind": "top_trends",
+          "title": "Top Trends",
+          "fetches": {
+            "monthly_by_service": {
+              "service": "ce",
+              "action": "GetCostAndUsage",
+              "static_params": {
+                "TimePeriod": { "Start": "{{month_start-5M}}", "End": "{{today+1d}}" },
+                "Granularity": "MONTHLY",
+                "Metrics": ["UnblendedCost"],
+                "GroupBy": [
+                  { "Type": "DIMENSION", "Key": "SERVICE" }
+                ]
+              },
+              "response_root": "/ResultsByTime"
+            }
+          }
+        },
+        {
+          "kind": "cost_table",
+          "title": "Past 3 Months by Service",
+          "default_hidden": true,
+          "months": 3,
+          "group_by": { "type": "dimension", "key": "SERVICE" },
+          "fetches": {}
+        }
+      ]
+    }
+  }
+}

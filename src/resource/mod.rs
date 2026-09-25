@@ -2,12 +2,17 @@ mod fetcher;
 mod registry;
 
 // Data-driven dispatch infrastructure
+pub mod dashboard;
 pub mod dispatch;
 pub mod field_mapper;
 pub mod handlers;
 pub mod path_extractor;
 pub mod protocol;
 
+pub use dashboard::{
+    builtin_reports, fetch_dashboard, fetch_panel, BreakdownData, CustomPanel, DashboardDef,
+    DashboardPanel, MonitorData, PanelData, StatItem, TableRow, TrendRow,
+};
 pub use dispatch::{
     describe_resource, drill_policy_document, execute_action, execute_action_with_result,
     format_log_timestamp, invoke_sdk,

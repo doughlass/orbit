@@ -1,5 +1,6 @@
 mod column_picker;
 mod command_box;
+mod dashboard;
 mod dialog;
 mod header;
 mod help;
@@ -50,6 +51,11 @@ pub fn render(f: &mut Frame, app: &App) {
         Mode::LogTail => {
             render_log_tail_view(f, app, chunks[1]);
         }
+        Mode::Dashboard | Mode::DashboardPanels | Mode::PanelCustomize => {
+            // The popups overlay the dashboard page itself, not the resource
+            // table it was opened from.
+            dashboard::render(f, app, chunks[1]);
+        }
         _ => {
             render_main_content(f, app, chunks[1]);
         }
@@ -65,6 +71,12 @@ pub fn render(f: &mut Frame, app: &App) {
         }
         Mode::ColumnPicker => {
             column_picker::render(f, app);
+        }
+        Mode::DashboardPanels => {
+            dashboard::render_panel_picker(f, app);
+        }
+        Mode::PanelCustomize => {
+            dashboard::render_panel_customize(f, app);
         }
         Mode::Confirm | Mode::Warning | Mode::SsoLogin | Mode::ConsoleLogin | Mode::Update => {
             dialog::render(f, app);

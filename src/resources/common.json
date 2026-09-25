@@ -82,6 +82,27 @@
       { "value": "LOW", "color": [0, 180, 255] },
       { "value": "INFORMATIONAL", "color": [128, 128, 128] },
       { "value": "UNTRIAGED", "color": [128, 128, 128] }
+    ],
+    "score": [
+      { "value": "0-19", "color": [0, 255, 0] },
+      { "value": "20-39", "color": [0, 180, 255] },
+      { "value": "40-59", "color": [255, 255, 0] },
+      { "value": "60-79", "color": [255, 128, 0] },
+      { "value": "80-100", "color": [255, 0, 0] }
+    ],
+    "feedback": [
+      { "value": "YES", "color": [0, 255, 0] },
+      { "value": "NO", "color": [255, 0, 0] },
+      { "value": "PLANNED_ACTIVITY", "color": [255, 255, 0] },
+      { "value": "NOT_REVIEWED", "color": [128, 128, 128] }
+    ],
+    "monitor_type": [
+      { "value": "DIMENSIONAL", "color": [0, 255, 0] },
+      { "value": "CUSTOM", "color": [0, 180, 255] }
+    ],
+    "category_status": [
+      { "value": "PROCESSING", "color": [255, 255, 0] },
+      { "value": "APPLIED", "color": [0, 255, 0] }
     ]
   },
   "resources": {}
