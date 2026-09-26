@@ -5,6 +5,38 @@ All notable changes to orbit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0](https://github.com/doughlass/orbit/compare/v1.7.0...v1.8.0) - 2026-09-26
+
+### Added
+
+- *(profiles)* filter the profile picker with '/'
+- cost_table reports take a metric, a filter and two group-bys
+- built-in cost_table presets are assignable reports in every pane
+- pane focus and per-pane customize popup on dashboards
+- config panels can replace a default panel via its title
+- custom dashboard reports and a panel picker (p on :billing)
+- billing dashboard (:billing) — cost summary, monitor, breakdown, trends
+- month-boundary and signed-offset date templates for Cost Explorer
+- thousands separators in the money formatter
+- add Budgets, Cost Categories, Anomaly Monitors and Cost Anomalies
+- billing transforms and color maps for cost/anomaly rows
+- add budgets and ce service entries for Cost Data
+- resolve {{account_id}} and {{today-N}} templates in JSON-RPC bodies
+
+### Fixed
+
+- bump rustls to 0.23.45 for RUSTSEC-2026-0285
+- pin the cost summary same-period slice against a clock read
+- dashboard popups overlay the dashboard, not the previous table
+- billing-cost-anomalies DateInterval must use StartDate/EndDate
+- Cost Explorer endpoint is region-addressed, not a bare global host
+
+### Other
+
+- record why Cost Explorer saved reports cannot be fetched
+- link website and keyword intro in README, add Links section
+- document the {{template}} capability and refresh gap list
+
 ## [1.7.0](https://github.com/doughlass/orbit/compare/v1.6.5...v1.7.0) - 2026-09-04
 
 ### Added
