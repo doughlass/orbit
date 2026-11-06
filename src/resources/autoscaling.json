@@ -17,7 +17,11 @@
         { "header": "INSTANCES", "json_path": "InstanceCount", "width": 12 },
         { "header": "AZ", "json_path": "AvailabilityZones", "width": 20 }
       ],
-      "sub_resources": [],
+      "sub_resources": [
+        { "shortcut": "r", "display_name": "Instance Refreshes", "resource_key": "autoscaling-instance-refreshes", "parent_id_field": "AutoScalingGroupName", "filter_param": "AutoScalingGroupName" },
+        { "shortcut": "a", "display_name": "Scaling Activities", "resource_key": "autoscaling-scaling-activities", "parent_id_field": "AutoScalingGroupName", "filter_param": "AutoScalingGroupName" },
+        { "shortcut": "i", "display_name": "Instances", "resource_key": "autoscaling-instances", "parent_id_field": "AutoScalingGroupName", "filter_param": "asg_name" }
+      ],
       "actions": [
         { "key": "ctrl+d", "display_name": "Delete Group", "shortcut": "ctrl+d", "sdk_method": "delete_auto_scaling_group", "confirm": { "message": "Delete Auto Scaling group", "default_yes": false, "destructive": true } }
       ],
@@ -77,6 +81,145 @@
             "ForceDelete": "true"
           }
         }
+      }
+    },
+    "autoscaling-instance-refreshes": {
+      "display_name": "Instance Refreshes",
+      "service": "autoscaling",
+      "sdk_method": "describe_instance_refreshes",
+      "sdk_method_params": {},
+      "response_path": "instance_refreshes",
+      "id_field": "InstanceRefreshId",
+      "name_field": "Status",
+      "is_global": false,
+      "requires_parent": true,
+      "preserve_order": true,
+      "columns": [
+        { "header": "STATUS", "json_path": "Status", "width": 14, "color_map": "state" },
+        { "header": "PERCENT", "json_path": "PercentageComplete", "width": 10 },
+        { "header": "UPDATING", "json_path": "InstancesToUpdate", "width": 10 },
+        { "header": "REFRESH ID", "json_path": "InstanceRefreshId", "width": 20 },
+        { "header": "STATUS REASON", "json_path": "StatusReason", "width": 32 },
+        { "header": "STARTED", "json_path": "StartTime", "width": 15 },
+        { "header": "ENDED", "json_path": "EndTime", "width": 15 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeInstanceRefreshes",
+        "response_root": "/DescribeInstanceRefreshesResponse/DescribeInstanceRefreshesResult/InstanceRefreshes/member",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeInstanceRefreshesResponse/DescribeInstanceRefreshesResult/NextToken",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Raw": { "source": "/" },
+        "InstanceRefreshId": { "source": "/InstanceRefreshId", "default": "-" },
+        "Status": { "source": "/Status", "default": "-" },
+        "StatusReason": { "source": "/StatusReason", "default": "-" },
+        "PercentageComplete": { "source": "/PercentageComplete", "default": "-" },
+        "InstancesToUpdate": { "source": "/InstancesToUpdate", "default": "-" },
+        "StartTime": { "source": "/StartTime", "transform": "format_epoch_seconds", "default": "-" },
+        "EndTime": { "source": "/EndTime", "transform": "format_epoch_seconds", "default": "-" },
+        "AutoScalingGroupName": { "source": "/AutoScalingGroupName", "default": "-" }
+      }
+    },
+    "autoscaling-scaling-activities": {
+      "display_name": "Scaling Activities",
+      "service": "autoscaling",
+      "sdk_method": "describe_scaling_activities",
+      "sdk_method_params": {},
+      "response_path": "activities",
+      "id_field": "ActivityId",
+      "name_field": "StatusCode",
+      "is_global": false,
+      "requires_parent": true,
+      "preserve_order": true,
+      "columns": [
+        { "header": "STATUS", "json_path": "StatusCode", "width": 16, "color_map": "state" },
+        { "header": "ACTIVITY", "json_path": "Description", "width": 26 },
+        { "header": "MESSAGE", "json_path": "StatusMessage", "width": 26 },
+        { "header": "PROGRESS", "json_path": "Progress", "width": 10 },
+        { "header": "STARTED", "json_path": "StartTime", "width": 15 },
+        { "header": "ENDED", "json_path": "EndTime", "width": 15 },
+        { "header": "ACTIVITY ID", "json_path": "ActivityId", "width": 14, "visible": false },
+        { "header": "CAUSE", "json_path": "Cause", "width": 40, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeScalingActivities",
+        "response_root": "/DescribeScalingActivitiesResponse/DescribeScalingActivitiesResult/Activities/member",
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeScalingActivitiesResponse/DescribeScalingActivitiesResult/NextToken",
+          "max_results_param": "MaxRecords",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "ActivityId": { "source": "/ActivityId", "default": "-" },
+        "StatusMessage": { "source": "/StatusMessage", "default": "-" },
+        "Description": { "source": "/Description", "default": "-" },
+        "Cause": { "source": "/Cause", "default": "-" },
+        "Progress": { "source": "/Progress", "default": "-" },
+        "StatusCode": { "source": "/StatusCode", "default": "-" },
+        "StartTime": { "source": "/StartTime", "transform": "format_epoch_seconds", "default": "-" },
+        "EndTime": { "source": "/EndTime", "transform": "format_epoch_seconds", "default": "-" },
+        "AutoScalingGroupState": { "source": "/AutoScalingGroupState", "default": "-" }
+      }
+    },
+    "autoscaling-instances": {
+      "display_name": "Instances",
+      "service": "autoscaling",
+      "sdk_method": "describe_auto_scaling_groups",
+      "sdk_method_params": {},
+      "response_path": "instances",
+      "id_field": "InstanceId",
+      "name_field": "InstanceId",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "INSTANCE", "json_path": "InstanceId", "width": 18 },
+        { "header": "LIFECYCLE", "json_path": "LifecycleState", "width": 16, "color_map": "state" },
+        { "header": "HEALTH", "json_path": "HealthStatus", "width": 12, "color_map": "state" },
+        { "header": "TYPE", "json_path": "InstanceType", "width": 14 },
+        { "header": "AZ", "json_path": "AvailabilityZone", "width": 16 },
+        { "header": "LT VERSION", "json_path": "LaunchTemplateVersion", "width": 10 },
+        { "header": "TYPE (LAUNCH CONFIG)", "json_path": "LaunchConfigurationName", "width": 20, "visible": false },
+        { "header": "SCALE-IN PROTECTED", "json_path": "ProtectedFromScaleIn", "width": 12, "visible": false, "color_map": "bool" },
+        { "header": "WEIGHT", "json_path": "WeightedCapacity", "width": 8, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "query",
+        "action": "DescribeAutoScalingGroups",
+        "response_root": "/DescribeAutoScalingGroupsResponse/DescribeAutoScalingGroupsResult/AutoScalingGroups/member/Instances/member",
+        "param_mapping": {
+          "asg_name": "AutoScalingGroupNames.member.1"
+        },
+        "pagination": {
+          "input_token": "NextToken",
+          "output_token": "/DescribeAutoScalingGroupsResponse/DescribeAutoScalingGroupsResult/NextToken"
+        }
+      },
+      "field_mappings": {
+        "Raw": { "source": "/" },
+        "InstanceId": { "source": "/InstanceId", "default": "-" },
+        "InstanceType": { "source": "/InstanceType", "default": "-" },
+        "AvailabilityZone": { "source": "/AvailabilityZone", "default": "-" },
+        "LifecycleState": { "source": "/LifecycleState", "default": "-" },
+        "HealthStatus": { "source": "/HealthStatus", "default": "-" },
+        "LaunchTemplateVersion": { "source": "/LaunchTemplate/Version", "default": "-" },
+        "LaunchConfigurationName": { "source": "/LaunchConfigurationName", "default": "-" },
+        "ProtectedFromScaleIn": { "source": "/ProtectedFromScaleIn", "transform": "bool_to_yes_no", "default": "-" },
+        "WeightedCapacity": { "source": "/WeightedCapacity", "default": "-" }
       }
     }
   }

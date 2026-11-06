@@ -62,7 +62,17 @@
       { "value": "MISCONFIGURED", "color": [255, 255, 0] },
       { "value": "DELETED", "color": [255, 0, 0] },
       { "value": "ENABLED", "color": [0, 255, 0] },
-      { "value": "DISABLED", "color": [128, 128, 128] }
+      { "value": "DISABLED", "color": [128, 128, 128] },
+      { "value": "InService", "color": [0, 255, 0] },
+      { "value": "Healthy", "color": [0, 255, 0] },
+      { "value": "Successful", "color": [0, 255, 0] },
+      { "value": "Unhealthy", "color": [255, 0, 0] },
+      { "value": "Failed", "color": [255, 0, 0] },
+      { "value": "Terminated", "color": [255, 0, 0] },
+      { "value": "InProgress", "color": [255, 255, 0] },
+      { "value": "Terminating", "color": [255, 255, 0] },
+      { "value": "Pending", "color": [255, 255, 0] },
+      { "value": "Cancelled", "color": [128, 128, 128] }
     ],
     "bool": [
       { "value": "true", "color": [0, 255, 255] },
