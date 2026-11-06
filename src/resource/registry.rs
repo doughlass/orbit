@@ -5030,4 +5030,225 @@ mod tests {
             "billing-cost-anomalies DateInterval must use StartDate/EndDate, got {interval}"
         );
     }
+
+    /// Instance refreshes and scaling activities stay in API order: the APIs
+    /// return most-recent-first, and sorting by ActivityId alphabetically
+    /// would scramble exactly the "how did the deploy roll" story the view
+    /// exists to tell. The refresh order also matters because an in-progress
+    /// refresh coexists with completed ones.
+    #[test]
+    fn autoscaling_children_preserve_api_order() {
+        for key in [
+            "autoscaling-instance-refreshes",
+            "autoscaling-scaling-activities",
+        ] {
+            let child = get_resource(key).expect(key);
+            assert!(child.requires_parent, "{key} cannot be listed standalone");
+            assert!(
+                child.preserve_order,
+                "{key} must keep API order, newest activity first"
+            );
+        }
+    }
+
+    /// The instances child reuses DescribeAutoScalingGroups scoped to one
+    /// group: the botocore model has no group filter on
+    /// DescribeAutoScalingInstances, so instances arrive nested in the group
+    /// envelope and need the two-level compound response_root (same pattern
+    /// as stack outputs). Refreshes and activities pass AutoScalingGroupName
+    /// as a plain wire param.
+    #[test]
+    fn autoscaling_group_children_cannot_be_listed_standalone() {
+        let parent = get_resource("autoscaling-groups").expect("autoscaling-groups");
+        for (key, shortcut, root, output_token, filter_param, mapped_param, max_results) in [
+            (
+                "autoscaling-instance-refreshes",
+                "r",
+                "/DescribeInstanceRefreshesResponse/DescribeInstanceRefreshesResult/InstanceRefreshes/member",
+                "/DescribeInstanceRefreshesResponse/DescribeInstanceRefreshesResult/NextToken",
+                "AutoScalingGroupName",
+                "",
+                Some(100u32),
+            ),
+            (
+                "autoscaling-scaling-activities",
+                "a",
+                "/DescribeScalingActivitiesResponse/DescribeScalingActivitiesResult/Activities/member",
+                "/DescribeScalingActivitiesResponse/DescribeScalingActivitiesResult/NextToken",
+                "AutoScalingGroupName",
+                "",
+                Some(100u32),
+            ),
+            (
+                "autoscaling-instances",
+                "i",
+                "/DescribeAutoScalingGroupsResponse/DescribeAutoScalingGroupsResult/AutoScalingGroups/member/Instances/member",
+                "/DescribeAutoScalingGroupsResponse/DescribeAutoScalingGroupsResult/NextToken",
+                "asg_name",
+                "AutoScalingGroupNames.member.1",
+                None,
+            ),
+        ] {
+            let child = get_resource(key).expect(key);
+
+            // Declared on the parent with a shortcut the global keys do not
+            // shadow (j k g G d J R w t q / : ? [ ]).
+            let declared = parent
+                .sub_resources
+                .iter()
+                .find(|s| s.resource_key == key)
+                .unwrap_or_else(|| {
+                    panic!("{key} must be declared as a sub-resource of autoscaling-groups")
+                });
+            assert_eq!(declared.shortcut, shortcut, "{key} shortcut");
+            assert_eq!(
+                declared.parent_id_field, "AutoScalingGroupName",
+                "{key} scopes by the group's row id"
+            );
+            assert_eq!(declared.filter_param, filter_param, "{key} filter param");
+
+            let api = child.api_config.as_ref().expect("api_config");
+            assert_eq!(
+                api.action.as_deref(),
+                Some(
+                    match key {
+                        "autoscaling-instance-refreshes" => "DescribeInstanceRefreshes",
+                        "autoscaling-scaling-activities" => "DescribeScalingActivities",
+                        _ => "DescribeAutoScalingGroups",
+                    }
+                )
+            );
+            assert_eq!(api.response_root.as_deref(), Some(root), "{key} root");
+
+            if let Some(max) = max_results {
+                let page = api.pagination.as_ref().expect("pagination");
+                assert_eq!(
+                    page.max_results_param.as_deref(),
+                    Some("MaxRecords"),
+                    "{key} pages on MaxRecords"
+                );
+                assert_eq!(
+                    page.max_results, Some(max),
+                    "{key} MaxRecords must not exceed the API cap"
+                );
+            }
+            assert_eq!(
+                api.pagination
+                    .as_ref()
+                    .map(|p| p.input_token.as_deref().unwrap_or("")),
+                Some("NextToken"),
+                "{key} pages on NextToken"
+            );
+            let expected_output_token = output_token.to_string();
+            assert_eq!(
+                api.pagination
+                    .as_ref()
+                    .map(|p| p.output_token.as_deref().unwrap_or("")),
+                Some(expected_output_token.as_str()),
+                "{key} must read the result-level NextToken"
+            );
+
+            // Wire param: direct name, or mapped for the dotted
+            // AutoScalingGroupNames.member.1 form.
+            if mapped_param.is_empty() {
+                assert!(
+                    api.param_mapping.is_empty(),
+                    "{key} sends the filter param name as-is"
+                );
+            } else {
+                let wire = api
+                    .param_mapping
+                    .get(filter_param)
+                    .unwrap_or_else(|| panic!("{key} must map {} to its wire name", filter_param));
+                assert_eq!(wire, mapped_param, "{key} wire param name");
+            }
+        }
+    }
+
+    /// The refresh panel answers "how far along": percentage complete, status
+    /// reason and the end time all come from the InstanceRefresh wire shape
+    /// (the progress member is PercentageComplete, not a guessed
+    /// ProgressPercentage which would always render "-").
+    #[test]
+    fn autoscaling_instance_refreshes_show_progress_reason_and_end_time() {
+        let child = get_resource("autoscaling-instance-refreshes").expect("refreshes");
+        let mapped = child.field_mappings.keys().cloned().collect::<Vec<_>>();
+        for field in [
+            "InstanceRefreshId",
+            "Status",
+            "StatusReason",
+            "PercentageComplete",
+            "StartTime",
+            "EndTime",
+        ] {
+            assert!(
+                mapped.contains(&field.to_string()),
+                "InstanceRefresh wire member {} must be mapped, got {mapped:?}",
+                field
+            );
+        }
+        let col_headers: Vec<&str> = child.columns.iter().map(|c| c.header.as_str()).collect();
+        assert!(
+            col_headers.contains(&"PERCENT") && col_headers.contains(&"STATUS"),
+            "refresh columns must surface progress and status, got {col_headers:?}"
+        );
+    }
+
+    /// Scaling activities answer "why did it fail": the status message and
+    /// description must be mapped, and the giant Cause text must not eat the
+    /// table (kept behind the column picker).
+    #[test]
+    fn autoscaling_scaling_activities_surface_status_message() {
+        let child = get_resource("autoscaling-scaling-activities").expect("activities");
+        let mapped = child.field_mappings.keys().cloned().collect::<Vec<_>>();
+        for field in [
+            "ActivityId",
+            "StatusCode",
+            "StatusMessage",
+            "Description",
+            "Progress",
+            "StartTime",
+            "EndTime",
+        ] {
+            assert!(
+                mapped.contains(&field.to_string()),
+                "Activity wire member {} must be mapped, got {mapped:?}",
+                field
+            );
+        }
+        let cause = child
+            .columns
+            .iter()
+            .find(|c| c.json_path == "Cause")
+            .expect("a Cause column exists for the column picker");
+        assert!(
+            !cause.visible,
+            "Cause runs to 1000+ chars; it must ship hidden"
+        );
+    }
+
+    /// Capitalised ASG lifecycle and activity states must pick up the shared
+    /// state colours: the colour map is exact-match, so "InService" is not
+    /// covered by EC2's "running" and would render uncoloured today.
+    #[test]
+    fn autoscaling_statuses_color_by_the_state_map() {
+        for (value, colour) in [
+            ("InService", [0, 255, 0]),
+            ("Pending", [255, 255, 0]),
+            ("Terminating", [255, 255, 0]),
+            ("Terminated", [255, 0, 0]),
+            ("InProgress", [255, 255, 0]),
+            ("Successful", [0, 255, 0]),
+            ("Failed", [255, 0, 0]),
+            ("Cancelled", [128, 128, 128]),
+            ("Healthy", [0, 255, 0]),
+            ("Unhealthy", [255, 0, 0]),
+        ] {
+            assert_eq!(
+                get_color_for_value("state", value),
+                Some(colour),
+                "state map must colour {value}"
+            );
+        }
+    }
 }
