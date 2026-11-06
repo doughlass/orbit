@@ -1,5 +1,6 @@
 mod column_picker;
 mod command_box;
+mod dashboard;
 mod dialog;
 mod header;
 mod help;
@@ -50,6 +51,11 @@ pub fn render(f: &mut Frame, app: &App) {
         Mode::LogTail => {
             render_log_tail_view(f, app, chunks[1]);
         }
+        Mode::Dashboard | Mode::DashboardPanels | Mode::PanelCustomize => {
+            // The popups overlay the dashboard page itself, not the resource
+            // table it was opened from.
+            dashboard::render(f, app, chunks[1]);
+        }
         _ => {
             render_main_content(f, app, chunks[1]);
         }
@@ -65,6 +71,12 @@ pub fn render(f: &mut Frame, app: &App) {
         }
         Mode::ColumnPicker => {
             column_picker::render(f, app);
+        }
+        Mode::DashboardPanels => {
+            dashboard::render_panel_picker(f, app);
+        }
+        Mode::PanelCustomize => {
+            dashboard::render_panel_customize(f, app);
         }
         Mode::Confirm | Mode::Warning | Mode::SsoLogin | Mode::ConsoleLogin | Mode::Update => {
             dialog::render(f, app);
@@ -556,6 +568,60 @@ fn describe_title(resource_display_name: &str, action_display_name: Option<&str>
     }
 }
 
+/// Render the fetched policy-document drill view: a fixed header naming the
+/// policy, then the document as a scrollable, wrap-enabled paragraph. The
+/// header stays anchored while the body scrolls.
+fn render_drill_document(f: &mut Frame, app: &App, area: Rect) {
+    let Some(drill) = app.drill_data.as_ref() else {
+        return;
+    };
+
+    let header_lines = if drill.label.is_empty() { 2 } else { 3 };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(header_lines as u16), Constraint::Min(1)])
+        .split(area);
+    let header_area = chunks[0];
+    let content_area = chunks[1];
+
+    let mut header: Vec<Line> = vec![Line::from(Span::styled(
+        " Policy Document ",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    ))];
+    if !drill.label.is_empty() {
+        header.push(Line::from(Span::styled(
+            format!("  {}", drill.label),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )));
+    }
+    header.push(Line::from(""));
+    let header_para = Paragraph::new(header);
+    f.render_widget(header_para, header_area);
+
+    let lines: Vec<Line> = drill
+        .document
+        .lines()
+        .map(|l| {
+            Line::from(Span::styled(
+                l.to_string(),
+                Style::default().fg(Color::White),
+            ))
+        })
+        .collect();
+    let total = lines.len();
+    let max_scroll = total.saturating_sub(content_area.height as usize);
+    let scroll = app.drill_scroll.min(max_scroll);
+
+    let paragraph = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .scroll((scroll as u16, 0));
+    f.render_widget(paragraph, content_area);
+}
+
 fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
     let json = app
         .selected_item_json()
@@ -583,6 +649,13 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
     let inner_area = block.inner(area);
     f.render_widget(block, area);
 
+    // A fetched policy document replaces the whole describe body. It is drawn
+    // inside the same outer block so exit is visually "above" the describe.
+    if app.drill_data.is_some() {
+        render_drill_document(f, app, inner_area);
+        return;
+    }
+
     // Split inner area for search bar if search is active or has text
     let show_search = app.describe_search_active || !app.describe_search_text.is_empty();
     let (content_area, search_area) = if show_search {
@@ -608,11 +681,25 @@ fn render_describe_view(f: &mut Frame, app: &App, area: Rect) {
 
     if let Some(config) = describe_config {
         if let Some(ref data) = app.describe_data {
-            let lines = render_formatted_describe(config, data);
+            let mut lines = render_formatted_describe(config, data);
             let total_lines = lines.len();
             let visible_lines = content_area.height as usize;
             let max_scroll = total_lines.saturating_sub(visible_lines);
             let scroll = app.describe_scroll.min(max_scroll);
+
+            // Highlight the drillable list item under the describe cursor so
+            // the user can see which document Enter will open.
+            if let Some(target) = app
+                .describe_drill_targets()
+                .get(app.describe_cursor)
+                .filter(|t| t.line < lines.len())
+            {
+                if let Some(Line { spans, .. }) = lines.get_mut(target.line) {
+                    for span in spans {
+                        span.style = span.style.add_modifier(Modifier::REVERSED).fg(Color::Black);
+                    }
+                }
+            }
 
             let paragraph = Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
@@ -756,7 +843,32 @@ fn render_formatted_describe(
     config: &crate::resource::protocol::DescribeConfig,
     data: &Value,
 ) -> Vec<Line<'static>> {
+    describe_layout(config, data).0
+}
+
+/// Collect the drillable items of a formatted describe, in the order they
+/// render, so the describe cursor and the highlight in the renderer walk the
+/// same list. Splitting this out of `describe_layout` would let the two drift;
+/// they share the one pass below.
+pub fn collect_describe_drill_targets(
+    config: &crate::resource::protocol::DescribeConfig,
+    data: &Value,
+) -> Vec<crate::resource::protocol::DescribeDrillTarget> {
+    describe_layout(config, data).1
+}
+
+/// Build the formatted describe panel in a single pass, recording both the
+/// rendered lines and, for each drillable list item, the line it renders on
+/// and the item value the drill should fetch.
+fn describe_layout(
+    config: &crate::resource::protocol::DescribeConfig,
+    data: &Value,
+) -> (
+    Vec<Line<'static>>,
+    Vec<crate::resource::protocol::DescribeDrillTarget>,
+) {
     let mut lines: Vec<Line> = vec![];
+    let mut targets: Vec<crate::resource::protocol::DescribeDrillTarget> = vec![];
 
     if let Some(overview) = &config.overview {
         lines.extend(render_overview_banner(overview, data));
@@ -790,8 +902,45 @@ fn render_formatted_describe(
         };
 
         if field.list {
-            lines.extend(describe_list_lines(field, &value));
-            continue;
+            // A drillable list item each carry the wire to fetch their
+            // document. Inline the item loop so we can record the line each
+            // one renders on; `describe_list_lines` cannot report that.
+            let drill = field
+                .drill
+                .as_ref()
+                .map(|d| (d, field.item_template.as_deref()));
+            match drill {
+                Some((drill, item_template)) => {
+                    let items = value_to_items(&value);
+                    if items.is_empty() {
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                format!("  {:<20}", field.label),
+                                Style::default().fg(Color::DarkGray),
+                            ),
+                            Span::styled("-", Style::default().fg(Color::White)),
+                        ]));
+                        continue;
+                    }
+                    let label = describe_list_label(field);
+                    lines.push(label);
+                    for item in items {
+                        lines.push(describe_list_item_line(item_template, item));
+                        targets.push(crate::resource::protocol::DescribeDrillTarget {
+                            field_label: field.label.clone(),
+                            item: item.clone(),
+                            config: drill.clone(),
+                            line: lines.len() - 1,
+                            hint: describe_list_item_text(item_template, item),
+                        });
+                    }
+                    continue;
+                }
+                None => {
+                    lines.extend(describe_list_lines(field, &value));
+                    continue;
+                }
+            }
         }
 
         let display = value_to_describe_string(&value);
@@ -806,7 +955,7 @@ fn render_formatted_describe(
     }
 
     lines.push(Line::from(""));
-    lines
+    (lines, targets)
 }
 
 /// A list field: its label, then one line per item. An empty list still prints
@@ -816,17 +965,7 @@ fn describe_list_lines(
     field: &crate::resource::protocol::DescribeField,
     value: &Value,
 ) -> Vec<Line<'static>> {
-    // XML→JSON collapses a one-element list to a bare object.
-    let items: Vec<&Value> = match value {
-        Value::Array(items) => items.iter().collect(),
-        Value::Null => vec![],
-        other => vec![other],
-    };
-
-    let label = Line::from(Span::styled(
-        format!("  {:<20}", field.label),
-        Style::default().fg(Color::DarkGray),
-    ));
+    let items = value_to_items(value);
 
     if items.is_empty() {
         return vec![Line::from(vec![
@@ -838,18 +977,49 @@ fn describe_list_lines(
         ])];
     }
 
-    let mut lines = vec![label];
+    let mut lines = vec![describe_list_label(field)];
     for item in items {
-        let text = match field.item_template.as_deref() {
-            Some(template) => render_describe_item(template, item),
-            None => value_to_describe_string(item),
-        };
-        lines.push(Line::from(Span::styled(
-            format!("    {}", text.trim()),
-            Style::default().fg(Color::White),
-        )));
+        lines.push(describe_list_item_line(
+            field.item_template.as_deref(),
+            item,
+        ));
     }
     lines
+}
+
+/// A bare list value as its items, keeping the XML→JSON collapse rule: a
+/// single-element list arrives as a bare object rather than an array.
+fn value_to_items(value: &Value) -> Vec<&Value> {
+    match value {
+        Value::Array(items) => items.iter().collect(),
+        Value::Null => vec![],
+        other => vec![other],
+    }
+}
+
+/// The header line a list field prints above its items (or "-" when empty).
+fn describe_list_label(field: &crate::resource::protocol::DescribeField) -> Line<'static> {
+    Line::from(Span::styled(
+        format!("  {:<20}", field.label),
+        Style::default().fg(Color::DarkGray),
+    ))
+}
+
+/// The rendered text of one list item.
+fn describe_list_item_text(item_template: Option<&str>, item: &Value) -> String {
+    match item_template {
+        Some(template) => render_describe_item(template, item),
+        None => value_to_describe_string(item),
+    }
+}
+
+/// One item's rendered line, indented under its list header.
+fn describe_list_item_line(item_template: Option<&str>, item: &Value) -> Line<'static> {
+    let text = describe_list_item_text(item_template, item);
+    Line::from(Span::styled(
+        format!("    {}", text.trim()),
+        Style::default().fg(Color::White),
+    ))
 }
 
 /// Fill `{key}` / `{nested/key}` from one list item. A key the item lacks
@@ -1487,6 +1657,7 @@ mod tests {
             section: section.map(|s| s.to_string()),
             list: false,
             item_template: None,
+            drill: None,
         }
     }
 
@@ -1625,10 +1796,296 @@ mod tests {
         );
     }
 
+    /// Route53 records describe from the list row, which is the *mapped* item
+    /// that keeps the raw record under `Raw` (XML-converted JSON: a single-value
+    /// ResourceRecords collapses to a bare object, and an alias record carries
+    /// `AliasTarget` instead of TTL/ResourceRecords). The panel derives Alias and
+    /// Routing Policy by transform and renders everything through the real
+    /// describe_config, with no API call behind it.
+    #[test]
+    fn route53_record_details_render_from_the_list_row() {
+        use serde_json::json;
+
+        let r = crate::resource::get_resource("route53-records").expect("route53-records");
+        assert!(r.describe_from_row, "records describe from the row");
+        let config = r.describe_config.as_ref().expect("describe_config");
+
+        let plain = json!({
+            "RecordId": "www.example.com.#A",
+            "Name": "www.example.com.",
+            "Type": "A",
+            "TTL": "300",
+            "Value": "203.0.113.10",
+            "Raw": {
+                "Name": "www.example.com.",
+                "Type": "A",
+                "TTL": "300",
+                "ResourceRecords": { "ResourceRecord": { "Value": "203.0.113.10" } }
+            }
+        });
+        let rendered = describe_lines(&config.describe_fields, &plain);
+        assert!(
+            rendered.iter().any(|l| l.contains("www.example.com.")),
+            "panel must show the record name: {:?}",
+            rendered
+        );
+        assert!(
+            rendered.iter().any(|l| l.contains("203.0.113.10")),
+            "panel must show the record value: {:?}",
+            rendered
+        );
+        assert!(
+            rendered.iter().any(|l| l.contains("Simple")),
+            "a record with no routing fields is Simple: {:?}",
+            rendered
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.trim().starts_with("Alias") && l.trim().ends_with("No")),
+            "a non-alias record must read Alias No: {:?}",
+            rendered
+        );
+
+        let alias = json!({
+            "RecordId": "alb.example.com.#A",
+            "Name": "alb.example.com.",
+            "Type": "A",
+            "Value": "dualstack.app.example.com.",
+            "Raw": {
+                "Name": "alb.example.com.",
+                "Type": "A",
+                "AliasTarget": {
+                    "HostedZoneId": "Z2ABCDEF123456",
+                    "DNSName": "dualstack.app.example.com.",
+                    "EvaluateTargetHealth": "true"
+                }
+            }
+        });
+        let rendered = describe_lines(&config.describe_fields, &alias);
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("dualstack.app.example.com.")),
+            "panel must show the alias target: {:?}",
+            rendered
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.trim().starts_with("Alias") && l.trim().ends_with("Yes")),
+            "an alias record must read Alias Yes: {:?}",
+            rendered
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("TTL") && l.contains('-')),
+            "an alias record carries no TTL and must show a dash: {:?}",
+            rendered
+        );
+    }
+
+    /// An EC2 instance's detail panel mirrors the console: an overview card
+    /// headed by the Name tag, then grouped sections covering the instance,
+    /// networking, storage, placement and metadata. It renders from the fetched
+    /// list row (describe_from_row), so a typo in a lowerCamelCase wire element
+    /// name shows up here as a missing "-" instead of a silent blank cell.
+    #[test]
+    fn ec2_instance_details_render_a_console_style_formatted_panel() {
+        let r = crate::resource::get_resource("ec2-instances").expect("ec2-instances");
+        let config = r.describe_config.clone().expect("describe_config");
+
+        let row: serde_json::Value = serde_json::from_str(
+            r#"{
+            "InstanceId": "i-0123456789abcdef0",
+            "State": "running",
+            "InstanceType": "m5.large",
+            "PrivateIpAddress": "172.31.27.199",
+            "PublicIpAddress": "52.210.150.98",
+            "Tags": { "Name": "Reporting", "Team": "DB" },
+            "Raw": {
+                "instanceId": "i-0123456789abcdef0",
+                "instanceType": "m5.large",
+                "instanceState": { "code": 16, "name": "running" },
+                "architecture": "x86_64",
+                "platformDetails": "Linux/UNIX",
+                "virtualizationType": "hvm",
+                "hypervisor": "xen",
+                "launchTime": "2022-08-15T11:11:35.000Z",
+                "imageId": "ami-0123456789abcdef0",
+                "placement": {
+                    "availabilityZone": "eu-west-1c",
+                    "availabilityZoneId": "euw1-az2",
+                    "tenancy": "default"
+                },
+                "monitoring": { "state": "enabled" },
+                "privateIpAddress": "172.31.27.199",
+                "ipAddress": "52.210.150.98",
+                "vpcId": "vpc-0123456789abcdef0",
+                "subnetId": "subnet-0123456789abcdef0",
+                "groupSet": {
+                    "item": [
+                        { "groupId": "sg-1327d375", "groupName": "test-remove" },
+                        { "groupId": "sg-fe6da399", "groupName": "DMC-CM-SSH" }
+                    ]
+                },
+                "rootDeviceName": "/dev/sda1",
+                "rootDeviceType": "ebs",
+                "ebsOptimized": true,
+                "blockDeviceMapping": {
+                    "item": [{ "deviceName": "/dev/sda1", "ebs": { "volumeId": "vol-999f9a1e" } }]
+                },
+                "keyName": "whg-deploy",
+                "iamInstanceProfile": { "arn": "arn:aws:iam::259740665173:instance-profile/whg" },
+                "hibernationOptions": { "configured": true },
+                "metadataOptions": { "httpTokens": "required", "httpEndpoint": "enabled" },
+                "enaSupport": true,
+                "usageOperation": "RunInstances",
+                "instanceLifecycle": "spot",
+                "spotInstanceRequestId": "sir-0123456789abcdef0",
+                "stateReason": {
+                    "code": "Client.UserInitiatedShutdown",
+                    "message": "Client.UserInitiatedShutdown: User initiated shutdown"
+                },
+                "tagSet": {
+                    "item": [
+                        { "key": "Name", "value": "Reporting" },
+                        { "key": "Team", "value": "DB" }
+                    ]
+                }
+            }
+        }"#,
+        )
+        .expect("test fixture is valid JSON");
+
+        let rendered: Vec<String> = super::render_formatted_describe(&config, &row)
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+
+        assert!(
+            rendered.iter().any(|l| l.contains("Reporting")),
+            "banner must be headed by the Name tag: {:?}",
+            rendered
+        );
+        assert!(
+            rendered.iter().any(|l| l.contains("running")),
+            "banner chip must show the instance state: {:?}",
+            rendered
+        );
+        for (label, value) in [
+            ("Instance ID", "i-0123456789abcdef0"),
+            ("Instance Type", "m5.large"),
+            ("Architecture", "x86_64"),
+            ("Launch Time", "2022"),
+            ("Private IPv4", "172.31.27.199"),
+            ("Public IPv4", "52.210.150.98"),
+            ("VPC ID", "vpc-0123456789abcdef0"),
+            ("Subnet ID", "subnet-0123456789abcdef0"),
+            ("Root Device Name", "/dev/sda1"),
+            ("Volume IDs", "vol-999f9a1e"),
+            ("IAM Instance Profile", "instance-profile/whg"),
+            ("Availability Zone", "eu-west-1c"),
+            ("IMDSv2", "required"),
+            ("Spot Request ID", "sir-0123456789abcdef0"),
+        ] {
+            assert!(
+                rendered
+                    .iter()
+                    .any(|l| l.contains(label) && l.contains(value)),
+                "panel must show {label} = {value}: {:?}",
+                rendered
+            );
+        }
+        assert!(
+            rendered.iter().any(|l| l.contains("test-remove")),
+            "panel must list the security groups: {:?}",
+            rendered
+        );
+        assert!(
+            rendered.iter().any(|l| l.trim() == "Team=DB"),
+            "tags must render one key=value line per tag: {:?}",
+            rendered
+        );
+        for section in [
+            "Details",
+            "Networking",
+            "Storage",
+            "Access",
+            "Placement",
+            "Status",
+            "Metadata",
+            "Tags",
+        ] {
+            assert!(
+                rendered.iter().any(|l| l.trim() == section),
+                "panel must emit the {section} heading: {:?}",
+                rendered
+            );
+        }
+        assert!(
+            rendered
+                .iter()
+                .any(|l| l.contains("EBS Optimized") && l.trim().ends_with("Yes")),
+            "a boolean must read Yes/No, not raw json: {:?}",
+            rendered
+        );
+    }
+
     fn field_list(
         field: crate::resource::protocol::DescribeField,
     ) -> Vec<crate::resource::protocol::DescribeField> {
         vec![field]
+    }
+
+    /// A drillable list field surfaces each item as a target whose line points
+    /// at that item's rendered row, so the describe cursor can highlight it and
+    /// Enter can fetch its document. A plain (non-drillable) list contributes
+    /// no targets.
+    #[test]
+    fn drillable_list_fields_produce_targets_at_their_item_lines() {
+        use crate::resource::protocol::{DrillConfig, DrillKind};
+        use serde_json::json;
+
+        let mut attached = describe_field("Attached", "/AttachedPolicies", Some("Policies"));
+        attached.list = true;
+        attached.item_template = Some("{PolicyName}".to_string());
+        attached.drill = Some(DrillConfig {
+            kind: DrillKind::ManagedPolicyDocument,
+            item_field: "PolicyArn".to_string(),
+        });
+
+        let mut plain = describe_field("Plain", "/PlainList", Some("Policies"));
+        plain.list = true;
+
+        let config = crate::resource::protocol::DescribeConfig {
+            describe_fields: vec![attached, plain],
+            ..Default::default()
+        };
+        let data = json!({
+            "AttachedPolicies": [
+                { "PolicyName": "a", "PolicyArn": "arn:1" },
+                { "PolicyName": "b", "PolicyArn": "arn:2" },
+            ],
+            "PlainList": [1, 2],
+        });
+
+        let targets = super::collect_describe_drill_targets(&config, &data);
+        assert_eq!(targets.len(), 2, "only the drillable field yields targets");
+        assert_eq!(targets[0].hint, "a");
+        assert_eq!(
+            targets[0].item,
+            json!({ "PolicyName": "a", "PolicyArn": "arn:1" })
+        );
+        assert_eq!(targets[1].hint, "b");
+        // The two items render on consecutive lines: header line then item 0.
+        assert_eq!(targets[1].line, targets[0].line + 1);
     }
 
     /// The clamp must leave the trailing columns reachable: scrolling right

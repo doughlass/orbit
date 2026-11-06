@@ -2,8 +2,8 @@ use crate::aws;
 use crate::aws::client::AwsClients;
 use crate::config::Config;
 use crate::resource::{
-    extract_json_value, fetch_resources_paginated, get_all_resource_keys, get_resource,
-    ResourceDef, ResourceFilter,
+    extract_json_value, fetch_resources_paginated, get_all_resource_keys, get_dashboard,
+    get_resource, ResourceDef, ResourceFilter,
 };
 use anyhow::Result;
 use crossterm::event::KeyCode;
@@ -14,19 +14,22 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Mode {
-    Normal,       // Viewing list
-    Command,      // : command input
-    Help,         // ? help popup
-    Confirm,      // Confirmation dialog
-    Warning,      // Warning/info dialog (OK only)
-    Profiles,     // Profile selection
-    Regions,      // Region selection
-    Describe,     // Viewing JSON details of selected item
-    SsoLogin,     // SSO login dialog (IAM Identity Center)
-    ConsoleLogin, // Console login dialog (aws login)
-    LogTail,      // Tailing CloudWatch logs
-    ColumnPicker, // Column visibility picker (p)
-    Update,       // A newer version is available; offer to update
+    Normal,          // Viewing list
+    Command,         // : command input
+    Help,            // ? help popup
+    Confirm,         // Confirmation dialog
+    Warning,         // Warning/info dialog (OK only)
+    Profiles,        // Profile selection
+    Regions,         // Region selection
+    Describe,        // Viewing JSON details of selected item
+    SsoLogin,        // SSO login dialog (IAM Identity Center)
+    ConsoleLogin,    // Console login dialog (aws login)
+    LogTail,         // Tailing CloudWatch logs
+    Dashboard,       // Composite dashboard page (e.g. :billing)
+    DashboardPanels, // Panel picker popup on a dashboard
+    PanelCustomize,  // Per-pane report customize popup on a dashboard
+    ColumnPicker,    // Column visibility picker (p)
+    Update,          // A newer version is available; offer to update
 }
 
 /// Pending action that requires confirmation
@@ -75,12 +78,73 @@ pub struct ParentContext {
     pub saved_selected: usize,
 }
 
+/// An open drill view: a policy document fetched from a drillable describe
+/// list item. The describe panel is still the thing "behind" it; leaving the
+/// drill restores `describe_scroll` so the user lands where they left off.
+#[derive(Debug, Clone)]
+pub struct DescribeDrill {
+    /// Header shown above the document, e.g. the policy name.
+    pub label: String,
+    /// The fetched, decoded policy document text.
+    pub document: String,
+    /// describe_scroll at the moment the drill opened, restored on exit.
+    pub return_scroll: usize,
+}
+
 /// AWS API Filters for server-side filtering
 /// Supports key=value pairs like: architecture=arm64, owner=amazon, tag:Environment=prod
 #[derive(Debug, Clone, Default)]
 pub struct AwsFilters {
     /// List of filter key-value pairs
     pub filters: Vec<(String, String)>,
+}
+
+/// An open dashboard page. `panels` aligns with `def.panels` once the
+/// composite fetch has run; empty before that. `focused` is the index of the
+/// highlighted pane (customize targets it). `key` is the dashboard/config
+/// key (e.g. "billing") the page was opened with.
+pub struct DashboardState {
+    pub key: String,
+    pub def: crate::resource::DashboardDef,
+    pub panels: Vec<crate::resource::PanelData>,
+    pub focused: usize,
+}
+
+/// The panel picker popup on a dashboard: every panel the page *could* show
+/// (JSON defaults + user-defined ones), with its current visibility.
+#[derive(Debug, Clone)]
+pub struct DashboardPanelPicker {
+    pub entries: Vec<PanelPickerEntry>,
+    pub selected: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct PanelPickerEntry {
+    pub title: String,
+    pub visible: bool,
+    pub custom: bool,
+    /// The panel definition, so a toggle-on can fetch it in place.
+    pub panel: crate::resource::DashboardPanel,
+}
+
+/// The per-pane customize popup: pick what one focused pane shows. Options
+/// are the pane's JSON default plus every named report; the choice lands in
+/// `config.dashboards.<key>.assignments`.
+#[derive(Debug, Clone)]
+pub struct PanelCustomize {
+    pub panel_title: String,
+    pub options: Vec<CustomizeOption>,
+    pub selected: usize,
+    /// The currently-assigned report title, if any.
+    pub current: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CustomizeOption {
+    /// Human label; the default option reads "(dashboard default)".
+    pub label: String,
+    /// Report title to assign, or None to reset to the JSON definition.
+    pub report: Option<String>,
 }
 
 impl AwsFilters {
@@ -294,6 +358,8 @@ pub struct App {
     pub available_regions: Vec<String>,
     pub profiles_selected: usize,
     pub regions_selected: usize,
+    pub profiles_filter_text: String,
+    pub profiles_filter_active: bool,
 
     // Confirmation
     pub pending_action: Option<PendingAction>,
@@ -316,6 +382,11 @@ pub struct App {
     pub describe_search_active: bool,
     pub describe_match_lines: Vec<usize>, // Line numbers containing matches
     pub describe_current_match: usize,    // Index into match_lines
+
+    // Policy-document drill from a drillable describe list field.
+    pub describe_cursor: usize, // Index into the flattened drill targets
+    pub drill_data: Option<DescribeDrill>, // An open policy-document view
+    pub drill_scroll: usize,    // Scroll within the open drill view
 
     // Auto-refresh
     pub last_refresh: std::time::Instant,
@@ -352,6 +423,16 @@ pub struct App {
 
     // Log tail state
     pub log_tail_state: Option<LogTailState>,
+
+    // Open dashboard page (e.g. :billing). Panels populate in place after the
+    // composite fetch completes.
+    pub dashboard_state: Option<DashboardState>,
+
+    // Panel picker popup (p on a dashboard)
+    pub dashboard_panel_picker: Option<DashboardPanelPicker>,
+
+    // Per-pane customize popup (Enter/c on a focused dashboard pane)
+    pub dashboard_panel_customize: Option<PanelCustomize>,
 
     // SSM connect request (instance_id, region, profile)
     pub ssm_connect_request: Option<SsmConnectRequest>,
@@ -608,6 +689,8 @@ impl App {
             available_regions,
             profiles_selected: 0,
             regions_selected: 0,
+            profiles_filter_text: String::new(),
+            profiles_filter_active: false,
             pending_action: None,
             loading: false,
             error_message: None,
@@ -620,6 +703,9 @@ impl App {
             describe_search_active: false,
             describe_match_lines: Vec::new(),
             describe_current_match: 0,
+            describe_cursor: 0,
+            drill_data: None,
+            drill_scroll: 0,
             last_refresh: std::time::Instant::now(),
             config,
             last_key_press: None,
@@ -632,6 +718,9 @@ impl App {
             console_login_rx: None,
             pagination: PaginationState::default(),
             log_tail_state: None,
+            dashboard_state: None,
+            dashboard_panel_picker: None,
+            dashboard_panel_customize: None,
             ssm_connect_request: None,
             fuzzy_matcher: SkimMatcherV2::default().ignore_case(),
             sort: SortState::default(),
@@ -670,6 +759,13 @@ impl App {
             .iter()
             .map(|s| s.to_string())
             .collect();
+
+        // Dashboards (e.g. :billing) are commands too
+        commands.extend(
+            crate::resource::all_dashboard_keys()
+                .iter()
+                .map(|s| s.to_string()),
+        );
 
         // Add profiles and regions commands
         commands.push("profiles".to_string());
@@ -1184,6 +1280,120 @@ impl App {
         self.describe_scroll = total.saturating_sub(visible_lines);
     }
 
+    /// The drillable list items of the current describe, in render order.
+    /// Empty when the resource declares no drillable fields or there is no
+    /// describe payload yet.
+    pub fn describe_drill_targets(&self) -> Vec<crate::resource::protocol::DescribeDrillTarget> {
+        let Some(data) = &self.describe_data else {
+            return vec![];
+        };
+        let Some(res) = get_resource(&self.current_resource_key) else {
+            return vec![];
+        };
+        let Some(dc) = &res.describe_config else {
+            return vec![];
+        };
+        crate::ui::collect_describe_drill_targets(dc, data)
+    }
+
+    /// Move the drill cursor over the drillable list items, keeping the
+    /// selected row in view by nudging the describe scroll.
+    pub fn describe_drill_cursor_move(&mut self, down: bool) {
+        let targets = self.describe_drill_targets();
+        if targets.is_empty() {
+            return;
+        }
+        if down {
+            if self.describe_cursor + 1 < targets.len() {
+                self.describe_cursor += 1;
+            }
+        } else {
+            self.describe_cursor = self.describe_cursor.saturating_sub(1);
+        }
+
+        let line = targets[self.describe_cursor].line;
+        let visible: usize = 40;
+        let max_scroll = self.describe_max_scroll();
+        if line < self.describe_scroll {
+            self.describe_scroll = line.saturating_sub(visible / 2);
+        } else if line >= self.describe_scroll + visible {
+            self.describe_scroll = (line - visible + 1).min(max_scroll);
+        }
+    }
+
+    /// Fetch and open the document for the drillable item under the cursor,
+    /// remembering the describe scroll to restore on exit.
+    pub async fn enter_drill_mode(&mut self) -> Result<()> {
+        let targets = self.describe_drill_targets();
+        if targets.is_empty() {
+            return Ok(());
+        }
+        let target = &targets[self.describe_cursor.min(targets.len() - 1)];
+        let id_field = self
+            .current_resource()
+            .map(|r| r.id_field.clone())
+            .unwrap_or_default();
+        let Some(item) = self.selected_item() else {
+            return Ok(());
+        };
+        let resource_id = extract_json_value(item, &id_field);
+        if resource_id == "-" || resource_id.is_empty() {
+            return Ok(());
+        }
+
+        match crate::resource::drill_policy_document(
+            &self.clients,
+            &target.config,
+            &resource_id,
+            &target.item,
+        )
+        .await
+        {
+            Ok(document) => {
+                self.drill_data = Some(DescribeDrill {
+                    label: if target.hint.is_empty() {
+                        target.field_label.clone()
+                    } else {
+                        target.hint.clone()
+                    },
+                    document,
+                    return_scroll: self.describe_scroll,
+                });
+                self.drill_scroll = 0;
+                self.error_message = None;
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to fetch policy document: {e}"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Close the open drill view and return to the describe panel at the scroll
+    /// the user left it at.
+    pub fn exit_drill_mode(&mut self) {
+        if let Some(drill) = self.drill_data.take() {
+            self.describe_scroll = drill.return_scroll;
+        }
+        self.drill_scroll = 0;
+    }
+
+    /// Scroll the open drill document view.
+    pub fn drill_scroll_move(&mut self, down: bool) {
+        let total = self
+            .drill_data
+            .as_ref()
+            .map(|d| d.document.lines().count() + 2)
+            .unwrap_or(0);
+        let visible: usize = 40;
+        let max_scroll = total.saturating_sub(visible);
+        if down {
+            self.drill_scroll = self.drill_scroll.saturating_add(1).min(max_scroll);
+        } else {
+            self.drill_scroll = self.drill_scroll.saturating_sub(1);
+        }
+    }
+
     /// Clear describe search
     pub fn clear_describe_search(&mut self) {
         self.describe_search_text.clear();
@@ -1243,9 +1453,9 @@ impl App {
     pub fn next(&mut self) {
         match self.mode {
             Mode::Profiles => {
-                if !self.available_profiles.is_empty() {
-                    self.profiles_selected =
-                        (self.profiles_selected + 1).min(self.available_profiles.len() - 1);
+                let len = self.profiles_visible().len();
+                if len > 0 {
+                    self.profiles_selected = (self.profiles_selected + 1).min(len - 1);
                 }
             }
             Mode::Regions => {
@@ -1287,8 +1497,9 @@ impl App {
     pub fn go_to_bottom(&mut self) {
         match self.mode {
             Mode::Profiles => {
-                if !self.available_profiles.is_empty() {
-                    self.profiles_selected = self.available_profiles.len() - 1;
+                let len = self.profiles_visible().len();
+                if len > 0 {
+                    self.profiles_selected = len - 1;
                 }
             }
             Mode::Regions => {
@@ -1307,9 +1518,9 @@ impl App {
     pub fn page_down(&mut self, page_size: usize) {
         match self.mode {
             Mode::Profiles => {
-                if !self.available_profiles.is_empty() {
-                    self.profiles_selected =
-                        (self.profiles_selected + page_size).min(self.available_profiles.len() - 1);
+                let len = self.profiles_visible().len();
+                if len > 0 {
+                    self.profiles_selected = (self.profiles_selected + page_size).min(len - 1);
                 }
             }
             Mode::Regions => {
@@ -1538,10 +1749,20 @@ impl App {
         self.mode = Mode::Describe;
         self.describe_scroll = 0;
         self.describe_data = None;
+        self.describe_cursor = 0;
+        self.drill_data = None;
+        self.drill_scroll = 0;
 
         // Get the selected item's ID
         if let Some(item) = self.selected_item().cloned() {
             if let Some(resource_def) = self.current_resource() {
+                // A describe_from_row resource ships its full record in the list
+                // fetch (Route53 has no GetResourceRecordSet), so describe is the
+                // row itself, not a redundant re-fetch.
+                if resource_def.describe_from_row {
+                    self.describe_data = Some(item);
+                    return;
+                }
                 // Check if this resource has a detail_sdk_method defined
                 if let Some(ref detail_method) = resource_def.detail_sdk_method {
                     // Build params from item data based on detail_sdk_method_params
@@ -1687,9 +1908,35 @@ impl App {
         })
     }
 
+    /// Profiles shown in the picker, narrowed by the profile filter. A filter
+    /// that matches nothing yields an empty list so the cursor lands on "-":
+    /// a stale selection must never silently pick an invisible profile.
+    pub fn profiles_visible(&self) -> Vec<String> {
+        if self.profiles_filter_text.is_empty() {
+            return self.available_profiles.clone();
+        }
+        let needle = self.profiles_filter_text.to_lowercase();
+        self.available_profiles
+            .iter()
+            .filter(|p| p.to_lowercase().contains(&needle))
+            .cloned()
+            .collect()
+    }
+
+    /// Reclamp the cursor after the filtered list shrank. The current profile
+    /// staying in view matters: the user filtered to *find* it.
+    pub fn apply_profiles_filter(&mut self) {
+        let visible = self.profiles_visible();
+        if self.profiles_selected >= visible.len() {
+            self.profiles_selected = visible.len().saturating_sub(1);
+        }
+    }
+
     pub fn enter_profiles_mode(&mut self) {
+        self.profiles_filter_text.clear();
+        self.profiles_filter_active = false;
         self.profiles_selected = self
-            .available_profiles
+            .profiles_visible()
             .iter()
             .position(|p| p == &self.profile)
             .unwrap_or(0);
@@ -1709,6 +1956,9 @@ impl App {
         self.mode = Mode::Normal;
         self.pending_action = None;
         self.describe_data = None; // Clear describe data when exiting
+        self.drill_data = None;
+        self.drill_scroll = 0;
+        self.describe_cursor = 0;
         self.last_action_display_name = None;
     }
 
@@ -2045,8 +2295,8 @@ impl App {
 
     /// Select profile - returns true if login (SSO or Console) is required
     pub async fn select_profile(&mut self) -> Result<bool> {
-        if let Some(profile) = self.available_profiles.get(self.profiles_selected) {
-            let profile = profile.clone();
+        let visible = self.profiles_visible();
+        if let Some(profile) = visible.get(self.profiles_selected).cloned() {
             match self.switch_profile_with_sso_check(&profile).await? {
                 ProfileSwitchResult::Success => {
                     self.refresh_current().await?;
@@ -2133,6 +2383,13 @@ impl App {
                 self.refresh_current().await?;
             }
             _ => {
+                // Dashboards first: a dashboard key never collides with a
+                // resource key in practice, and `:billing` should win over a
+                // resource lookup.
+                if get_dashboard(cmd).is_some() {
+                    self.open_dashboard(cmd).await?;
+                    return Ok(false);
+                }
                 // Check if it's a known resource
                 if let Some(target_resource) = get_resource(cmd) {
                     // Check if the target resource requires a parent
@@ -2181,6 +2438,320 @@ impl App {
     // =========================================================================
     // Log Tail Mode
     // =========================================================================
+
+    /// Open a dashboard page and fetch its panels. Like describe, the fetch is
+    /// awaited inline: the loop cannot repaint while awaiting, so the user sees
+    /// the previous frame until the panels arrive. User-defined panels from
+    /// the config are appended; panels hidden via the picker are dropped.
+    pub async fn open_dashboard(&mut self, key: &str) -> Result<()> {
+        let Some(def) = crate::resource::get_dashboard(key) else {
+            self.error_message = Some(format!("Unknown dashboard: {}", key));
+            return Ok(());
+        };
+        let user_config = self.config.dashboards.get(key).cloned();
+        let (mut panels, errors) = self.resolve_dashboard_panels(key, def.panels.clone());
+        if !errors.is_empty() {
+            self.error_message = Some(errors.join("; "));
+        }
+        if let Some(ucfg) = &user_config {
+            panels.retain(|p| ucfg.is_visible(&p.title, p.default_hidden));
+        }
+        let def = crate::resource::DashboardDef {
+            display_name: def.display_name.clone(),
+            panels,
+        };
+
+        let panel_data = crate::resource::fetch_dashboard(&def, &self.clients).await;
+        self.dashboard_state = Some(DashboardState {
+            key: key.to_string(),
+            def,
+            panels: panel_data,
+            focused: 0,
+        });
+        self.mode = Mode::Dashboard;
+        Ok(())
+    }
+
+    /// Full panel resolution for a dashboard: JSON defaults, then user custom
+    /// panels (title-replace), then the customize popup's per-pane report
+    /// assignments. Returns the effective definitions plus aggregated errors.
+    fn resolve_dashboard_panels(
+        &self,
+        key: &str,
+        base: Vec<crate::resource::DashboardPanel>,
+    ) -> (Vec<crate::resource::DashboardPanel>, Vec<String>) {
+        // Built-in cost_table presets count as named reports so the customize
+        // popup can assign them without the user defining anything.
+        let builtin = crate::resource::builtin_reports(&crate::resource::DashboardDef {
+            display_name: String::new(),
+            panels: base.clone(),
+        });
+        let Some(ucfg) = self.config.dashboards.get(key) else {
+            return (base, Vec::new());
+        };
+        let mut all_reports = builtin;
+        all_reports.extend(ucfg.reports.iter().cloned());
+        let (merged, mut errors) = crate::resource::dashboard::merge_panels(base, &ucfg.panels);
+        let (resolved, assign_errors) =
+            crate::resource::dashboard::apply_assignments(merged, &all_reports, &ucfg.assignments);
+        errors.extend(assign_errors);
+        (resolved, errors)
+    }
+
+    /// Move the pane highlight. The grid is two columns wide, so vertical
+    /// moves step by two; horizontal by one. Clamped at the edges.
+    pub fn move_dashboard_focus(&mut self, col: isize, row: isize) {
+        let Some(state) = self.dashboard_state.as_mut() else {
+            return;
+        };
+        let len = state.def.panels.len() as isize;
+        if len == 0 {
+            return;
+        }
+        let delta = col + row * 2;
+        let next = (state.focused as isize + delta).clamp(0, len - 1);
+        state.focused = next as usize;
+    }
+
+    /// Open the customize popup for the focused pane: choose between its
+    /// JSON default and every named report.
+    pub fn open_panel_customize(&mut self) {
+        let Some(state) = &self.dashboard_state else {
+            return;
+        };
+        let Some(panel) = state.def.panels.get(state.focused) else {
+            return;
+        };
+        let title = panel.title.clone();
+        let key = state.key.clone();
+        let ucfg = self.config.dashboards.get(&key);
+
+        let mut options = vec![CustomizeOption {
+            label: "(dashboard default)".to_string(),
+            report: None,
+        }];
+        // Built-in cost_table presets are offered alongside the user's own
+        // named reports; a pane never offers itself.
+        let base = crate::resource::get_dashboard(&key)
+            .cloned()
+            .unwrap_or_default();
+        for report in crate::resource::builtin_reports(&base) {
+            if report.title != title {
+                options.push(CustomizeOption {
+                    label: report.title.clone(),
+                    report: Some(report.title.clone()),
+                });
+            }
+        }
+        if let Some(ucfg) = ucfg {
+            for report in &ucfg.reports {
+                if report.title != title {
+                    options.push(CustomizeOption {
+                        label: report.title.clone(),
+                        report: Some(report.title.clone()),
+                    });
+                }
+            }
+        }
+        let current = ucfg.and_then(|u| u.assignments.get(&title).cloned());
+        let selected = current
+            .as_ref()
+            .and_then(|cur| {
+                options
+                    .iter()
+                    .position(|o| o.report.as_deref() == Some(cur))
+            })
+            .unwrap_or(0);
+
+        self.dashboard_panel_customize = Some(PanelCustomize {
+            panel_title: title,
+            options,
+            selected,
+            current,
+        });
+        self.mode = Mode::PanelCustomize;
+    }
+
+    /// Close the customize popup, back to the dashboard.
+    pub fn close_panel_customize(&mut self) {
+        self.dashboard_panel_customize = None;
+        self.mode = Mode::Dashboard;
+    }
+
+    /// Apply the customize popup choice: persist the assignment (or reset),
+    /// refetch just that pane, and close the popup.
+    pub async fn apply_panel_customize(&mut self) -> Result<()> {
+        let Some(popup) = &self.dashboard_panel_customize else {
+            return Ok(());
+        };
+        let Some(option) = popup.options.get(popup.selected) else {
+            return Ok(());
+        };
+        let title = popup.panel_title.clone();
+        let choice = option.report.clone();
+        let key = self
+            .dashboard_state
+            .as_ref()
+            .map(|s| s.key.clone())
+            .unwrap_or_default();
+
+        {
+            let ucfg = self.config.dashboards.entry(key.clone()).or_default();
+            match &choice {
+                Some(report) => {
+                    ucfg.assignments.insert(title.clone(), report.clone());
+                }
+                None => {
+                    ucfg.assignments.remove(&title);
+                }
+            }
+        }
+        self.config.save()?;
+
+        // Resolve the pane's new effective definition and refetch only it.
+        // The page's visibility set must not change, only this pane's spec.
+        // Taken out of self so the resolver (which reads self.config) can run.
+        let Some(mut state) = self.dashboard_state.take() else {
+            self.close_panel_customize();
+            return Ok(());
+        };
+        let visible_titles: Vec<String> =
+            state.def.panels.iter().map(|p| p.title.clone()).collect();
+        let base = crate::resource::get_dashboard(&state.key)
+            .cloned()
+            .unwrap_or_default();
+        let (mut resolved, _) = self.resolve_dashboard_panels(&state.key, base.panels);
+        resolved.retain(|p| visible_titles.contains(&p.title));
+        let Some(panel) = resolved.iter().find(|p| p.title == title).cloned() else {
+            self.dashboard_state = Some(state);
+            self.close_panel_customize();
+            return Ok(());
+        };
+        let data = crate::resource::fetch_panel(&panel, &self.clients).await;
+        let idx = resolved.iter().position(|p| p.title == title).unwrap_or(0);
+        state.def = crate::resource::DashboardDef {
+            display_name: state.def.display_name.clone(),
+            panels: resolved,
+        };
+        // def.panels and state.panels stay aligned by index.
+        if let Some(slot) = state.panels.get_mut(idx) {
+            *slot = data;
+        } else {
+            state.panels.push(data);
+        }
+        state.focused = idx;
+        self.dashboard_state = Some(state);
+
+        self.close_panel_customize();
+        Ok(())
+    }
+
+    /// Leave the dashboard back to the resource list.
+    pub fn close_dashboard(&mut self) {
+        self.dashboard_state = None;
+        self.dashboard_panel_picker = None;
+        self.dashboard_panel_customize = None;
+        self.mode = Mode::Normal;
+    }
+
+    /// Open the panel picker: every panel the dashboard could show, with its
+    /// current visibility from the config.
+    pub fn open_dashboard_panel_picker(&mut self) {
+        let Some(state) = &self.dashboard_state else {
+            return;
+        };
+        let key = state.key.clone();
+
+        let base = crate::resource::get_dashboard(&key)
+            .cloned()
+            .unwrap_or_default();
+        let user_config = self.config.dashboards.get(&key).cloned();
+        let ucfg = user_config.as_ref();
+        let (merged, _) = crate::resource::dashboard::merge_panels(
+            base.panels,
+            ucfg.map(|u| u.panels.as_slice()).unwrap_or(&[]),
+        );
+
+        let entries: Vec<PanelPickerEntry> = merged
+            .iter()
+            .map(|panel| {
+                let custom = ucfg
+                    .map(|u| u.panels.iter().any(|c| c.title == panel.title))
+                    .unwrap_or(false);
+                PanelPickerEntry {
+                    visible: ucfg
+                        .map(|u| u.is_visible(&panel.title, panel.default_hidden))
+                        .unwrap_or(!panel.default_hidden),
+                    custom,
+                    title: panel.title.clone(),
+                    panel: panel.clone(),
+                }
+            })
+            .collect();
+
+        self.dashboard_panel_picker = Some(DashboardPanelPicker {
+            entries,
+            selected: 0,
+        });
+        self.mode = Mode::DashboardPanels;
+    }
+
+    /// Close the panel picker, back to the dashboard page.
+    pub fn close_dashboard_panel_picker(&mut self) {
+        self.dashboard_panel_picker = None;
+        self.mode = Mode::Dashboard;
+    }
+
+    /// Toggle the selected panel's visibility: persists the choice, updates
+    /// the live page (fetching just the newly-shown panel), and refreshes the
+    /// picker in place.
+    pub async fn toggle_dashboard_panel(&mut self) -> Result<()> {
+        let Some(picker) = &self.dashboard_panel_picker else {
+            return Ok(());
+        };
+        let Some(entry) = picker.entries.get(picker.selected) else {
+            return Ok(());
+        };
+        let title = entry.title.clone();
+        let panel = entry.panel.clone();
+        let new_visible = !entry.visible;
+        let key = self
+            .dashboard_state
+            .as_ref()
+            .map(|s| s.key.clone())
+            .unwrap_or_default();
+
+        self.config
+            .dashboards
+            .entry(key.clone())
+            .or_default()
+            .set_visible(&title, new_visible);
+        self.config.save()?;
+
+        if let Some(state) = self.dashboard_state.as_mut() {
+            if new_visible {
+                state.def.panels.push(panel.clone());
+                let data = crate::resource::fetch_panel(&panel, &self.clients).await;
+                state.panels.push(data);
+            } else if let Some(idx) = state.def.panels.iter().position(|p| p.title == title) {
+                state.def.panels.remove(idx);
+                state.panels.remove(idx);
+            }
+            // The grid loses panes when panels disappear; keep focus sane.
+            if !state.def.panels.is_empty() {
+                state.focused = state.focused.min(state.def.panels.len() - 1);
+            }
+        }
+
+        let anchor = title;
+        self.open_dashboard_panel_picker();
+        if let Some(picker) = &mut self.dashboard_panel_picker {
+            if let Some(idx) = picker.entries.iter().position(|e| e.title == anchor) {
+                picker.selected = idx;
+            }
+        }
+        Ok(())
+    }
 
     /// Enter log tail mode for the selected log stream
     pub async fn enter_log_tail_mode(&mut self) -> Result<()> {

@@ -1,0 +1,36 @@
+version: 2.1
+
+jobs:
+  build:
+    # rust-version in Cargo.toml is the real floor (1.94.1, set by the aws-* crates)
+    docker:
+      - image: cimg/rust:1.94
+    steps:
+      - checkout
+
+      # Cache cargo registry + target dir, keyed on Cargo.lock so dependency
+      # changes bust the cache
+      - restore_cache:
+          keys:
+            - cargo-v1-{{ checksum "Cargo.lock" }}
+            - cargo-v1-
+
+      - run:
+          name: Build
+          command: cargo build --locked --all-targets
+
+      - run:
+          name: Test
+          command: cargo test --locked --quiet
+
+      - save_cache:
+          key: cargo-v1-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+            - target
+
+workflows:
+  build-and-test:
+    jobs:
+      - build

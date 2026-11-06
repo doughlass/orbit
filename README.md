@@ -5,7 +5,11 @@
 
 # orbit — Terminal UI for AWS
 
-Browse, observe and manage your AWS resources from the terminal. Keyboard-driven, vim-style navigation. Built for operators who live in the shell.
+**[Website](https://orbit-tui.dev)** · [Install](#install) · [Features](#features) · [Key bindings](#key-bindings) · [Supported services](#supported-services)
+
+Browse, observe and manage your AWS resources from the terminal. Orbit is a terminal UI for AWS with keyboard-driven, vim-style navigation through 160+ resource views across 60+ AWS services — EC2, S3, Lambda, ECS, EKS, IAM, VPC, CloudWatch and more. Built for operators who live in the shell.
+
+Learn more and see it in action at **[orbit-tui.dev](https://orbit-tui.dev)**.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.94%2B-orange.svg)](https://www.rust-lang.org/)
@@ -194,6 +198,13 @@ Logs: `~/Library/Application Support/orbit/orbit.log` (macOS), `~/.config/orbit/
 ## Acknowledgments
 
 Originally forked from [taws](https://github.com/huseyinbabal/taws) by Hüseyin Babal. Built with [Ratatui](https://github.com/ratatui-org/ratatui). Inspired by [k9s](https://github.com/derailed/k9s).
+
+## Links
+
+- Website: <https://orbit-tui.dev>
+- Crates.io: <https://crates.io/crates/orbit-tui>
+- Homebrew tap: <https://github.com/doughlass/homebrew-tap>
+- Docker: `ghcr.io/doughlass/orbit`
 
 ## License
 

@@ -1230,6 +1230,125 @@ pub async fn describe_resource(
     invoke_describe(resource_key, clients, resource_id, parent_params).await
 }
 
+/// Fetch the document behind a drillable describe list item (a policy), the
+/// way `d` on the role fetches the role. `config` says which wire to run and
+/// which field of `item` names the policy; `resource_id` is the row's id
+/// (for IAM roles that is the RoleName, which inline policies key on).
+///
+/// Both drills decode the document, because IAM percent-encodes every policy
+/// body on the wire (`%7B%22Version%22...`). Callers get back the decoded JSON
+/// text, ready to render.
+pub async fn drill_policy_document(
+    clients: &AwsClients,
+    config: &super::protocol::DrillConfig,
+    resource_id: &str,
+    item: &Value,
+) -> Result<String> {
+    let name = resolve_drill_item_value(config, item);
+    if name.is_empty() {
+        anyhow::bail!(
+            "drill item for {:?} carries no {} to fetch",
+            config.kind,
+            config.item_field
+        );
+    }
+
+    let decode_doc = |json: &Value, path: &str| -> Result<String> {
+        let raw = super::path_extractor::extract_by_path(json, path);
+        let doc = super::field_mapper::apply_transform(&raw, "url_decode");
+        match doc.as_str() {
+            Some(s) if !s.is_empty() => Ok(s.to_string()),
+            _ => anyhow::bail!("no policy document at {path}"),
+        }
+    };
+
+    // Both kinds are IAM query-protocol calls answering in XML. The params are
+    // owned so the Vec of refs is trivially constructed inside the helper.
+    match config.kind {
+        super::protocol::DrillKind::InlinePolicyDocument => {
+            let json = drill_query_request(
+                clients,
+                "GetRolePolicy",
+                vec![
+                    ("RoleName".to_string(), resource_id.to_string()),
+                    ("PolicyName".to_string(), name.clone()),
+                ],
+            )
+            .await?;
+            decode_doc(
+                &json,
+                "/GetRolePolicyResponse/GetRolePolicyResult/PolicyDocument",
+            )
+        }
+
+        super::protocol::DrillKind::ManagedPolicyDocument => {
+            let policy = drill_query_request(
+                clients,
+                "GetPolicy",
+                vec![("PolicyArn".to_string(), name.clone())],
+            )
+            .await?;
+            let version = super::path_extractor::extract_by_path(
+                &policy,
+                "/GetPolicyResponse/GetPolicyResult/Policy/DefaultVersionId",
+            )
+            .as_str()
+            .ok_or_else(|| anyhow!("GetPolicy for {name} carried no DefaultVersionId"))?
+            .to_string();
+
+            let version_body = drill_query_request(
+                clients,
+                "GetPolicyVersion",
+                vec![
+                    ("PolicyArn".to_string(), name.clone()),
+                    ("VersionId".to_string(), version),
+                ],
+            )
+            .await?;
+            decode_doc(
+                &version_body,
+                "/GetPolicyVersionResponse/GetPolicyVersionResult/PolicyVersion/Document",
+            )
+        }
+    }
+}
+
+/// One step of a policy-document drill: sign a query-protocol call against the
+/// IAM service and convert its XML reply to JSON.
+async fn drill_query_request(
+    clients: &AwsClients,
+    action: &str,
+    params: Vec<(String, String)>,
+) -> Result<Value> {
+    let param_refs: Vec<(&str, &str)> = params
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let xml = clients
+        .http
+        .query_request("iam", action, &param_refs)
+        .await?;
+    xml_to_json(&xml)
+}
+
+/// Turn a drillable list item into the string that names the policy. An empty
+/// `item_field` means the item is a bare string (ListRolePolicies' `<member>`
+/// list is plain names); otherwise it walks a dotted path into an object item
+/// (ListAttachedRolePolicies' members carry PolicyArn).
+fn resolve_drill_item_value(config: &super::protocol::DrillConfig, item: &Value) -> String {
+    if config.item_field.is_empty() {
+        return item.as_str().unwrap_or("").to_string();
+    }
+    let mut current = item;
+    for segment in config.item_field.split('.') {
+        current = match current.get(segment) {
+            Some(v) => v,
+            None => return String::new(),
+        };
+    }
+    current.as_str().unwrap_or("").to_string()
+}
+
 /// Special handler for S3 bucket describe (needs region resolution)
 async fn describe_s3_bucket(clients: &AwsClients, bucket_name: &str) -> Result<Value> {
     let mut result = json!({
@@ -1693,5 +1812,50 @@ mod tests {
 
         // Test missing key
         assert_eq!(extract_param(&params_str, "nonexistent"), "");
+    }
+
+    /// An inline policy's list item is a bare string (ListRolePolicies returns
+    /// plain `<member>` names), so an empty `item_field` must hand the whole
+    /// item to GetRolePolicy.
+    #[test]
+    fn drill_inline_item_is_the_bare_policy_name() {
+        use super::super::protocol::{DrillConfig, DrillKind};
+        let cfg = DrillConfig {
+            kind: DrillKind::InlinePolicyDocument,
+            item_field: String::new(),
+        };
+        assert_eq!(
+            resolve_drill_item_value(&cfg, &json!("assume-role")),
+            "assume-role"
+        );
+    }
+
+    /// A managed policy's list item is `{PolicyName, PolicyArn}`; the drill
+    /// keys on the ARN, so a dotted item_field must reach into the object.
+    #[test]
+    fn drill_managed_item_reads_the_policy_arn_field() {
+        use super::super::protocol::{DrillConfig, DrillKind};
+        let cfg = DrillConfig {
+            kind: DrillKind::ManagedPolicyDocument,
+            item_field: "PolicyArn".to_string(),
+        };
+        let item = json!({
+            "PolicyName": "read-only",
+            "PolicyArn": "arn:aws:iam::123:policy/read-only",
+        });
+        assert_eq!(
+            resolve_drill_item_value(&cfg, &item),
+            "arn:aws:iam::123:policy/read-only"
+        );
+        // A missing field resolves to empty so the caller fails loudly rather
+        // than sending a literal name.
+        let cfg2 = DrillConfig {
+            kind: DrillKind::ManagedPolicyDocument,
+            item_field: "PolicyArn".to_string(),
+        };
+        assert_eq!(
+            resolve_drill_item_value(&cfg2, &json!({"PolicyName": "x"})),
+            ""
+        );
     }
 }

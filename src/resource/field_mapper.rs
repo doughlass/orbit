@@ -65,18 +65,43 @@ pub fn apply_transform(value: &Value, transform: &str) -> Value {
         "format_bytes" => transform_format_bytes(value),
         "format_epoch_millis" => transform_format_epoch_millis(value),
         "format_epoch_seconds" => transform_format_epoch_seconds(value),
+        "format_date_only" => transform_format_date_only(value),
+        "format_money" => transform_format_money(value),
+        "format_percent" => transform_format_percent(value),
+        "arn_tail" => transform_arn_tail(value),
+        "anomaly_scope" => transform_anomaly_scope(value),
+        "category_status" => transform_category_status(value),
+        "cc_rules_to_lines" => transform_cc_rules_to_lines(value),
         "bool_to_yes_no" => transform_bool_to_yes_no(value),
         "array_to_csv" => transform_array_to_csv(value),
         "first_item" => transform_first_item(value),
         "private_zone_to_type" => transform_private_zone_to_type(value),
         "route53_record_value" => transform_route53_record_value(value),
         "route53_record_id" => transform_route53_record_id(value),
+        "route53_is_alias" => transform_route53_is_alias(value),
+        "route53_routing_policy" => transform_route53_routing_policy(value),
         "ecr_visibility" => transform_ecr_visibility(value),
         "taskdef_arn_name" => transform_taskdef_arn_name(value),
         "taskdef_arn_family" => transform_taskdef_arn_family(value),
         "taskdef_arn_revision" => transform_taskdef_arn_revision(value),
         "cloudwatch_latest" => transform_cloudwatch_latest(value),
+        "url_decode" => transform_url_decode(value),
         _ => value.clone(),
+    }
+}
+
+/// URL-decode a percent-encoded string. IAM wires policy documents
+/// (AssumeRolePolicyDocument, GetRolePolicy.PolicyDocument,
+/// GetPolicyVersion.Document) as RFC 3986 percent-encoded JSON, so a policy
+/// shown raw is a wall of %7B/%22. Decode before display; a value that is not
+/// valid UTF-8 after decoding passes through unchanged rather than erroring.
+fn transform_url_decode(value: &Value) -> Value {
+    match value {
+        Value::String(s) => match urlencoding::decode(s) {
+            Ok(decoded) => Value::String(decoded.into_owned()),
+            Err(_) => value.clone(),
+        },
+        other => other.clone(),
     }
 }
 
@@ -150,6 +175,41 @@ fn transform_route53_record_id(value: &Value) -> Value {
     let record_type = value.get("Type").and_then(|v| v.as_str()).unwrap_or("-");
 
     Value::String(format!("{}#{}", name, record_type))
+}
+
+/// Transform Route53 record to "Yes"/"No": is this an alias target. The API has
+/// no Alias flag; the presence of an AliasTarget element is the discriminator.
+fn transform_route53_is_alias(value: &Value) -> Value {
+    Value::String(
+        if value.get("AliasTarget").is_some() {
+            "Yes"
+        } else {
+            "No"
+        }
+        .to_string(),
+    )
+}
+
+/// Transform a Route53 record to its routing policy name. The API never returns
+/// a RoutingPolicy element — the console derives it from which routing field
+/// the record carries, and so does this. A record with none is Simple. AWS
+/// forbids mixing routing types, so the order only matters for malformed
+/// records; TrafficPolicyInstanceId wins because it is the rarest.
+fn transform_route53_routing_policy(value: &Value) -> Value {
+    let policy = [
+        ("TrafficPolicyInstanceId", "Traffic policy"),
+        ("CidrRoutingConfig", "IP-based"),
+        ("Region", "Latency"),
+        ("Failover", "Failover"),
+        ("MultiValueAnswer", "Multivalue answer"),
+        ("GeoLocation", "Geolocation"),
+        ("Weight", "Weighted"),
+    ]
+    .iter()
+    .find(|(key, _)| value.get(*key).is_some())
+    .map(|(_, name)| *name)
+    .unwrap_or("Simple");
+    Value::String(policy.to_string())
 }
 
 /// Transform Route53 PrivateZone boolean to "Public"/"Private"
@@ -330,6 +390,256 @@ pub fn transform_format_epoch_seconds(value: &Value) -> Value {
         .unwrap_or_else(|| "-".to_string());
 
     Value::String(formatted)
+}
+
+/// The billing APIs (Cost Explorer GetAnomalies, Budgets) hand dates back as
+/// ISO-8601 date-time strings and epoch values. Full-timestamp formatting is
+/// far too wide for a table cell, so reduce to "YYYY-MM-DD" — anomalies span
+/// whole calendar days rather than instants.
+pub fn transform_format_date_only(value: &Value) -> Value {
+    use chrono::TimeZone;
+
+    let dt = match value {
+        Value::String(s) => match chrono::DateTime::parse_from_rfc3339(s) {
+            Ok(dt) => dt.with_timezone(&chrono::Utc),
+            Err(_) => {
+                if let Ok(secs) = s.parse::<i64>() {
+                    if secs <= 0 {
+                        return Value::String("-".to_string());
+                    }
+                    let Some(dt) = chrono::Utc.timestamp_opt(secs, 0).single() else {
+                        return Value::String("-".to_string());
+                    };
+                    dt
+                } else {
+                    return Value::String("-".to_string());
+                }
+            }
+        },
+        Value::Number(n) => {
+            let secs = (n.as_f64().unwrap_or(0.0) as i64) / 1000;
+            if secs <= 0 {
+                return Value::String("-".to_string());
+            }
+            let Some(dt) = chrono::Utc.timestamp_opt(secs, 0).single() else {
+                return Value::String("-".to_string());
+            };
+            dt
+        }
+        _ => return Value::String("-".to_string()),
+    };
+
+    Value::String(dt.format("%Y-%m-%d").to_string())
+}
+
+/// Format a numeric spend amount, stripping noise. The budgets/CE APIs carry
+/// amounts as strings and doubles with floating-point residue
+/// ("3.0700000000000003", 1.0000000000000004e-2). A monetary column should
+/// read "$3.07", not the raw residue.
+pub fn transform_format_money(value: &Value) -> Value {
+    let amount: f64 = match value {
+        Value::Number(n) => n.as_f64().unwrap_or(0.0),
+        Value::String(s) => match s.parse::<f64>() {
+            Ok(v) => v,
+            Err(_) => return Value::String(s.clone()),
+        },
+        _ => return Value::String("-".to_string()),
+    };
+
+    let cents = (amount * 100.0).round() as i64;
+    if cents == 0 {
+        return Value::String("$0.00".to_string());
+    }
+    let sign = if cents < 0 { "-" } else { "" };
+    let whole = (cents.abs() / 100).to_string();
+    // Thousands separators: Cost Explorer totals run six or seven digits and a
+    // bare "354237.04" is unreadable at a glance.
+    let whole = thousands(&whole);
+    // Drop redundant cents for whole-dollar figures ("$12" not "$12.00").
+    if cents.abs() % 100 == 0 {
+        Value::String(format!("${sign}{whole}"))
+    } else {
+        Value::String(format!("${sign}{whole}.{:02}", cents.abs() % 100))
+    }
+}
+
+/// Insert commas every three digits of an integer string ("354237" ->
+/// "354,237").
+fn thousands(digits: &str) -> String {
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// An anomaly score is a double on a 0-100 scale. Round to whole and keep the
+/// trailing "%" so the SCORE column reads "63%" rather than "63.294812...".
+pub fn transform_format_percent(value: &Value) -> Value {
+    let raw: f64 = match value {
+        Value::Number(n) => n.as_f64().unwrap_or(0.0),
+        Value::String(s) => match s.parse::<f64>() {
+            Ok(v) => v,
+            Err(_) => return Value::String("-".to_string()),
+        },
+        _ => return Value::String("-".to_string()),
+    };
+
+    let rounded = raw.round();
+    if rounded <= 0.0 {
+        Value::String("-".to_string())
+    } else {
+        Value::String(format!("{:.0}%", rounded))
+    }
+}
+
+/// The final segment of an ARN, for columns that would otherwise overflow with
+/// the full "arn:aws:ce:us-east-1:123456789012:anomalymonitor/uuid" path. An
+/// ARN's tail is unique inside an account (both IDs and monitor names are the
+/// last path segment), so it is safe to display alone.
+pub fn transform_arn_tail(value: &Value) -> Value {
+    match value {
+        Value::String(s) => {
+            let tail = s.rsplit('/').next().unwrap_or(s);
+            Value::String(tail.to_string())
+        }
+        other => other.clone(),
+    }
+}
+
+/// Compact the CE anomaly "affected" description. The DimensionValue alone
+/// only names the dimension, not what was affected; the RootCauses carry
+/// Service/Region/LinkedAccount per outcome. Render the most specific useful
+/// summary: linked-account name if present, else service names.
+pub fn transform_anomaly_scope(value: &Value) -> Value {
+    let causes = match value {
+        Value::Array(arr) => arr.clone(),
+        Value::Object(_) => vec![value.clone()],
+        _ => return Value::String("-".to_string()),
+    };
+
+    let mut services: Vec<String> = vec![];
+    let mut accounts: Vec<String> = vec![];
+
+    for cause in causes {
+        if let Some(service) = cause.get("Service").and_then(|v| v.as_str()) {
+            if !service.is_empty() && !services.contains(&service.to_string()) {
+                services.push(service.to_string());
+            }
+        }
+        if let Some(name) = cause.get("LinkedAccountName").and_then(|v| v.as_str()) {
+            if !name.is_empty() && !accounts.contains(&name.to_string()) {
+                accounts.push(name.to_string());
+            }
+        }
+    }
+
+    if !accounts.is_empty() {
+        Value::String(accounts.join(", "))
+    } else if !services.is_empty() {
+        Value::String(services.join(", "))
+    } else {
+        Value::String("-".to_string())
+    }
+}
+
+/// Reduce a CostCategoryReference ProcessingStatus to its strongest state
+/// (APPLIED beats PROCESSING — a partially applied category still lists as
+/// PROCESSING until everything settles), so the STATUS column has one value
+/// the color map can match instead of a comma-joined mess.
+pub fn transform_category_status(value: &Value) -> Value {
+    let statuses = match value {
+        Value::Array(arr) => arr.clone(),
+        Value::Object(_) => vec![value.clone()],
+        _ => return Value::String("-".to_string()),
+    };
+
+    let has_processing = statuses
+        .iter()
+        .any(|s| s.get("Status").and_then(|v| v.as_str()) == Some("PROCESSING"));
+    Value::String(if has_processing {
+        "PROCESSING".to_string()
+    } else {
+        "APPLIED".to_string()
+    })
+}
+
+/// One readable line per cost-category rule. Rules carry either a nested
+/// Or/And/Not expression (a flat item_template cannot render a tree) or an
+/// InheritedValue dimension, so each is rendered as
+/// `<Value> <- <expression>` / `<Value> <- inherits <dim>/<key>`.
+/// A rule that carries neither passes through as its value alone.
+fn transform_cc_rules_to_lines(value: &Value) -> Value {
+    let rules = match value {
+        Value::Array(arr) => arr,
+        Value::Object(_) => {
+            return Value::Array(vec![cc_rule_to_line(value)]);
+        }
+        _ => return value.clone(),
+    };
+    Value::Array(rules.iter().map(cc_rule_to_line).collect())
+}
+
+fn cc_rule_to_line(rule: &Value) -> Value {
+    let assigned = rule.get("Value").and_then(|v| v.as_str()).unwrap_or("-");
+
+    let rendered = if let Some(inherited) = rule.get("InheritedValue") {
+        let dim = inherited
+            .get("DimensionName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let key = inherited
+            .get("DimensionKey")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        format!("{assigned} <- inherits {dim}/{key}")
+    } else if let Some(expr) = rule.get("Rule") {
+        format!("{assigned} <- {}", cc_expression_to_text(expr))
+    } else {
+        assigned.to_string()
+    };
+    Value::String(rendered)
+}
+
+/// Render a cost-category Expression into console-like text: nested Or/And/Not
+/// become joined groups, a Dimensions/Tags/CostCategories leaf becomes
+/// `<prefix> <key> = <values>`. A shape that carries none of these renders as
+/// its raw JSON-derived string rather than silently vanishing.
+fn cc_expression_to_text(expr: &Value) -> String {
+    if let Some(items) = expr.get("Or").and_then(|v| v.as_array()) {
+        let parts: Vec<String> = items.iter().map(cc_expression_to_text).collect();
+        return format!("({})", parts.join(" OR "));
+    }
+    if let Some(items) = expr.get("And").and_then(|v| v.as_array()) {
+        let parts: Vec<String> = items.iter().map(cc_expression_to_text).collect();
+        return format!("({})", parts.join(" AND "));
+    }
+    if let Some(inner) = expr.get("Not") {
+        return format!("NOT {}", cc_expression_to_text(inner));
+    }
+    for (field, prefix) in [
+        ("Dimensions", ""),
+        ("Tags", "Tag "),
+        ("CostCategories", "CostCategory "),
+    ] {
+        if let Some(leaf) = expr.get(field) {
+            let key = leaf.get("Key").and_then(|v| v.as_str()).unwrap_or("");
+            let values = leaf.get("Values").and_then(|v| v.as_array());
+            let joined = values
+                .map(|vs| {
+                    vs.iter()
+                        .map(|v| v.as_str().unwrap_or("").to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+            return format!("{prefix}{key} = {joined}");
+        }
+    }
+    expr.to_string()
 }
 
 /// Transform boolean to Yes/No string
@@ -518,6 +828,39 @@ mod tests {
         let result = apply_field_mappings(&item, &mappings);
         assert_eq!(result["InstanceId"], "i-123");
         assert_eq!(result["State"], "running");
+    }
+
+    /// Route53 records describe from the row orbit already fetched, but the row
+    /// is the *mapped* item and mapping discards everything not in field_mappings.
+    /// apply_field_mappings must keep the raw record under the `Raw` key or the
+    /// describe panel loses the values/alias/routing detail below Name/Type/TTL.
+    #[test]
+    fn route53_records_keep_the_raw_record_under_the_raw_key() {
+        let r = crate::resource::get_resource("route53-records").expect("route53-records");
+        let raw_record = json!({
+            "Name": "www.example.com.",
+            "Type": "A",
+            "TTL": "300",
+            "ResourceRecords": {
+                "ResourceRecord": [
+                    { "Value": "203.0.113.10" },
+                    { "Value": "203.0.113.11" }
+                ]
+            },
+            "AliasTarget": {
+                "DNSName": "dualstack.app.example.com.",
+                "HostedZoneId": "Z2ABCDEF123456"
+            }
+        });
+
+        let row = apply_field_mappings(&raw_record, &r.field_mappings);
+        assert_eq!(
+            row["Raw"], raw_record,
+            "the full raw record must survive mapping for the describe panel"
+        );
+        assert_eq!(row["Name"], "www.example.com.");
+        assert_eq!(row["Type"], "A");
+        assert_eq!(row["Value"], "dualstack.app.example.com.");
     }
 
     #[test]
@@ -716,6 +1059,58 @@ mod tests {
     }
 
     #[test]
+    fn test_transform_route53_is_alias() {
+        assert_eq!(
+            transform_route53_is_alias(&json!({})),
+            json!("No"),
+            "a plain record is not an alias"
+        );
+        assert_eq!(
+            transform_route53_is_alias(&json!({
+                "AliasTarget": { "DNSName": "dualstack.app.example.com." }
+            })),
+            json!("Yes"),
+            "presence of AliasTarget is the discriminator"
+        );
+    }
+
+    /// Route53 never returns a RoutingPolicy element; the console derives it
+    /// from whichever routing field the record carries. A record with none is
+    /// Simple, and each routing field maps to its policy name.
+    #[test]
+    fn test_transform_route53_routing_policy_derives_from_the_routing_field() {
+        let simple = json!({ "Name": "example.com.", "Type": "A" });
+        assert_eq!(transform_route53_routing_policy(&simple), json!("Simple"));
+
+        assert_eq!(
+            transform_route53_routing_policy(&json!({ "Weight": "50" })),
+            json!("Weighted")
+        );
+        assert_eq!(
+            transform_route53_routing_policy(&json!({ "Region": "eu-west-1" })),
+            json!("Latency")
+        );
+        assert_eq!(
+            transform_route53_routing_policy(&json!({ "Failover": "PRIMARY" })),
+            json!("Failover")
+        );
+        assert_eq!(
+            transform_route53_routing_policy(&json!({ "MultiValueAnswer": "true" })),
+            json!("Multivalue answer")
+        );
+        assert_eq!(
+            transform_route53_routing_policy(&json!({ "GeoLocation": { "CountryCode": "US" } })),
+            json!("Geolocation")
+        );
+        assert_eq!(
+            transform_route53_routing_policy(&json!({
+                "CidrRoutingConfig": { "CollectionId": "08522efe-6b6a-4a7b-99a9-1fb91d4d8f99" }
+            })),
+            json!("IP-based")
+        );
+    }
+
+    #[test]
     fn test_transform_taskdef_arn_parts() {
         let arn = json!("arn:aws:ecs:eu-west-1:123456789012:task-definition/TPayments:3");
         assert_eq!(transform_taskdef_arn_name(&arn), json!("TPayments:3"));
@@ -735,5 +1130,130 @@ mod tests {
             json!("just-a-string")
         );
         assert_eq!(transform_taskdef_arn_revision(&not_an_arn), json!("-"));
+    }
+
+    #[test]
+    fn test_transform_url_decode_decodes_percent_encoded_policy() {
+        let encoded = json!(
+            "%7B%22Version%22%3A%222012-10-17%22%2C%22Statement%22%3A%5B%7B%22Effect%22%3A%22Allow%22%7D%5D%7D"
+        );
+        let decoded = apply_transform(&encoded, "url_decode");
+        assert_eq!(
+            decoded,
+            json!("{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\"}]}")
+        );
+    }
+
+    #[test]
+    fn test_transform_url_decode_non_string_passes_through() {
+        assert_eq!(
+            apply_transform(&json!({"a": 1}), "url_decode"),
+            json!({"a": 1})
+        );
+        assert_eq!(apply_transform(&json!(42), "url_decode"), json!(42));
+    }
+
+    /// Budgets/CE carry amounts as strings with floating-point residue
+    /// ("3.0700000000000003"); the money formatter must not show the residue.
+    #[test]
+    fn format_money_strips_floating_point_residue() {
+        assert_eq!(
+            transform_format_money(&json!("3.0700000000000003")),
+            json!("$3.07")
+        );
+        assert_eq!(transform_format_money(&json!(42.0)), json!("$42"));
+        assert_eq!(transform_format_money(&json!("0.0012345")), json!("$0.00"));
+        assert_eq!(transform_format_money(&json!("bogus")), json!("bogus"));
+    }
+
+    /// Dashboard totals run six or seven digits; the money formatter must
+    /// group them the way the console does ("$354,237.04", "$-1,234.50").
+    #[test]
+    fn format_money_groups_thousands() {
+        assert_eq!(
+            transform_format_money(&json!("354237.04")),
+            json!("$354,237.04")
+        );
+        assert_eq!(transform_format_money(&json!(-1234.5)), json!("$-1,234.50"));
+        assert_eq!(
+            transform_format_money(&json!(1234567.0)),
+            json!("$1,234,567")
+        );
+    }
+
+    /// Anomaly scores are doubles on a 0-100 scale; the SCORE column reads the
+    /// rounded whole plus a percent sign, not raw double residue.
+    #[test]
+    fn format_percent_rounds_anomaly_scores() {
+        assert_eq!(transform_format_percent(&json!(63.2)), json!("63%"));
+        assert_eq!(transform_format_percent(&json!(0.2)), json!("-"));
+        assert_eq!(transform_format_percent(&json!("nope")), json!("-"));
+    }
+
+    /// CE anomaly dates arrive as ISO-8601 date-times; the table shows the
+    /// calendar day, both so the width stays sane and because an anomaly is a
+    /// day-wide window, not an instant.
+    #[test]
+    fn format_date_only_reduces_iso_dates_to_calendar_days() {
+        assert_eq!(
+            transform_format_date_only(&json!("2026-08-02T00:00:00Z")),
+            json!("2026-08-02")
+        );
+        assert_eq!(
+            transform_format_date_only(&json!(1_785_628_800_000i64)),
+            json!("2026-08-02")
+        );
+        assert_eq!(transform_format_date_only(&json!("garbage")), json!("-"));
+    }
+
+    /// Monitor ARNs are unreasonably wide for a table; the last path segment
+    /// is unique within an account and is what the console shows.
+    #[test]
+    fn arn_tail_keeps_the_readable_part_of_an_arn() {
+        assert_eq!(
+            transform_arn_tail(&json!(
+                "arn:aws:ce:us-east-1:123456789012:anomalymonitor/9f9e8d8a-3f3e-4e4e-8e8e-1f1f1f1f1f1f"
+            )),
+            json!("9f9e8d8a-3f3e-4e4e-8e8e-1f1f1f1f1f1f")
+        );
+    }
+
+    /// RootCauses is a per-shape list; the AFFECTED column summarises it as
+    /// linked-account names when present, else the affected services.
+    #[test]
+    fn anomaly_scope_prefers_account_names_then_services() {
+        assert_eq!(
+            transform_anomaly_scope(&json!([
+                { "Service": "Amazon Elastic Compute Cloud - Compute", "LinkedAccountName": "prod" },
+                { "Service": "Amazon Simple Storage Service", "LinkedAccountName": "prod" }
+            ])),
+            json!("prod")
+        );
+        assert_eq!(
+            transform_anomaly_scope(&json!([
+                { "Service": "Amazon S3", "Region": "eu-west-1", "UsageType": "DataTransfer" }
+            ])),
+            json!("Amazon S3")
+        );
+        assert_eq!(transform_anomaly_scope(&json!("-")), json!("-"));
+    }
+
+    /// CostCategoryReference.ProcessingStatus is a list; the STATUS column
+    /// needs one value the color map matches. PROCESSING wins while a category
+    /// is half-applied.
+    #[test]
+    fn category_status_reduces_to_applied_or_processing() {
+        assert_eq!(
+            transform_category_status(&json!([{ "Status": "APPLIED" }])),
+            json!("APPLIED")
+        );
+        assert_eq!(
+            transform_category_status(&json!([
+                { "Status": "APPLIED" },
+                { "Status": "PROCESSING" }
+            ])),
+            json!("PROCESSING")
+        );
+        assert_eq!(transform_category_status(&json!([])), json!("APPLIED"));
     }
 }

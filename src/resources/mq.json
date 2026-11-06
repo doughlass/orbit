@@ -6,7 +6,7 @@
       "sdk_method": "list_brokers",
       "sdk_method_params": {},
       "response_path": "mq_brokers",
-      "id_field": "BrokerName",
+      "id_field": "BrokerId",
       "name_field": "BrokerName",
       "is_global": false,
       "columns": [
@@ -18,28 +18,131 @@
         { "header": "CREATED", "json_path": "Created", "width": 22 },
         { "header": "BROKER ID", "json_path": "BrokerId", "width": 24, "visible": false }
       ],
-      "sub_resources": [],
+      "sub_resources": [
+        { "shortcut": "u", "display_name": "Users", "resource_key": "mq-users", "parent_id_field": "BrokerId", "filter_param": "broker-id" }
+      ],
       "actions": [],
       "api_config": {
         "protocol": "rest-json",
         "method": "GET",
         "path": "/v1/brokers",
-        "response_root": "/BrokerSummaries",
+        "response_root": "/brokerSummaries",
         "pagination": {
-          "input_token": "NextToken",
-          "output_token": "/NextToken",
-          "max_results_param": "MaxResults",
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
           "max_results": 100
         }
       },
       "field_mappings": {
-        "BrokerName": { "source": "/BrokerName", "default": "-" },
-        "BrokerId": { "source": "/BrokerId", "default": "-" },
-        "BrokerState": { "source": "/BrokerState", "default": "-" },
-        "EngineType": { "source": "/EngineType", "default": "-" },
-        "DeploymentMode": { "source": "/DeploymentMode", "default": "-" },
-        "HostInstanceType": { "source": "/HostInstanceType", "default": "-" },
-        "Created": { "source": "/Created", "transform": "format_epoch_seconds", "default": "-" }
+        "BrokerName": { "source": "/brokerName", "default": "-" },
+        "BrokerId": { "source": "/brokerId", "default": "-" },
+        "BrokerState": { "source": "/brokerState", "default": "-" },
+        "EngineType": { "source": "/engineType", "default": "-" },
+        "DeploymentMode": { "source": "/deploymentMode", "default": "-" },
+        "HostInstanceType": { "source": "/hostInstanceType", "default": "-" },
+        "Created": { "source": "/created", "transform": "format_epoch_seconds", "default": "-" }
+      },
+      "describe_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/v1/brokers/{resource_id}",
+        "describe_fields": [
+          { "label": "Name",              "source": "/brokerName" },
+          { "label": "Broker ID",         "source": "/brokerId" },
+          { "label": "ARN",               "source": "/brokerArn" },
+          { "label": "State",             "source": "/brokerState" },
+          { "label": "Engine",            "source": "/engineType" },
+          { "label": "Engine Version",    "source": "/engineVersion" },
+          { "label": "Deployment Mode",   "source": "/deploymentMode" },
+          { "label": "Instance Type",     "source": "/hostInstanceType" },
+          { "label": "Created",           "source": "/created", "transform": "format_epoch_seconds" },
+          { "label": "Authentication",    "source": "/authenticationStrategy" },
+          { "label": "Storage",           "source": "/storageSize" },
+          { "label": "Storage Type",      "source": "/storageType" },
+          { "label": "Publicly Accessible", "source": "/publiclyAccessible", "transform": "bool_to_yes_no" },
+          { "label": "Auto Minor Upgrade", "source": "/autoMinorVersionUpgrade", "transform": "bool_to_yes_no", "section": "Configuration" },
+          { "label": "Data Replication",  "source": "/dataReplicationMode" },
+          { "label": "Subnets",           "source": "/subnetIds", "transform": "array_to_csv", "section": "Network" },
+          { "label": "Security Groups",   "source": "/securityGroups", "transform": "array_to_csv" },
+          { "label": "Users",             "source": "/users", "list": true, "item_template": "{username}", "section": "Broker" },
+          { "label": "Instances",         "source": "/brokerInstances", "list": true, "item_template": "{ipAddress} {endpoints}", "section": "Instances" }
+        ]
+      }
+    },
+    "mq-configurations": {
+      "display_name": "MQ Configurations",
+      "service": "mq",
+      "sdk_method": "list_configurations",
+      "sdk_method_params": {},
+      "response_path": "mq_configurations",
+      "id_field": "Id",
+      "name_field": "Name",
+      "is_global": false,
+      "columns": [
+        { "header": "NAME", "json_path": "Name", "width": 26 },
+        { "header": "ENGINE", "json_path": "EngineType", "width": 8 },
+        { "header": "VERSION", "json_path": "EngineVersion", "width": 14 },
+        { "header": "REVISION", "json_path": "Revision", "width": 10 },
+        { "header": "CREATED", "json_path": "Created", "width": 22 },
+        { "header": "ID", "json_path": "Id", "width": 24, "visible": false }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/v1/configurations",
+        "response_root": "/configurations",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Name": { "source": "/name", "default": "-" },
+        "Id": { "source": "/id", "default": "-" },
+        "Arn": { "source": "/arn", "default": "-" },
+        "Description": { "source": "/description", "default": "-" },
+        "EngineType": { "source": "/engineType", "default": "-" },
+        "EngineVersion": { "source": "/engineVersion", "default": "-" },
+        "Revision": { "source": "/latestRevision/revision", "default": "-" },
+        "Created": { "source": "/created", "transform": "format_epoch_seconds", "default": "-" }
+      }
+    },
+    "mq-users": {
+      "display_name": "MQ Users",
+      "service": "mq",
+      "sdk_method": "list_users",
+      "sdk_method_params": {},
+      "response_path": "mq_users",
+      "id_field": "Username",
+      "name_field": "Username",
+      "is_global": false,
+      "requires_parent": true,
+      "columns": [
+        { "header": "USERNAME", "json_path": "Username", "width": 30 },
+        { "header": "PENDING", "json_path": "PendingChange", "width": 12 }
+      ],
+      "sub_resources": [],
+      "actions": [],
+      "api_config": {
+        "protocol": "rest-json",
+        "method": "GET",
+        "path": "/v1/brokers/{broker-id}/users",
+        "response_root": "/users",
+        "pagination": {
+          "input_token": "nextToken",
+          "output_token": "/nextToken",
+          "max_results_param": "maxResults",
+          "max_results": 100
+        }
+      },
+      "field_mappings": {
+        "Username": { "source": "/username", "default": "-" },
+        "PendingChange": { "source": "/pendingChange", "default": "-" }
       }
     }
   }

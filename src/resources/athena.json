@@ -31,6 +31,30 @@
         "Name": { "source": "/Name", "default": "-" },
         "State": { "source": "/State", "default": "-" },
         "Description": { "source": "/Description", "default": "-" }
+      },
+      "describe_config": {
+        "protocol": "json",
+        "service_name": "athena",
+        "action": "GetWorkGroup",
+        "id_param": "WorkGroup",
+        "response_path": "/WorkGroup",
+        "describe_fields": [
+          { "label": "Name", "source": "/Name", "section": "Details" },
+          { "label": "State", "source": "/State", "section": "Details" },
+          { "label": "Description", "source": "/Description", "section": "Details" },
+          { "label": "Created", "source": "/CreationTime", "section": "Details" },
+          { "label": "Engine", "source": "/Configuration/EngineVersion/EffectiveEngineVersion", "section": "Engine" },
+          { "label": "Engine Requested", "source": "/Configuration/EngineVersion/SelectedEngineVersion", "section": "Engine" },
+          { "label": "Execution Role", "source": "/Configuration/ExecutionRole", "section": "Engine" },
+          { "label": "Output Location", "source": "/Configuration/ResultConfiguration/OutputLocation", "section": "Query Results" },
+          { "label": "Encryption", "source": "/Configuration/ResultConfiguration/EncryptionConfiguration/EncryptionOption", "section": "Query Results" },
+          { "label": "KMS Key", "source": "/Configuration/ResultConfiguration/EncryptionConfiguration/KmsKey", "section": "Query Results" },
+          { "label": "Expected Bucket Owner", "source": "/Configuration/ResultConfiguration/ExpectedBucketOwner", "section": "Query Results" },
+          { "label": "Enforce Workgroup Settings", "source": "/Configuration/EnforceWorkGroupConfiguration", "transform": "bool_to_yes_no", "section": "Settings" },
+          { "label": "Publish CloudWatch Metrics", "source": "/Configuration/PublishCloudWatchMetricsEnabled", "transform": "bool_to_yes_no", "section": "Settings" },
+          { "label": "Requester Pays", "source": "/Configuration/RequesterPaysEnabled", "transform": "bool_to_yes_no", "section": "Settings" },
+          { "label": "Bytes Scanned Cutoff", "source": "/Configuration/BytesScannedCutoffPerQuery", "transform": "format_bytes", "section": "Settings" }
+        ]
       }
     }
   }

@@ -297,6 +297,24 @@ pub fn get_service(name: &str) -> Option<ServiceDefinition> {
             target_prefix: None,
             is_global: true,
         }),
+        // Cost Explorer (ce) is a JSON-RPC service. Its endpoint is a globally
+        // hosted us-east-1 service; the budgets API shares the same shape.
+        "budgets" => Some(ServiceDefinition {
+            signing_name: "budgets",
+            endpoint_prefix: "budgets",
+            api_version: "2016-10-20",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSBudgetServiceGateway"),
+            is_global: true,
+        }),
+        "ce" => Some(ServiceDefinition {
+            signing_name: "ce",
+            endpoint_prefix: "ce",
+            api_version: "2017-10-25",
+            protocol: Protocol::Json,
+            target_prefix: Some("AWSInsightsIndexService"),
+            is_global: true,
+        }),
         "apigateway" => Some(ServiceDefinition {
             signing_name: "apigateway",
             endpoint_prefix: "apigateway",
@@ -742,6 +760,13 @@ impl AwsHttpClient {
                 )),
                 "cloudfront" => Ok(format!("https://cloudfront.{}", domain)),
                 "route53" => Ok(format!("https://route53.{}", domain)),
+                // ce (Cost Explorer) has no global host: `ce.amazonaws.com`
+                // does not resolve — every request goes to ce.us-east-1. It
+                // is still "global" in that one host serves all accounts and
+                // the signing region pins to us-east-1 via effective_region,
+                // but the hostname must stay region-addressed, like wafv2.
+                "ce" => Ok(format!("https://ce.{}.{}", region, domain)),
+                "budgets" => Ok(format!("https://budgets.{}", domain)),
                 // Global only in the sense that CLOUDFRONT-scope objects are served
                 // from one place; the host still carries that region.
                 "wafv2" => Ok(format!("https://wafv2.{}.{}", region, domain)),
@@ -761,6 +786,21 @@ impl AwsHttpClient {
             "amazonaws.eu"
         } else {
             "amazonaws.com"
+        }
+    }
+
+    /// Build an S3 endpoint for a bucket. Buckets whose name contains a dot
+    /// (site.example.com) cannot be addressed virtual-hosted-style over HTTPS:
+    /// S3's `*.s3.<region>` wildcard certificate only covers a single label, so
+    /// the TLS handshake to `{bucket}.s3.<region>` fails before any request is
+    /// sent. Fall back to path-style for them — the only form whose hostname the
+    /// certificate actually covers.
+    fn s3_bucket_endpoint(bucket: &str, region: &str) -> String {
+        let domain = Self::endpoint_domain(region);
+        if bucket.contains('.') {
+            format!("https://s3.{}.{}/{}", region, domain, bucket)
+        } else {
+            format!("https://{}.s3.{}.{}", bucket, region, domain)
         }
     }
 
@@ -931,8 +971,7 @@ impl AwsHttpClient {
         let service = get_service("s3").ok_or_else(|| anyhow!("Unknown service: s3"))?;
 
         // Build S3 regional endpoint
-        let domain = Self::endpoint_domain(bucket_region);
-        let endpoint = format!("https://{}.s3.{}.{}", bucket, bucket_region, domain);
+        let endpoint = Self::s3_bucket_endpoint(bucket, bucket_region);
         let url = format!("{}{}", endpoint, path);
         debug!("URL: {}", url);
 
@@ -959,7 +998,11 @@ impl AwsHttpClient {
         }
 
         for domain in domain_candidates {
-            let url = format!("https://{}.s3.{}/", bucket, domain);
+            let url = if bucket.contains('.') {
+                format!("https://s3.{}/{}", domain, bucket)
+            } else {
+                format!("https://{}.s3.{}/", bucket, domain)
+            };
             debug!("Probing bucket {} region via {}", bucket, url);
 
             let response = match self.http_client.head(&url).send().await {
@@ -1328,15 +1371,15 @@ impl AwsHttpClient {
     where
         F: FnMut(u64, Option<u64>) + Send + 'static,
     {
-        let domain = Self::endpoint_domain(bucket_region);
         let encoded_key = key
             .split('/')
             .map(|segment| urlencoding::encode(segment).into_owned())
             .collect::<Vec<_>>()
             .join("/");
         let url = format!(
-            "https://{}.s3.{}.{}/{}",
-            bucket, bucket_region, domain, encoded_key
+            "{}/{}",
+            Self::s3_bucket_endpoint(bucket, bucket_region),
+            encoded_key
         );
 
         let service_name = get_service("s3").ok_or_else(|| anyhow!("Unknown service: s3"))?;
@@ -1484,6 +1527,30 @@ mod tests {
     }
 
     #[test]
+    fn dot_named_s3_buckets_use_path_style_addressing() {
+        let url = AwsHttpClient::s3_bucket_endpoint("site.seagle.gli.whg.tech", "eu-west-1");
+        assert_eq!(
+            url,
+            "https://s3.eu-west-1.amazonaws.com/site.seagle.gli.whg.tech"
+        );
+    }
+
+    #[test]
+    fn single_label_s3_buckets_keep_virtual_hosted_addressing() {
+        let url = AwsHttpClient::s3_bucket_endpoint("my-bucket", "eu-west-1");
+        assert_eq!(url, "https://my-bucket.s3.eu-west-1.amazonaws.com");
+    }
+
+    #[test]
+    fn path_style_s3_redirect_location_still_yields_the_region() {
+        let region = super::extract_region_from_s3_url(&format!(
+            "https://s3.us-west-1.amazonaws.com/{}",
+            "site.seagle.gli.whg.tech"
+        ));
+        assert_eq!(region.as_deref(), Some("us-west-1"));
+    }
+
+    #[test]
     fn route53_uses_partition_domain_in_esc() {
         let client = client_with_region("eusc-de-east-1");
         let service = get_service("route53").expect("route53 service definition");
@@ -1575,5 +1642,27 @@ mod tests {
             .get_endpoint(&service)
             .expect("wafv2-global endpoint");
         assert_eq!(endpoint, "https://wafv2.us-east-1.amazonaws.com");
+    }
+
+    /// Cost Explorer has no global host: ce.amazonaws.com does not resolve.
+    /// Every request goes to ce.<region>, with the region pinned to us-east-1
+    /// by effective_region because that is where the single ce deployment
+    /// lives. An earlier global-style arm produced the dead ce.amazonaws.com
+    /// host and every dashboard request died in DNS.
+    #[test]
+    fn ce_endpoint_is_region_addressed_and_pins_us_east_1() {
+        let client = client_with_region("eu-west-1");
+        let service = get_service("ce").expect("ce service definition");
+        let endpoint = client.get_endpoint(&service).expect("ce endpoint");
+        assert_eq!(endpoint, "https://ce.us-east-1.amazonaws.com");
+    }
+
+    /// Budgets, by contrast, does answer from a bare global host.
+    #[test]
+    fn budgets_endpoint_is_the_bare_global_host() {
+        let client = client_with_region("eu-west-1");
+        let service = get_service("budgets").expect("budgets service definition");
+        let endpoint = client.get_endpoint(&service).expect("budgets endpoint");
+        assert_eq!(endpoint, "https://budgets.amazonaws.com");
     }
 }
