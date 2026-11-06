@@ -18,7 +18,7 @@ const WORDMARK: [&str; 2] = ["█▀█ █▀█ █▄▄ █ ▀█▀", "█
 // header_columns_fit_their_widest_fixed_content. Do not shave any of them.
 const HEADER_CONSTRAINTS: [Constraint; 5] = [
     Constraint::Percentage(22), // Left: Context info
-    Constraint::Percentage(18), // Region/Sub-resource shortcuts
+    Constraint::Percentage(18), // Region shortcuts (always; sub-resources live in keybindings col 1)
     Constraint::Percentage(22), // Keybindings col 1
     Constraint::Percentage(18), // Keybindings col 2
     Constraint::Percentage(20), // Logo
@@ -148,15 +148,10 @@ fn render_context_column(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_shortcuts_column(f: &mut Frame, app: &App, area: Rect) {
-    // If current resource has sub-resources, show those as shortcuts
-    // Otherwise show region shortcuts
-    if let Some(resource) = app.current_resource() {
-        if !resource.sub_resources.is_empty() {
-            render_subresource_shortcuts(f, app, resource, area);
-            return;
-        }
-    }
-
+    // Always regions: the digits 0-5 switch regions on every view, so the
+    // column must keep advertising them. Sub-resource shortcuts live in the
+    // keybindings column instead; the 6-row header is not tall enough for
+    // both lists.
     render_region_shortcuts(f, app, area);
 }
 
@@ -211,73 +206,71 @@ fn render_region_shortcuts(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(paragraph, area);
 }
 
-fn render_subresource_shortcuts(
-    f: &mut Frame,
-    _app: &App,
+/// Rows the header layout gives each column (`Constraint::Length(6)` in
+/// ui/mod.rs). A keybindings list longer than this clips silently, so the
+/// builders below treat it as a hard cap.
+const HEADER_ROWS: usize = 6;
+
+/// Build the first keybindings column for the current resource.
+///
+/// Sub-resource navigation lives here now: the shortcuts column always shows
+/// the region list, and one header row can only hold so much, so sub-resources
+/// and actions share the column and are capped to leave a row for Help.
+fn resource_bindings(
     resource: &crate::resource::ResourceDef,
-    area: Rect,
-) {
-    let mut lines: Vec<Line> = vec![Line::from(Span::styled(
-        "Sub-resources:",
-        Style::default()
-            .fg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD),
-    ))];
+    readonly: bool,
+    reveal_describe: bool,
+) -> Vec<(String, String)> {
+    let mut b: Vec<(String, String)> = vec![("<d>".to_string(), "Describe".to_string())];
 
-    for sub in resource.sub_resources.iter().take(5) {
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("<{}>", sub.shortcut),
-                Style::default().fg(Color::Yellow),
-            ),
-            Span::raw(" "),
-            Span::styled(sub.display_name.clone(), Style::default().fg(Color::White)),
-        ]));
+    // Sub-resource shortcuts in declaration order, before actions: they are
+    // navigation and every sub-resource view is reachable from here.
+    for sub in resource.sub_resources.iter() {
+        if b.len() >= HEADER_ROWS - 1 {
+            break;
+        }
+        b.push((format!("<{}>", sub.shortcut), sub.display_name.clone()));
     }
 
-    // Show if there are more
-    if resource.sub_resources.len() > 5 {
-        lines.push(Line::from(Span::styled(
-            format!("  +{} more", resource.sub_resources.len() - 5),
-            Style::default().fg(Color::DarkGray),
-        )));
+    // Add resource-specific actions
+    for action in resource.actions.iter() {
+        // Readonly hides everything the mode blocks: confirmed actions and
+        // SSM connect (an interactive shell), so no shortcut advertises
+        // something pressing it would refuse.
+        if readonly && (action.requires_confirm() || action.sdk_method == "ssm_connect") {
+            continue;
+        }
+        if b.len() >= HEADER_ROWS - 1 {
+            break;
+        }
+        if let Some(ref shortcut) = action.shortcut {
+            b.push((format!("<{}>", shortcut), action.display_name.clone()));
+        }
     }
 
-    let paragraph = Paragraph::new(lines);
-    f.render_widget(paragraph, area);
+    // The secret value is only revealable from its single-page (describe)
+    // view, so advertise the s binding exactly there -- the list never
+    // offers it, keeping the value behind an explicit enter.
+    if reveal_describe {
+        b.insert(0, ("<s>".to_string(), "Reveal Value".to_string()));
+    }
+
+    // Keep the list within the column, always reserving the last row for
+    // Help; the reveal insert above can push a full list one row past the cap.
+    while b.len() > HEADER_ROWS - 1 {
+        b.pop();
+    }
+    b.push(("<?>".to_string(), "Help".to_string()));
+
+    b
 }
 
 fn render_keybindings_col1(f: &mut Frame, app: &App, area: Rect) {
     // Show resource-specific actions or generic bindings
     let bindings: Vec<(String, String)> = if let Some(resource) = app.current_resource() {
-        let mut b: Vec<(String, String)> = vec![("<d>".to_string(), "Describe".to_string())];
-
-        // Add resource-specific actions
-        for action in resource.actions.iter() {
-            // Readonly hides everything the mode blocks: confirmed actions and
-            // SSM connect (an interactive shell), so no shortcut advertises
-            // something pressing it would refuse.
-            if app.readonly && (action.requires_confirm() || action.sdk_method == "ssm_connect") {
-                continue;
-            }
-            if b.len() >= 5 {
-                break;
-            }
-            if let Some(ref shortcut) = action.shortcut {
-                b.push((format!("<{}>", shortcut), action.display_name.clone()));
-            }
-        }
-
-        b.push(("<?>".to_string(), "Help".to_string()));
-
-        // The secret value is only revealable from its single-page (describe)
-        // view, so advertise the s binding exactly there -- the list never
-        // offers it, keeping the value behind an explicit enter.
-        if app.mode == Mode::Describe && app.current_resource_key == "secretsmanager-secrets" {
-            b.insert(0, ("<s>".to_string(), "Reveal Value".to_string()));
-        }
-
-        b
+        let reveal =
+            app.mode == Mode::Describe && app.current_resource_key == "secretsmanager-secrets";
+        resource_bindings(resource, app.readonly, reveal)
     } else {
         vec![
             ("<d>".to_string(), "Describe".to_string()),
@@ -358,6 +351,102 @@ fn render_logo(f: &mut Frame, area: Rect) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::App;
+    use crate::aws::client::AwsClients;
+    use crate::config::Config;
+    use ratatui::backend::TestBackend;
+    use ratatui::{layout::Rect, Terminal};
+
+    fn test_app_on(resource_key: &str) -> App {
+        App::from_initialized(
+            AwsClients::dummy(),
+            "test".to_string(),
+            "eu-west-1".to_string(),
+            vec!["test".to_string()],
+            vec!["eu-west-1".to_string()],
+            vec![],
+            Config::default(),
+            true,
+            None,
+            true,
+            resource_key,
+        )
+    }
+
+    /// The header is drawn with no wrapping, so clipped rows just vanish.
+    /// Renders exactly the header area so buffer text is unambiguous.
+    fn render_header(app: &App) -> String {
+        let backend = TestBackend::new(100, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| render(f, app, Rect::new(0, 0, 100, 6)))
+            .expect("header must render without panicking");
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect::<String>()
+    }
+
+    /// lambda-functions has sub-resources, which used to replace the region
+    /// shortcut list entirely — the digits 0-5 still switched regions there, so
+    /// the header silently stopped advertising a live key. The region list must
+    /// always be visible. "us-east-1" is a shortcut slot, not the current
+    /// region (eu-west-1, shown by the context column).
+    #[test]
+    fn region_shortcuts_render_for_resources_with_sub_resources() {
+        let app = test_app_on("lambda-functions");
+        let rendered = render_header(&app);
+
+        assert!(
+            rendered.contains("us-east-1"),
+            "region shortcuts should be visible on a sub-resource view, got: {}",
+            rendered
+        );
+    }
+
+    /// Moving sub-resources out of the shortcuts column must not bury them:
+    /// they now live in the keybindings column, next to <d> Describe.
+    #[test]
+    fn sub_resource_shortcuts_render_in_the_keybindings_column() {
+        let app = test_app_on("lambda-functions");
+        let rendered = render_header(&app);
+        let resource = crate::resource::get_resource("lambda-functions").unwrap();
+
+        for sub in &resource.sub_resources {
+            let want = format!("<{}>", sub.shortcut);
+            assert!(
+                rendered.contains(&want) && rendered.contains(&sub.display_name),
+                "expected keybinding column to contain {:?} {}",
+                want,
+                sub.display_name
+            );
+        }
+    }
+
+    /// The keybindings column is only HEADER_ROWS tall and renders without
+    /// wrapping, so an over-long list clips its last rows (today that would
+    /// silently bury <?> Help). Pinned across every real resource definition,
+    /// with and without the describe-only Reveal insert.
+    #[test]
+    fn keybinding_rows_never_exceed_the_header_height() {
+        for key in crate::resource::get_all_resource_keys() {
+            let resource = crate::resource::get_resource(key).unwrap();
+            for reveal in [false, true] {
+                let bindings = resource_bindings(resource, false, reveal);
+                assert!(
+                    bindings.len() <= HEADER_ROWS,
+                    "{} with reveal={}: {} rows, but the header has only {}",
+                    key,
+                    reveal,
+                    bindings.len(),
+                    HEADER_ROWS
+                );
+            }
+        }
+    }
 
     /// Every block glyph is one cell wide, so char count is display width.
     fn width(row: &str) -> usize {

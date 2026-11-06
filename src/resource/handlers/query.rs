@@ -239,4 +239,64 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["instanceId"], "i-12345");
     }
+
+    /// The ASG instances child reads instances through a two-level compound
+    /// response_root: DescribeAutoScalingInstances has no group-name filter,
+    /// so the child calls DescribeAutoScalingGroups scoped to one name and
+    /// flattens AutoScalingGroups/member/Instances/member. Pinned with the
+    /// real XML converter because the object (not array) collapse of a
+    /// single-element XML list is what makes compound roots subtle.
+    #[test]
+    fn asg_instances_extract_through_two_member_levels() {
+        let xml = r#"<DescribeAutoScalingGroupsResponse xmlns="http://autoscaling.amazonaws.com/doc/2011-01-01/">
+          <DescribeAutoScalingGroupsResult>
+            <AutoScalingGroups>
+              <member>
+                <AutoScalingGroupName>web</AutoScalingGroupName>
+                <Instances>
+                  <member><InstanceId>i-001</InstanceId><LifecycleState>InService</LifecycleState></member>
+                  <member><InstanceId>i-002</InstanceId><LifecycleState>Pending</LifecycleState></member>
+                </Instances>
+              </member>
+            </AutoScalingGroups>
+            <NextToken/>
+          </DescribeAutoScalingGroupsResult>
+          <ResponseMetadata><RequestId>x</RequestId></ResponseMetadata>
+        </DescribeAutoScalingGroupsResponse>"#;
+        let json = crate::aws::http::xml_to_json(xml).expect("valid ASG response XML must convert");
+        let items = extract_list(
+            &json,
+            "/DescribeAutoScalingGroupsResponse/DescribeAutoScalingGroupsResult/AutoScalingGroups/member/Instances/member",
+        );
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["InstanceId"], "i-001");
+        assert_eq!(items[1]["InstanceId"], "i-002");
+
+        // One instance arrives as a single object, not an array; the root
+        // must still yield exactly one item row.
+        let xml_single = r#"<DescribeAutoScalingGroupsResponse xmlns="http://autoscaling.amazonaws.com/doc/2011-01-01/">
+          <DescribeAutoScalingGroupsResult>
+            <AutoScalingGroups>
+              <member>
+                <AutoScalingGroupName>web</AutoScalingGroupName>
+                <Instances>
+                  <member><InstanceId>i-</InstanceId><LifecycleState>InService</LifecycleState></member>
+                </Instances>
+              </member>
+            </AutoScalingGroups>
+          </DescribeAutoScalingGroupsResult>
+        </DescribeAutoScalingGroupsResponse>"#;
+        let json_single =
+            crate::aws::http::xml_to_json(xml_single).expect("valid ASG response XML must convert");
+        let items_single = extract_list(
+            &json_single,
+            "/DescribeAutoScalingGroupsResponse/DescribeAutoScalingGroupsResult/AutoScalingGroups/member/Instances/member",
+        );
+        assert_eq!(
+            items_single.len(),
+            1,
+            "single item must collapse to one row"
+        );
+        assert_eq!(items_single[0]["InstanceId"], "i-");
+    }
 }
