@@ -12,7 +12,12 @@ permissions:
 jobs:
   check-issue-link:
     name: Check Issue Link
-    if: ${{ !startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login != 'doughlass' }}
+    # dependabot PRs are the same class of automated chore: the bumps cite
+    # upstream links, not issues in this repo, and these ones cannot — newer
+    # upstream homes (dirs moved to Codeberg) do not exist as
+    # github.com/*/issues/N links at all. Release-plz already gets a pass on
+    # exactly those grounds.
+    if: ${{ !startsWith(github.head_ref, 'release-plz-') && github.event.pull_request.user.login != 'doughlass' && github.event.pull_request.user.login != 'app/dependabot' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check PR description for issue link
