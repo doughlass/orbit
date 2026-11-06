@@ -5,6 +5,14 @@ All notable changes to orbit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2](https://github.com/doughlass/orbit/compare/v1.8.1...v1.8.2) - 2026-11-06
+
+### Other
+
+- exempt dependabot PRs from the issue-link check
+- Merge remote-tracking branch 'origin/master' into test/dependabot/cargo/base64-0.23.1
+- *(deps)* bump base64 from 0.22.1 to 0.23.1
+
 ## [1.8.1](https://github.com/doughlass/orbit/compare/v1.8.0...v1.8.1) - 2026-11-06
 
 ### Fixed
