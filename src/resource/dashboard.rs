@@ -491,7 +491,7 @@ async fn run_panel(panel: &DashboardPanel, clients: &AwsClients) -> PanelData {
         PanelKind::CostSummary => compute_cost_summary(&responses, chrono::Utc::now().day() as i64),
         PanelKind::CostMonitor => compute_cost_monitor(&responses),
         PanelKind::CostBreakdown => compute_breakdown(&responses),
-        PanelKind::TopTrends => compute_trends(&responses),
+        PanelKind::TopTrends => compute_trends(&responses, month_name(chrono::Utc::now().month())),
         PanelKind::CostTable => unreachable!("cost_table handled above"),
     }
 }
@@ -866,7 +866,7 @@ fn compute_breakdown(responses: &HashMap<String, Value>) -> PanelData {
     })
 }
 
-fn compute_trends(responses: &HashMap<String, Value>) -> PanelData {
+fn compute_trends(responses: &HashMap<String, Value>, now_month: &str) -> PanelData {
     let Some(results) = responses.get("monthly_by_service") else {
         return PanelData::Error("top trends: no monthly results".into());
     };
@@ -876,8 +876,8 @@ fn compute_trends(responses: &HashMap<String, Value>) -> PanelData {
     }
     // The console compares the last two complete months, so a row for the
     // in-progress month (its label is the current month name) is dropped
-    // before diffing.
-    let now_month = month_name(chrono::Utc::now().month());
+    // before diffing. The month arrives from the caller: taking it from the
+    // wall clock here made the pinned fixtures go stale every month rollover.
     let last_is_partial = months
         .last()
         .map(|(label, _)| label.starts_with(now_month))
@@ -1125,21 +1125,31 @@ mod tests {
         assert_eq!(m.budgets_line, "No budgets created");
     }
 
-    /// A six-month grouped fixture: months oldest-first, top five services
-    /// ranked by spend across the window, the tail folded into Others.
-    fn fixture_six_month_results() -> Value {
+    /// First-of-month TimePeriod.Start strings counted back from today. The
+    /// trends panel identifies the in-progress month by name, so absolute
+    /// "2026-04" style labels go stale at every month rollover — the trends
+    /// test failed the first November after it was written.
+    fn month_start(months_back: u32) -> String {
+        (chrono::Utc::now().date_naive() - chrono::Months::new(months_back))
+            .format("%Y-%m-01")
+            .to_string()
+    }
+
+    /// A grouped fixture, oldest-first: months counted back from today, two
+    /// services per month, one service that drops off in the newest month.
+    fn fixture_grouped_months() -> Value {
         json!([
-            { "TimePeriod": { "Start": "2026-04-01" },
+            { "TimePeriod": { "Start": month_start(5) },
               "Groups": [
                 { "Keys": ["Amazon S3"], "Metrics": { "UnblendedCost": { "Amount": "10" } } },
                 { "Keys": ["EC2"], "Metrics": { "UnblendedCost": { "Amount": "90" } } }
               ] },
-            { "TimePeriod": { "Start": "2026-05-01" },
+            { "TimePeriod": { "Start": month_start(4) },
               "Groups": [
                 { "Keys": ["Amazon S3"], "Metrics": { "UnblendedCost": { "Amount": "10" } } },
                 { "Keys": ["EC2"], "Metrics": { "UnblendedCost": { "Amount": "110" } } }
               ] },
-            { "TimePeriod": { "Start": "2026-06-01" },
+            { "TimePeriod": { "Start": month_start(3) },
               "Groups": [
                 { "Keys": ["EC2"], "Metrics": { "UnblendedCost": { "Amount": "100" } } }
               ] }
@@ -1150,16 +1160,14 @@ mod tests {
     /// by spend across the whole window for the legend.
     #[test]
     fn cost_breakdown_labels_months_and_ranks_services() {
-        let responses = HashMap::from([(
-            "monthly_by_service".to_string(),
-            fixture_six_month_results(),
-        )]);
+        let responses =
+            HashMap::from([("monthly_by_service".to_string(), fixture_grouped_months())]);
         let data = compute_breakdown(&responses);
         let PanelData::Breakdown(b) = data else {
             panic!("breakdown must compute Breakdown, got {data:?}");
         };
         assert_eq!(b.months.len(), 3);
-        assert_eq!(b.months[0].label, "Apr 2026");
+        assert_eq!(b.months[0].label, month_label(&month_start(5)));
         assert_eq!(
             b.legend[0], "EC2",
             "EC2 has the most spend across the window"
@@ -1172,26 +1180,30 @@ mod tests {
     /// is dropped) and order by absolute delta.
     #[test]
     fn top_trends_deltas_the_last_two_complete_months() {
-        let mut results = fixture_six_month_results();
-        // A partial September row that must be ignored by the diff.
+        let mut results = fixture_grouped_months();
+        // A partial current-month row that must be ignored by the diff.
         results.as_array_mut().unwrap().push(json!({
-            "TimePeriod": { "Start": "2026-09-01" },
+            "TimePeriod": { "Start": month_start(0) },
             "Groups": [
                 { "Keys": ["EC2"], "Metrics": { "UnblendedCost": { "Amount": "5" } } }
             ]
         }));
         let responses = HashMap::from([("monthly_by_service".to_string(), results)]);
-        let data = compute_trends(&responses);
+        let data = compute_trends(&responses, month_name(chrono::Utc::now().month()));
         let PanelData::Trends(rows) = data else {
             panic!("trends must compute Trends, got {data:?}");
         };
-        // May->Jun: EC2 -10 (110 -> 100); S3 dropped off (-10). The September
-        // partial row and its +5 must not appear anywhere.
+        // M-4 -> M-3: EC2 -10 (110 -> 100); S3 dropped off (-10). The current
+        // month's partial row and its +5 must not appear anywhere.
         assert!(
             !rows.iter().any(|r| r.delta.abs() < 0.005),
             "no zero-delta rows expected"
         );
-        assert!(rows.iter().all(|r| r.service != "Sep 2026"));
+        assert!(
+            rows.iter()
+                .all(|r| r.service != month_label(&month_start(0))),
+            "the partial current-month row must not surface as a service"
+        );
         assert_eq!(rows[0].service, "EC2");
         assert_eq!(rows[0].delta, -10.0);
         assert!(
