@@ -5,6 +5,18 @@ All notable changes to orbit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1](https://github.com/doughlass/orbit/compare/v1.8.0...v1.8.1) - 2026-11-06
+
+### Fixed
+
+- refresh lockfile tokens for the November RUSTSEC cluster
+
+### Other
+
+- drill into refreshes, activities and instances
+- keep region shortcuts visible everywhere
+- test top trends without the calendar
+
 ## [1.8.0](https://github.com/doughlass/orbit/compare/v1.7.0...v1.8.0) - 2026-09-26
 
 ### Added
