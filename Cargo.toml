@@ -2,7 +2,7 @@
 # The crate is orbit-tui because "orbit" is taken on crates.io; the binary is
 # still `orbit`. Same split as ripgrep/rg and git-delta/delta.
 name = "orbit-tui"
-version = "1.8.1"
+version = "1.8.2"
 edition = "2021"
 # Real floor, set by the aws-* crates. Not a policy choice; raise it when they do.
 rust-version = "1.94.1"
@@ -61,7 +61,7 @@ tracing-appender = "0.2"
 # Utils
 anyhow = "1.0"
 thiserror = "2.0"
-dirs = "6.0"
+dirs = "7.0"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 sha1 = "0.11"
 sha2 = "0.11"
@@ -75,7 +75,7 @@ flate2 = "1"
 tar = "0.4"
 
 [dev-dependencies]
-dirs = "6.0"
+dirs = "7.0"
 tempfile = "3.24.0"
 
 [workspace.lints.rust]
