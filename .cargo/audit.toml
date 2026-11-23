@@ -9,11 +9,6 @@
 # entries can change.
 [advisories]
 ignore = [
-    # RUSTSEC-2026-0441 (pin-utils, unmaintained). Only aws-smithy-http 0.64 /
-    # aws-smithy-types 1.6 pull it; a newer smitty line that drops it is not
-    # semver-compatible with the pinned aws-sdk 1.x crates. Re-check when the
-    # SDK major line moves.
-    "RUSTSEC-2026-0441",
     # RUSTSEC-2024-0449 (unsafe-libyaml, unmaintained). Its sole parent,
     # serde_yaml 0.9.x, is itself archived upstream ("+deprecated"), so a
     # lockfile bump can never fix it; dropping it means migrating
